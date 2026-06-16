@@ -1,0 +1,24 @@
+{
+  "name": "@delta-infra/cli",
+  "version": "1.0.0",
+  "description": "Delta Sandbox CLI",
+  "bin": {
+    "delta-cli": "scripts/run.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "scripts/",
+    "skills/"
+  ],
+  "keywords": ["delta", "sandbox", "cli", "gpu", "compute"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yzailab/delta-infra-cli.git"
+  }
+}
