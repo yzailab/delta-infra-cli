@@ -9,6 +9,14 @@ const BINARY_NAME = 'delta-cli';
 const VERSION = require('../package.json').version;
 const RELEASE_BASE_URL = 'https://github.com/yzailab/delta-infra-cli/releases/download';
 
+function releaseAssetUrl(version, assetName) {
+  const mirror = process.env.DELTA_CLI_MIRROR || '';
+  if (mirror) {
+    return `${mirror.replace(/\/$/, '')}/yzailab/delta-infra-cli/releases/download/v${version}/${assetName}`;
+  }
+  return `${RELEASE_BASE_URL}/v${version}/${assetName}`;
+}
+
 const platformMap = {
   darwin: 'darwin',
   linux: 'linux',
@@ -38,7 +46,7 @@ function download(url, dest) {
       try { fs.unlinkSync(dest); } catch {}
     };
 
-    https.get(url, (response) => {
+    https.get(url, { timeout: 60000 }, (response) => {
       if (response.statusCode >= 301 && response.statusCode <= 308 && response.headers.location) {
         file.destroy();
         cleanup();
@@ -90,14 +98,18 @@ async function main() {
 
   fs.mkdirSync(binDir, { recursive: true });
 
-  const url = `${RELEASE_BASE_URL}/v${VERSION}/${assetName}`;
-  console.log(`Downloading ${assetName} from GitHub...`);
+  const url = releaseAssetUrl(VERSION, assetName);
+  console.log(`Downloading ${assetName} from ${process.env.DELTA_CLI_MIRROR ? 'mirror' : 'GitHub'}...`);
 
   try {
     const checksum = await download(url, archivePath);
     console.log(`Downloaded archive, SHA256: ${checksum}`);
     console.log(`Extracting to ${binDir}...`);
     extract(archivePath, binDir, platform);
+    const extractedBinary = path.join(binDir, `${BINARY_NAME}-${platform}-${arch}${binaryExt}`);
+    if (fs.existsSync(extractedBinary) && extractedBinary !== binaryPath) {
+      fs.renameSync(extractedBinary, binaryPath);
+    }
     fs.chmodSync(binaryPath, 0o755);
     fs.unlinkSync(archivePath);
     console.log(`Installed to ${binaryPath}`);
