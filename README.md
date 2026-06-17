@@ -88,7 +88,7 @@ go install github.com/delta-infra/delta-infra-cli/cmd/delta-cli@latest
 delta-cli config init
 ```
 
-执行时会交互式提示输入服务端地址（默认：`http://172.17.152.6:8000/api/v1`）以及 API Key / Bearer Token（可选，也可后续用 `auth login` 配置）。
+执行时会交互式提示输入服务端地址（默认：`http://172.17.152.6:8000/api/v1`）以及 Bearer Token（可选，也可后续用 `auth login` 配置）。
 
 非交互式环境（如 CI）会直接使用默认值，也可以通过 flag 或环境变量一次性指定：
 
@@ -96,11 +96,10 @@ delta-cli config init
 # 通过 flag
 delta-cli config init \
   --base-url http://your-server/api/v1 \
-  --api-key your-api-key
+  --token your-token
 
 # 通过环境变量
 export DELTA_INFRA_BASE_URL=http://your-server/api/v1
-export DELTA_SANDBOX_API_KEY=your-api-key
 export DELTA_SANDBOX_TOKEN=your-token
 delta-cli config init
 ```
@@ -109,13 +108,10 @@ delta-cli config init
 
 ### 2. 认证
 
-支持 API Key 或 Bearer Token：
+使用 Bearer Token：
 
 ```bash
-# API Key
-delta-cli auth login --api-key <your-api-key>
-
-# Bearer Token
+# Token
 delta-cli auth login --token <your-token>
 
 # 查看认证状态
@@ -152,7 +148,6 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli config show` | 查看当前配置（敏感字段已脱敏） |
 | `delta-cli config set <key> <value>` | 修改配置项 |
 | `delta-cli auth login` | 交互式登录 |
-| `delta-cli auth login --api-key <key>` | API Key 认证 |
 | `delta-cli auth login --token <token>` | Token 认证 |
 | `delta-cli auth status` | 查看认证状态 |
 | `delta-cli update check` | 检查更新 |
