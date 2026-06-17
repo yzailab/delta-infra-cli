@@ -6,28 +6,79 @@ Delta Infra 的命令行工具。
 
 ### 方式一：直接下载 Binary（推荐）
 
-从 [GitHub Releases](https://github.com/yzailab/delta-infra-cli/releases) 下载对应平台的压缩包：
+从 [GitHub Releases](https://github.com/yzailab/delta-infra-cli/releases) 下载对应平台的压缩包（以下使用 `latest` 指向最新版）：
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/yzailab/delta-infra-cli/releases/download/v1.0.0/delta-cli-darwin-arm64.tar.gz | tar -xz
-sudo mv delta-cli-darwin-arm64/delta-cli /usr/local/bin/
+curl -L -o delta-cli.tar.gz https://github.com/yzailab/delta-infra-cli/releases/latest/download/delta-cli-darwin-arm64.tar.gz
+tar -xzf delta-cli.tar.gz
+sudo mv delta-cli-darwin-arm64 /usr/local/bin/delta-cli
+rm delta-cli.tar.gz
 
 # Linux (AMD64)
-curl -L https://github.com/yzailab/delta-infra-cli/releases/download/v1.0.0/delta-cli-linux-amd64.tar.gz | tar -xz
-sudo mv delta-cli-linux-amd64/delta-cli /usr/local/bin/
+curl -L -o delta-cli.tar.gz https://github.com/yzailab/delta-infra-cli/releases/latest/download/delta-cli-linux-amd64.tar.gz
+tar -xzf delta-cli.tar.gz
+chmod +x delta-cli-linux-amd64
+sudo mv delta-cli-linux-amd64 /usr/local/bin/delta-cli
+rm delta-cli.tar.gz
 
-# Windows (AMD64)
-# 下载 delta-cli-windows-amd64.zip 并解压
+# Windows (AMD64，PowerShell)
+Invoke-WebRequest -Uri https://github.com/yzailab/delta-infra-cli/releases/latest/download/delta-cli-windows-amd64.zip -OutFile delta-cli.zip
+Expand-Archive -Path delta-cli.zip -DestinationPath . -Force
+Move-Item -Path delta-cli-windows-amd64.exe -Destination delta-cli.exe
+Remove-Item -Path delta-cli.zip
+# 将 delta-cli.exe 放到 PATH 中的目录
 ```
 
-### 方式二：npm
+### 方式二：一键安装脚本（国内用户推荐）
+
+安装脚本会自动尝试国内 npm 镜像（npmmirror），失败后再回退到 npm 官方源：
+
+```bash
+# Linux / macOS
+curl -L https://raw.githubusercontent.com/yzailab/delta-infra-cli/main/install.sh | bash
+
+# Windows (PowerShell)
+Invoke-RestMethod -Uri https://raw.githubusercontent.com/yzailab/delta-infra-cli/main/install.ps1 | Invoke-Expression
+```
+
+### 方式三：npm
 
 ```bash
 npm install -g @delta-infra/cli
 ```
 
-安装时会自动从 GitHub Release 下载当前平台的二进制文件并解压到本地。
+`postinstall` 会按以下顺序尝试下载当前平台的二进制：
+
+1. `DELTA_CLI_MIRROR` 环境变量（如果设置）
+2. 国内加速镜像 `https://gh-proxy.com/https://github.com/...`
+3. GitHub 源站 `https://github.com/yzailab/delta-infra-cli/releases/download/...`
+
+如果安装时下载失败，可以：
+
+- 直接运行一次 `delta-cli`，它会自动重新尝试下载。
+- 或者在安装前设置本地压缩包路径：
+
+```bash
+DELTA_CLI_ARCHIVE=/path/to/delta-cli-linux-amd64.tar.gz npm install -g @delta-infra/cli
+```
+
+常用环境变量：
+
+| 变量 | 说明 |
+|------|------|
+| `DELTA_CLI_MIRROR` | 下载镜像，例如 `https://gh-proxy.com/https://github.com`。只接受 HTTPS 且需在白名单内。 |
+| `DELTA_CLI_MIRROR_ALLOWLIST` | 额外允许的主机列表，逗号分隔。 |
+| `DELTA_CLI_ARCHIVE` | 指向预先下载好的 `.tar.gz` / `.zip` 本地路径，跳过网络下载。 |
+| `DELTA_CLI_SKIP_POSTINSTALL` | 设置为 `1` 跳过安装时的二进制下载，之后由 `delta-cli` 运行时兜底。 |
+| `DELTA_CLI_FATAL_ON_ERROR` | 安装失败时退出码非 0（默认警告，用于调试）。 |
+| `DELTA_CLI_DOWNLOAD_TIMEOUT` | 单个下载源最大等待时间（毫秒，默认 120000）。 |
+
+### 方式四：Go Install
+
+```bash
+go install github.com/delta-infra/delta-infra-cli/cmd/delta-cli@latest
+```
 
 ## 快速开始
 
@@ -37,11 +88,24 @@ npm install -g @delta-infra/cli
 delta-cli config init
 ```
 
-配置文件保存在 `~/.delta-infra/config.json`（权限 0600），通过 `delta-cli config set base_url <url>` 配置服务端地址。也可通过环境变量覆盖：
+执行时会交互式提示输入服务端地址（默认：`http://172.17.152.6:8000/api/v1`）以及 API Key / Bearer Token（可选，也可后续用 `auth login` 配置）。
+
+非交互式环境（如 CI）会直接使用默认值，也可以通过 flag 或环境变量一次性指定：
 
 ```bash
-export DELTA_INFRA_BASE_URL=<url>
+# 通过 flag
+delta-cli config init \
+  --base-url http://your-server/api/v1 \
+  --api-key your-api-key
+
+# 通过环境变量
+export DELTA_INFRA_BASE_URL=http://your-server/api/v1
+export DELTA_SANDBOX_API_KEY=your-api-key
+export DELTA_SANDBOX_TOKEN=your-token
+delta-cli config init
 ```
+
+配置文件保存在 `~/.delta-infra/config.json`（权限 0600）。
 
 ### 2. 认证
 
@@ -162,10 +226,10 @@ make test
 # 代码检查
 make lint
 
-# 跨平台发布构建（生成压缩包）
+# 跨平台编译（生成各平台二进制文件到 bin/）
 make release
 
-# 安装到 GOPATH/bin
+# 安装到 GOPATH/bin（确保 GOPATH 已设置，或使用 GOPATH=$(go env GOPATH) make install）
 make install
 ```
 
@@ -183,9 +247,10 @@ cp skills/delta-shared/SKILL.md \
 # 2. 用 Docker 编译 Windows 版本（本地无 Go toolchain 时）
 docker run --rm -v "$(pwd):/src" -w /src \
   -e GOPROXY=https://goproxy.cn,direct \
-  golang:1.23 go build -buildvcs=false \
-    -ldflags "-X $(MODULE)/internal/build.Version=$(shell git describe --tags --always --dirty 2>/dev/null || echo dev)" \
-    -o bin/delta-cli-windows-amd64.exe ./cmd/delta-cli
+  golang:1.23 \
+  sh -c 'go build -buildvcs=false \
+    -ldflags "-X github.com/delta-infra/delta-infra-cli/internal/build.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" \
+    -o bin/delta-cli-windows-amd64.exe ./cmd/delta-cli'
 
 # 3. 将 delta-cli 放到 Memento-S 的 node_modules/.bin（替换旧版本）
 cp bin/delta-cli-windows-amd64.exe \
@@ -195,7 +260,55 @@ cp bin/delta-cli-windows-amd64.exe \
 #   在 Electron 界面中重新加载，或手动重启 sidecar 进程
 ```
 
-> **注意**：`delta-cli` 替换后，Memento-S 的 `delta-sandbox` 技能默认使用内嵌 Bearer Token，无需再手动执行 `auth login`。
+> **注意**：`delta-cli` 替换后，如果 `~/.delta-infra/config.json` 中已配置 token，则 `delta-sandbox` 技能可直接使用；否则需要先用 `auth login` 配置。
+
+## 构建与发布
+
+### 本地构建
+
+```bash
+# 本地构建
+make build
+
+# 运行测试
+make test
+
+# 代码检查
+make lint
+
+# 跨平台编译（生成各平台二进制文件到 bin/）
+make release
+```
+
+> `make release` 仅生成各平台二进制文件（如 `bin/delta-cli-linux-amd64`），不会自动打包。打包与发布请使用下文的 `release.sh`。
+
+### 一键发布（维护者）
+
+项目根目录下的 `release.sh` 脚本负责完整发布流程：
+
+```bash
+export GH_TOKEN=<your-github-pat>
+export NPM_TOKEN=<your-npm-token>
+./release.sh v1.0.5
+```
+
+脚本执行步骤：
+1. 更新 `package.json` 版本号。
+2. 使用 Docker + `make release` 交叉编译 5 个平台二进制文件。
+3. 在 `bin/` 目录生成 `.tar.gz` / `.zip` 归档。
+4. 通过 `.ci/publish-github-release.js` 创建 GitHub Release 并上传资产。
+5. 同步 `package.json` 与 `scripts/install.js` 到公开仓库 `yzailab/delta-infra-cli`。
+6. 执行 `npm publish --access public` 发布 `@delta-infra/cli`。
+
+需要提前安装 `gh` CLI、Node.js/npm，并配置 `GH_TOKEN` 与 `NPM_TOKEN`。CI 流程可参考 `.gitlab-ci.yml`。
+
+### npm 镜像
+
+如果 GitHub 下载较慢，安装 npm 包时可设置镜像：
+
+```bash
+DELTA_CLI_MIRROR="https://gh-proxy.com/https://github.com" npm install -g @delta-infra/cli
+```
 
 ## 技术栈
 
