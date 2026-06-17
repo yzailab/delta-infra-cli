@@ -158,6 +158,7 @@ delta-cli sandbox kill <sandbox_id>
 
 | 命令 | 说明 |
 |------|------|
+| `delta-cli sandbox list` | 列出当前用户的 sandbox |
 | `delta-cli sandbox create --image <img>` | 创建 sandbox 容器 |
 | `delta-cli sandbox connect <id>` | 连接 sandbox |
 | `delta-cli sandbox status <id>` | 查看 sandbox 状态 |
