@@ -5,6 +5,7 @@
 | 命令 | 说明 |
 |------|------|
 | `sandbox images` | 查看可用镜像列表 |
+| `sandbox list` | 列出当前用户创建的活跃 sandbox |
 | `sandbox create` | 创建 sandbox |
 | `sandbox connect` | 连接 sandbox |
 | `sandbox kill` | 直接销毁 sandbox，不保存结果（有结果要保存时用 finish 替代） |
