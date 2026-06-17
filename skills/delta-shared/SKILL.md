@@ -1,97 +1,61 @@
 ---
 name: delta-shared
-version: 1.0.0
-description: "delta-cli 全局共享规则。使用于首次配置、认证登录、权限不足恢复、配置查看、遇到 JSON 输出中的 _notice 或通用错误处理时。"
+version: 1.0.7
+description: "delta-cli 全局共享规则：配置/认证检查、安全红线、错误处理、sandbox 销毁。"
 ---
 
 # delta-cli 共享规则
 
-本技能指导你如何通过 delta-cli 操作 Delta Sandbox 及相关资源，以及所有命令域通用的注意事项。
+指导 AI 使用 `delta-cli` 的通用规则。核心原则：**只检查、不猜测、不泄露密钥**。
 
-## 获取服务端地址（必须优先执行）
+## 执行任何操作之前
 
-所有操作的前提是知道 delta-sandbox-server 的地址。按以下步骤获取：
+1. 确认服务端地址：
+   ```bash
+   delta-cli config show
+   ```
+2. 确认认证状态：
+   ```bash
+   delta-cli auth status
+   ```
 
-1. 执行 `echo $DELTA_INFRA_BASE_URL` 检查环境变量是否已设置
-2. 如果输出非空，说明已配置，直接使用，无需额外操作
-3. 如果为空，**向用户询问真实地址**，然后运行 `delta-cli config set base_url <url>` 保存
+- 若 `auth status` 显示 `method: api_key` 或 `method: token`，**直接执行目标命令**，不要重复登录或初始化配置。
+- 若显示 `method: none`，或操作返回 `error.type: auth` / `permission`，才进入下面的“补全配置”流程。
 
-**不要猜测或虚构地址。不确认地址就执行任何操作会导致 network 错误。**
+## 补全配置
 
-## 配置初始化
-
-首次使用需运行 `delta-cli config init` 完成配置：
-
-```bash
-delta-cli config init
-```
-
-这会创建 `~/.delta-infra/config.json`，需按实际部署设置 base_url（`delta-cli config set base_url <url>`），也可通过环境变量 `DELTA_INFRA_BASE_URL` 覆盖。
-
-## 配置管理
+缺少服务端地址或凭证时，**向用户询问一次**，然后用 flag 初始化：
 
 ```bash
-delta-cli config show
-delta-cli config set base_url <url>
-delta-cli config set api_key <key>
-delta-cli config set token <token>
-delta-cli config remove api_key
-delta-cli config remove token
+delta-cli config init --base-url <server-url> --api-key <key>
+# 或
+delta-cli config init --base-url <server-url> --token <token>
 ```
 
-## 环境变量覆盖
+不要用交互式 `config init`（无 flag），避免在 stdin 不可用时卡住。
 
-以下环境变量优先级高于配置文件：
+### 信息来源优先级
 
-| 变量 | 说明 |
-|------|------|
-| `DELTA_INFRA_BASE_URL` | 覆盖 base_url |
-| `DELTA_SANDBOX_API_KEY` | 覆盖 api_key |
-| `DELTA_SANDBOX_TOKEN` | 覆盖 token |
+1. 环境变量：`DELTA_INFRA_BASE_URL`、`DELTA_SANDBOX_API_KEY`、`DELTA_SANDBOX_TOKEN`
+2. `~/.delta-infra/config.json` 中的 `base_url` / `api_key` / `token`
+3. 默认值：仅 `base_url` 有内部默认值
+4. 以上都缺失时，**必须询问用户**，禁止虚构
 
-## 认证
+### 运行时凭证优先级
 
-delta-cli **不再内嵌默认凭证**，使用前必须配置认证。
+`api_key`（请求头 `X-API-Key`） > `token`（`Authorization: Bearer <token>`）。
+两者同时存在时，CLI 使用 `api_key`。
 
-支持两种认证方式，优先级从高到低：
+## 安全红线
 
-| 方式 | 命令 / 来源 | 适用场景 |
-|------|------------|----------|
-| API Key | `delta-cli auth login --api-key <key>` 或环境变量 `DELTA_SANDBOX_API_KEY` | 推荐 |
-| Bearer Token | `delta-cli auth login --token <token>` 或环境变量 `DELTA_SANDBOX_TOKEN` | 使用已有 token |
-
-### 默认认证说明
-
-- binary 中没有默认 token，第一次使用**必须**执行 `delta-cli auth login` 或设置环境变量。
-- 如需更换账号，重新执行 `delta-cli auth login --token <token>` 或 `delta-cli auth login --api-key <key>`。
-- 未配置时 `auth status` 会显示 `method: none`。
-
-### 查看认证状态
-
-```bash
-delta-cli auth status
-```
-
-### 权限不足处理
-
-遇到认证/权限错误时（`error.type: auth` 或 `permission`）：
-
-1. 先执行 `delta-cli auth status` 确认当前认证状态
-2. 如需更换认证，执行 `delta-cli auth login --token <token>` 或 `delta-cli auth login --api-key <key>`
-3. 如已认证但仍报错，检查 base_url 是否正确
-
-**禁止**：将 API Key 或 Token 输出到终端明文展示给用户。
-
-## 安全规则
-
-- **禁止输出密钥**：`api_key`、`token` 不得在日志、消息或终端中明文展示。
-- **写入/删除操作前必须确认用户意图**：`sandbox kill`、`sandbox finish`、`sandbox write` 等操作前需明确告知用户影响。
-- **配置文件权限**：`~/.delta-infra/config.json` 权限为 `0600`，严禁手动放宽。
-- **sandbox 必须销毁**：调用 `sandbox create` 后，当前任务结束前必须调用 `sandbox kill`。server 端无自动清理，不销毁 = 永久占用 GPU。即使遇到错误也不得跳过销毁。
+- **禁止输出密钥**：`api_key`、`token` 不得出现在日志、消息、终端。
+- **禁止自己拼 URL / 构造 HTTP 请求**：所有请求都走 `delta-cli`。
+- **不要主动安装 CLI**：如果用户说没装，建议他去 README 或 install.sh，不要自己选安装方式。
+- **写入/删除操作前确认意图**：`sandbox kill`、`sandbox finish`、`sandbox write` 等必须告诉用户影响。
+- `~/.delta-infra/config.json` 权限为 `0600`，不要手动放宽。
+- **sandbox 必须销毁**：调用 `sandbox create` 后，当前任务结束前必须调用 `sandbox kill`。server 端无自动清理，不销毁 = 永久占用 GPU；即使出错也不得跳过。
 
 ## JSON 输出约定
-
-所有命令输出遵循统一 JSON envelope：
 
 ```json
 {"ok":true,"data":{...}}
@@ -99,27 +63,25 @@ delta-cli auth status
 ```
 
 AI Agent 解析规则：
-- 始终检查 `ok` 字段，不要仅依赖 exit code
-- `error.type` 是稳定分支字段：`auth`, `permission`, `not_found`, `validation`, `network`, `api`, `internal`
-- `error.hint` 是可读修复建议，可展示给用户
+- 始终检查 `ok`，不要只看 exit code。
+- `error.type` 是稳定分支字段：`auth`, `permission`, `not_found`, `validation`, `network`, `api`, `internal`。
+- `error.hint` 可展示给用户。
 
 ## 退出码约定
 
 | Type | Exit Code | 场景 |
 |------|-----------|------|
-| validation | 2 | flag 错误、参数缺失 |
+| validation | 2 | flag / 参数错误 |
 | auth | 3 | 未认证或认证失败 |
 | permission | 4 | 权限不足 |
 | not_found | 5 | sandbox/file 不存在 |
 | network | 6 | DNS、超时、连接失败 |
-| api | 7 | 服务端非 2xx 错误 |
+| api | 7 | 服务端非 2xx |
 | internal | 10 | 客户端内部错误 |
 
 ## 更新检查
 
-`delta-cli update check` 检查最新版本。
-
-**当你在 JSON 中看到 `_notice.update` 时**，完成用户当前请求后，主动提议更新：
+完成用户请求后，如果 JSON 中有 `_notice.update`，可建议：
 
 ```bash
 delta-cli update
@@ -129,8 +91,9 @@ delta-cli update
 
 | 错误 / 现象 | 恢复动作 |
 |-------------|----------|
-| `error.type: auth` | 先执行 `auth status` 确认；如无认证或需更换，执行 `auth login --token <token>` |
-| `error.type: not_found` | 检查 sandbox_id 或 path 是否正确 |
-| `error.type: network` | 检查 base_url 和网络连通性 |
+| `error.type: auth` / `method: none` | 询问用户后执行 `config init --base-url <url> --api-key <key>` |
+| `error.type: permission` | 确认当前认证是否有权限；必要时换凭证 |
+| `error.type: not_found` | 检查 `sandbox_id` / path |
+| `error.type: network` | 检查 `base_url` 和网络连通性 |
 | `error.type: validation` | 检查必填 flag 和参数格式 |
 | 配置文件解析失败 | 检查 `~/.delta-infra/config.json` 是否为有效 JSON |
