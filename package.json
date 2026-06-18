@@ -1,6 +1,6 @@
 {
   "name": "@delta-infra/cli",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Delta Sandbox CLI",
   "bin": {
     "delta-cli": "scripts/run.js"
