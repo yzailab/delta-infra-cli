@@ -225,8 +225,19 @@ make lint
 # 跨平台编译（生成各平台二进制文件到 bin/）
 make release
 
-# 安装到 GOPATH/bin（确保 GOPATH 已设置，或使用 GOPATH=$(go env GOPATH) make install）
+# 源码安装到系统 PATH（默认 /usr/local/bin；macOS / Linux）
 make install
+
+# 自定义安装前缀
+make PREFIX=$HOME/.local install
+
+# Windows 源码安装（二选一）
+# 方式 A：直接用 go install 安装到 GOPATH/bin
+go install github.com/delta-infra/delta-infra-cli/cmd/delta-cli@latest
+
+# 方式 B：在仓库根目录运行 PowerShell 脚本，构建并添加到用户 PATH
+# .\install-from-source.ps1
+# .\install-from-source.ps1 -InstallDir "$env:USERPROFILE\bin"
 ```
 
 ### 日常开发流程
