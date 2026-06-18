@@ -21,8 +21,7 @@
 
 ```bash
 # 1. 启动后台命令（立即返回，不阻塞）
-# 命令末尾加 echo SANDBOX_BACKGROUND_DONE 标记完成
-delta-cli sandbox run-bg <id> --command "<命令> && echo SANDBOX_BACKGROUND_DONE" --timeout 7200
+# delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200
 
 # ↑ 返回数据中包含 execution_id，请保存以便后续查询
 
@@ -53,7 +52,6 @@ delta-cli sandbox kill <id>
 1. **`finished=true` + `exit_code=0`** → 正常完成，可以读取结果并销毁 sandbox
 2. **`finished=true` + `exit_code≠0`** → 命令执行失败，查看 stderr/error 信息
 3. **`running=true`** → 任务仍在运行，继续等待（建议每 15-30 秒查询一次）
-4. **辅助判断**：`content` 中出现 `SANDBOX_BACKGROUND_DONE` → 完成；`cursor` 在增长 → 仍在运行
 5. **连续 3 次 `running=true` 且 `content`/`cursor` 无变化且距离提交超过 60 秒** → 任务可能挂起或无输出，用 `sandbox status <id>` 检查 sandbox 是否存活；也可用 `sandbox status bg <id> --execution-id <exec_id>` 查后台命令状态
 6. **`sandbox status` 返回正常但 logs 仍然无变化** → 用 `sandbox run <id> --command "ps aux | grep <进程名>" --timeout 15` 在容器内检查命令是否还在运行
 
