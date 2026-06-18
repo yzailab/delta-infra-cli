@@ -4,22 +4,22 @@
 
 ## 完整流程
 
-1. **查看可用镜像** `delta-cli sandbox images` — 查询服务端支持的镜像列表，根据用户的 GPU/CPU 需求和标签匹配镜像
+1. **查看可用镜像** `delta-cli sandbox images` — 查询服务端支持的镜像列表。镜像决定了容器内的语言运行时（Python / Node.js / Go / Java / Rust 等），根据用户的技术栈和 GPU/CPU 需求匹配。
 2. **列出现有 sandbox（可选）** `delta-cli sandbox list` — 查看当前用户已创建的活跃 sandbox，避免重复创建
 3. **创建** `delta-cli sandbox create --image <image> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`（创建后立即可用，无需连接；--max-life 指定 sandbox 最大存活时间（分钟），默认 30；这些是 `create` 全部资源参数，不要 invented 其它 flag）
-4. **写入代码/数据** `delta-cli sandbox write <id> --path /workspace/train.py --data "..."`
-5. **运行命令** `delta-cli sandbox run <id> --command "python /workspace/train.py"`
+4. **写入代码/数据** `delta-cli sandbox write <id> --path /workspace/<filename> --data "..."` — 将源代码、脚本或数据文件写入 sandbox。文件路径和扩展名由镜像中的运行时决定。
+5. **运行命令** `delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` — 根据镜像中的运行时构造命令，常见示例：`python /workspace/train.py`（Python）、`node /workspace/app.js`（Node.js）、`go run /workspace/main.go`（Go）、`bash /workspace/run.sh`（Shell）
    - `sandbox run` 是同步执行，返回结果里直接包含 `stdout`、`stderr`、`exit_code`，**不要**再调 `sandbox logs`
 6. **读取结果** `delta-cli sandbox read <id> --path /workspace/result.json`
 7. **销毁** `delta-cli sandbox kill <id>`（如需保存结果用 finish，finish 会自动销毁）
 
 ## 后台任务
 
-对于长时间运行的训练（>5 分钟），使用 `run-bg` 在后台异步执行：
+对于长时间运行的任务（>5 分钟，如训练、编译、数据处理），使用 `run-bg` 在后台异步执行：
 
 ```bash
 # 1. 启动后台命令（立即返回，不阻塞）
-delta-cli sandbox run-bg <id> --command "python train.py" --timeout 7200
+delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200
 
 # ↑ 返回数据中包含 execution_id，请保存以便后续查询
 
