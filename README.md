@@ -100,7 +100,7 @@ delta-cli config init \
 
 # 通过环境变量
 export DELTA_INFRA_BASE_URL=http://your-server/api/v1
-export DELTA_SANDBOX_TOKEN=your-token
+export DELTA_INFRA_TOKEN=your-token
 delta-cli config init
 ```
 
