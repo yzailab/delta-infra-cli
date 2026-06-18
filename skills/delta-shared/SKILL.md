@@ -1,6 +1,6 @@
 ---
 name: delta-shared
-version: 1.0.8
+version: 1.0.9
 description: "delta-cli 全局共享规则：配置/认证检查、安全红线、错误处理、sandbox 销毁。"
 ---
 
@@ -34,7 +34,7 @@ delta-cli config init --base-url <server-url> --token <token>
 
 ### 信息来源优先级
 
-1. 环境变量：`DELTA_INFRA_BASE_URL`、`DELTA_SANDBOX_TOKEN`
+1. 环境变量：`DELTA_INFRA_BASE_URL`、`DELTA_INFRA_TOKEN`
 2. `~/.delta-infra/config.json` 中的 `base_url` / `token`
 3. 默认值：仅 `base_url` 有内部默认值
 4. 以上都缺失时，**必须询问用户**，禁止虚构
