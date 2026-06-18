@@ -30,7 +30,9 @@ metadata:
 2. **必须销毁**：每次 `sandbox create` 成功后，在当前任务的最终 `step_finish` 之前 **必须** 执行 `sandbox kill <id>` 或 `sandbox finish <id>` 销毁 sandbox。未销毁等价于任务失败。
 3. **异常时也必须销毁**：即使 sandbox 内命令失败、超时或报错，仍然 **必须** 执行 `sandbox kill <id>`。异常不是跳过销毁的理由。
 4. **不得依赖外部清理**：server 端 **没有** sandbox 的自动过期或 TTL 机制。不 kill → sandbox 永久占用 GPU 资源。
-5. **一条命令内完成**：从 `create` 到 `kill` 的完整生命周期必须在同一次执行中完成。不允许跨任务保留 sandbox。
+5. **同步任务一条命令内完成，后台任务可跨轮次**：
+   - 同步模式（`sandbox run`）：从 `create` 到 `kill` 的完整生命周期必须在同一次执行中完成。不允许跨任务保留。
+   - 后台模式（`sandbox run-bg`）：允许在当前执行中将 `sandbox_id` 和 `execution_id` 报告给用户，后续轮次通过 `sandbox status` + `sandbox logs` 获取结果。任务完成后仍需 `sandbox kill`。
 6. **禁止重复创建**：同一次任务中只允许存在一个活跃 sandbox。若命令失败需要重试，优先复用已创建的 `sandbox_id`；若确实需要重新创建，必须先 `sandbox kill <旧_sandbox_id>`，确认旧实例销毁后再执行新的 `sandbox create`。可用 `delta-cli sandbox list` 查询当前用户的活跃 sandbox，但 **禁止** 用 list 来绕过“同一次任务只保留一个 sandbox”的规则。
 
 ## 快速路由
@@ -53,7 +55,8 @@ metadata:
 ## 完整生命周期
 
 1. **查看可用镜像**：`delta-cli sandbox images` — 查询服务端支持的镜像列表（含标签、最低资源要求、支持 provider），根据用户需求匹配镜像
-2. **创建**：`delta-cli sandbox create --image <img> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000`（创建后 sandbox 立即可用，无需额外连接）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
+2. **创建**：`delta-cli sandbox create --image <img> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`（创建后 sandbox 立即可用，无需额外连接）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
+   - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
    - 这是 `sandbox create` 支持的完整资源参数集合，不存在其它“更正确”的资源 flag，不要 invented 不存在的参数。
 3. **写入代码**：`delta-cli sandbox write <id> --path /workspace/train.py --data "..."`
 4. **运行**：`delta-cli sandbox run <id> --command "python /workspace/train.py" --timeout 3600`
