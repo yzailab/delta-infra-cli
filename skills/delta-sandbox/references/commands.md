@@ -11,8 +11,8 @@
 | `sandbox kill` | 直接销毁 sandbox，不保存结果（有结果要保存时用 finish 替代） |
 | `sandbox finish` | 保存结果后自动销毁 sandbox（二选一：finish 或 kill，不要同时调用） |
 | `sandbox status` | 查看状态 |
-| `sandbox run` | 同步运行命令 |
+| `sandbox run` | 同步运行命令，结果直接返回 |
 | `sandbox run-bg` | 后台运行命令 |
-| `sandbox logs` | 获取日志 |
+| `sandbox logs` | 获取后台命令日志（仅配合 `run-bg`） |
 | `sandbox read` | 读取文件 |
 | `sandbox write` | 写入文件 |
