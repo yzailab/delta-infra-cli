@@ -1,7 +1,7 @@
 ---
 name: delta-sandbox
 version: 1.0.10
-description: "通过 Delta Sandbox HTTP API 运行 GPU/CPU 计算任务。适用于训练、微调、CUDA/PyTorch 推理等场景。认证/配置/权限错误转 delta-shared。"
+description: "通过 Delta Sandbox HTTP API 在 Linux 容器中运行任意计算任务。适用于训练、推理、编译、数据处理等场景。支持 Python / Node.js / Go / Java / Rust 等语言。认证/配置/权限错误转 delta-shared。"
 metadata:
   requires:
     bins: ["delta-cli"]
@@ -35,6 +35,8 @@ metadata:
    - 后台模式（`sandbox run-bg`）：允许在当前执行中将 `sandbox_id` 和 `execution_id` 报告给用户，后续轮次通过 `sandbox status` + `sandbox logs` 获取结果。任务完成后仍需 `sandbox kill`。
 6. **禁止重复创建**：同一次任务中只允许存在一个活跃 sandbox。若命令失败需要重试，优先复用已创建的 `sandbox_id`；若确实需要重新创建，必须先 `sandbox kill <旧_sandbox_id>`，确认旧实例销毁后再执行新的 `sandbox create`。可用 `delta-cli sandbox list` 查询当前用户的活跃 sandbox，但 **禁止** 用 list 来绕过“同一次任务只保留一个 sandbox”的规则。
 
+7. **长任务必须后台执行**：预计执行时间超过 60 秒的任务（例如下载模型、训练、微调、长推理、大规模数据处理），**必须**使用 `delta-cli sandbox run-bg <id> --command "..." --timeout <秒>` 提交为后台任务，并通过 `delta-cli sandbox logs <id> --execution-id <exec_id>` 轮询结果。禁止对这类任务使用同步的 `sandbox run`。`run-bg` 会立即返回 `execution_id`；解析 `logs` 输出中的 `content`（并配合使用完成标记 `&& echo SANDBOX_BACKGROUND_DONE`）判断任务是否结束，建议每 15-30 秒轮询一次。后台任务成功后仍需按规则 2/3 销毁 sandbox。
+
 ## 快速路由
 
 | 用户目标 | 命令 |
@@ -54,13 +56,18 @@ metadata:
 
 ## 完整生命周期
 
-1. **查看可用镜像**：`delta-cli sandbox images` — 查询服务端支持的镜像列表（含标签、最低资源要求、支持 provider），根据用户需求匹配镜像
+1. **选择镜像并查看可用镜像**：`delta-cli sandbox images` — 查询服务端支持的镜像列表，根据用户需求的编程语言和工具链匹配镜像。例如 `deltarouter/python:latest`（Python）、`node:20`（Node.js）、`golang:1.23`（Go），镜像决定了容器内可用的语言/运行时环境。
 2. **创建**：`delta-cli sandbox create --image <img> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`（创建后 sandbox 立即可用，无需额外连接）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
    - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
    - 这是 `sandbox create` 支持的完整资源参数集合，不存在其它“更正确”的资源 flag，不要 invented 不存在的参数。
-3. **写入代码**：`delta-cli sandbox write <id> --path /workspace/train.py --data "..."`
-4. **运行**：`delta-cli sandbox run <id> --command "python /workspace/train.py" --timeout 3600`
-   - `sandbox run` 是同步执行，结果（`stdout` / `stderr` / `exit_code`）会直接返回，**不要**再调用 `sandbox logs`
+3. **写入代码/数据**：`delta-cli sandbox write <id> --path /workspace/<filename> --data "..."` 将源代码、脚本或数据文件写入 sandbox。文件路径和扩展名由镜像中的运行时决定。
+4. **运行命令**：
+   - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，结果（`stdout` / `stderr` / `exit_code`）直接返回，**不要**再调用 `sandbox logs`。根据镜像中的运行时构造命令，常见示例：
+     - Python：`python /workspace/train.py`
+     - Node.js：`node /workspace/app.js`
+     - Go：`go run /workspace/main.go`
+     - Shell：`bash /workspace/run.sh`
+   - **长任务（预计 > 60 秒，如下载模型、训练、编译、大规模数据处理）**：`delta-cli sandbox run-bg <id> --command "<命令> && echo SANDBOX_BACKGROUND_DONE" --timeout <秒>` 提交后台任务，获得 `execution_id` 后循环调用 `delta-cli sandbox logs <id> --execution-id <execution_id>` 轮询：当 `logs.data.content` 中出现 `SANDBOX_BACKGROUND_DONE` 时视为完成。禁止对长任务使用同步 `sandbox run`
 5. **读取结果**：`delta-cli sandbox read <id> --path /workspace/result.json`
 6. **销毁**：`delta-cli sandbox kill <id>`（如需保存结果，用 `sandbox finish --results '{...}'` 替代 kill，finish 会自动销毁 sandbox）
 
