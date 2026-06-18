@@ -35,7 +35,12 @@ metadata:
    - 后台模式（`sandbox run-bg`）：允许在当前执行中将 `sandbox_id` 和 `execution_id` 报告给用户，后续轮次通过 `sandbox status` + `sandbox logs` 获取结果。任务完成后仍需 `sandbox kill`。
 6. **禁止重复创建**：同一次任务中只允许存在一个活跃 sandbox。若命令失败需要重试，优先复用已创建的 `sandbox_id`；若确实需要重新创建，必须先 `sandbox kill <旧_sandbox_id>`，确认旧实例销毁后再执行新的 `sandbox create`。可用 `delta-cli sandbox list` 查询当前用户的活跃 sandbox，但 **禁止** 用 list 来绕过“同一次任务只保留一个 sandbox”的规则。
 
-7. **长任务必须后台执行**：预计执行时间超过 60 秒的任务（例如下载模型、训练、微调、长推理、大规模数据处理），**必须**使用 `delta-cli sandbox run-bg <id> --command "..." --timeout <秒>` 提交为后台任务，并通过 `delta-cli sandbox logs <id> --execution-id <exec_id>` 轮询结果。禁止对这类任务使用同步的 `sandbox run`。`run-bg` 会立即返回 `execution_id`；解析 `logs` 输出中的 `content`（并配合使用完成标记 `&& echo SANDBOX_BACKGROUND_DONE`）判断任务是否结束，建议每 15-30 秒轮询一次。后台任务成功后仍需按规则 2/3 销毁 sandbox。
+7. **长任务必须后台执行**：预计执行时间超过 60 秒的任务（例如下载模型、训练、微调、长推理、大规模数据处理），**必须**使用 `delta-cli sandbox run-bg <id> --command "..." --timeout <秒>` 提交为后台任务，禁止使用同步的 `sandbox run`。
+   - 命令末尾建议添加完成标记 `&& echo SANDBOX_BACKGROUND_DONE`，便于轮询时判断。
+   - 轮询用 `delta-cli sandbox logs <id> --execution-id <exec_id>`，每 15-30 秒一次。
+   - 完成判断：`content` 中出现 `SANDBOX_BACKGROUND_DONE` → 完成；`cursor` 在增长 → 仍在运行，继续等待。
+   - 故障诊断：连续 3 次查询 `content` 和 `cursor` 无变化且距离提交超过 60 秒 → 用 `sandbox status <id>` 检查 sandbox 是否存活。如果 sandbox 正常但 logs 无输出，用 `sandbox run <id> --command "ps aux" --timeout 15` 在容器内检查进程状态。
+   - 后台任务成功后仍需按规则 2/3 销毁 sandbox。
 
 ## 快速路由
 
@@ -50,7 +55,7 @@ metadata:
 | 后台运行命令 | `sandbox run-bg <id> --command "..."` |
 | 查看后台日志 | `sandbox logs <id> --execution-id <exec_id>`（仅用于 `run-bg`） |
 | 读取文件 | `sandbox read <id> --path <path>` |
-| 写入文件 | `sandbox write <id> --path <path> --data "..."` |
+| 写入文件 | `sandbox write <id> --path <path> --source <本地路径>`（推荐）|
 | 完成 sandbox | `sandbox finish <id> --results '{...}'` |
 | 销毁 sandbox | `sandbox kill <id>` |
 
@@ -60,7 +65,7 @@ metadata:
 2. **创建**：`delta-cli sandbox create --image <img> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`（创建后 sandbox 立即可用，无需额外连接）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
    - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
    - 这是 `sandbox create` 支持的完整资源参数集合，不存在其它“更正确”的资源 flag，不要 invented 不存在的参数。
-3. **写入代码/数据**：`delta-cli sandbox write <id> --path /workspace/<filename> --data "..."` 将源代码、脚本或数据文件写入 sandbox。文件路径和扩展名由镜像中的运行时决定。
+3. **写入代码/数据**：`delta-cli sandbox write <id> --path /workspace/<filename> --source <本地路径>` 或 `--data "..."`。`--source` 让 CLI 自行读取本地文件，推荐用于长文件；`--data` 适用于少量内容。文件路径和扩展名由镜像中的运行时决定。
 4. **运行命令**：
    - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，结果（`stdout` / `stderr` / `exit_code`）直接返回，**不要**再调用 `sandbox logs`。根据镜像中的运行时构造命令，常见示例：
      - Python：`python /workspace/train.py`
