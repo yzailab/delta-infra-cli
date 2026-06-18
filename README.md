@@ -121,14 +121,15 @@ delta-cli auth status
 ### 3. Sandbox 生命周期
 
 ```bash
-# 创建带 GPU 的 sandbox
+# 创建带 GPU 的 sandbox（--max-life 默认 30 分钟，长任务请调高）
 delta-cli sandbox create \
   --image deltarouter/pytorch-cuda13:latest \
-  --cpu 4 --memory 16Gi --gpu 1
+  --cpu 4 --memory 16Gi --gpu 1 \
+  --max-life 120
 
-# 运行训练命令
+# 运行命令（短任务同步执行，长任务用 run-bg 替代 run）
 delta-cli sandbox run <sandbox_id> \
-  --command "python /workspace/train.py" \
+  --command "<命令>" \
   --timeout 3600
 
 # 读取结果文件
