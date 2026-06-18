@@ -1,6 +1,6 @@
 ---
 name: delta-sandbox
-version: 1.0.0
+version: 1.0.10
 description: "通过 Delta Sandbox HTTP API 运行 GPU/CPU 计算任务。适用于训练、微调、CUDA/PyTorch 推理等场景。认证/配置/权限错误转 delta-shared。"
 metadata:
   requires:
@@ -44,7 +44,7 @@ metadata:
 | 查看状态 | `sandbox status <id>` |
 | 同步运行命令 | `sandbox run <id> --command "..."` |
 | 后台运行命令 | `sandbox run-bg <id> --command "..."` |
-| 查看日志 | `sandbox logs <id> --execution-id <exec_id>` |
+| 查看后台日志 | `sandbox logs <id> --execution-id <exec_id>`（仅用于 `run-bg`） |
 | 读取文件 | `sandbox read <id> --path <path>` |
 | 写入文件 | `sandbox write <id> --path <path> --data "..."` |
 | 完成 sandbox | `sandbox finish <id> --results '{...}'` |
@@ -57,6 +57,7 @@ metadata:
    - 这是 `sandbox create` 支持的完整资源参数集合，不存在其它“更正确”的资源 flag，不要 invented 不存在的参数。
 3. **写入代码**：`delta-cli sandbox write <id> --path /workspace/train.py --data "..."`
 4. **运行**：`delta-cli sandbox run <id> --command "python /workspace/train.py" --timeout 3600`
+   - `sandbox run` 是同步执行，结果（`stdout` / `stderr` / `exit_code`）会直接返回，**不要**再调用 `sandbox logs`
 5. **读取结果**：`delta-cli sandbox read <id> --path /workspace/result.json`
 6. **销毁**：`delta-cli sandbox kill <id>`（如需保存结果，用 `sandbox finish --results '{...}'` 替代 kill，finish 会自动销毁 sandbox）
 
