@@ -167,7 +167,7 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox run-bg <id> --command "..."` | 后台运行命令 |
 | `delta-cli sandbox logs <id> --execution-id <eid>` | 查看后台日志 |
 | `delta-cli sandbox read <id> --path <path>` | 读取容器内文件 |
-| `delta-cli sandbox write <id> --path <path> --data "..."` | 写入文件 |
+| `delta-cli sandbox write <id> --path <path> --source <source_path>` | 写入文件 |
 | `delta-cli sandbox finish <id> --results '{...}'` | 标记完成并返回结果 |
 | `delta-cli sandbox kill <id>` | 销毁 sandbox |
 
