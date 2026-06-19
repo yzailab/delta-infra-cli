@@ -22,6 +22,8 @@
 ```bash
 # 1. 启动后台命令（立即返回，不阻塞）
 # delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200
+# 或用 `--wait` 让 CLI 内部等待完成（只消耗一次 tool call）：
+# delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200 --wait
 
 # ↑ 返回数据中包含 execution_id，请保存以便后续查询
 
