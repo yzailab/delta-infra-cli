@@ -42,6 +42,7 @@ metadata:
      b) `finished=true` + `exit_code!=0` → 命令执行失败，查看 stderr
      c) `running=true` → 仍在运行，继续等待
    - 也可用 `delta-cli sandbox status bg <id> --execution-id <exec_id>` 直接查询后台命令的运行状态和退出码。
+   - **只消耗一次 tool call 的等待方式**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait` — CLI 在内部轮询直到完成，一次性返回结果。适用于不想多次调用 `logs` 轮询的场景。
    - 故障诊断：连续 3 次 `running=true` 且 `content`/`cursor` 无变化且距离提交超过 60 秒 → 用 `sandbox status <id>` 检查 sandbox 是否存活。如果 sandbox 正常但 logs 无输出，用 `sandbox run <id> --command "ps aux" --timeout 15` 在容器内检查进程状态。
    - 后台任务成功后仍需按规则 2/3 销毁 sandbox。
 
@@ -67,7 +68,9 @@ metadata:
 | 查看后台日志 | `sandbox logs <id> --execution-id <exec_id>`（仅用于 `run-bg`） |
 | 查询命令状态 | `sandbox status bg <id> --execution-id <exec_id>` |
 | 读取文件 | `sandbox read <id> --path <path>` |
-| 写入文件 | `sandbox write <id> --path <path> --source <本地路径>`（推荐）|
+| 写入文件 | `sandbox write <id> --path <path> --source <文件名>`（推荐）|
+| 文件信息 | `sandbox stat <id> --path <path>` |
+| 列出目录 | `sandbox ls <id> --path <路径>` |
 | 完成 sandbox | `sandbox finish <id> --results '{...}'` |
 | 销毁 sandbox | `sandbox kill <id>` |
 
