@@ -157,19 +157,35 @@ delta-cli sandbox kill <sandbox_id>
 
 ### Sandbox 命令
 
+> **提示**：`sandbox list`（列沙箱实例）与 `sandbox ls <id>`（列目录）不同，注意区分。
+
 | 命令 | 说明 |
 |------|------|
-| `delta-cli sandbox list` | 列出当前用户的 sandbox |
+| `delta-cli sandbox list` | 列出当前用户的 sandbox 实例 |
+| `delta-cli sandbox providers` | 查看可用计算后端 |
+| `delta-cli sandbox images` | 查看可用镜像列表 |
+| `delta-cli sandbox recommend --cpu N --memory XGi` | 获取资源配置推荐 |
 | `delta-cli sandbox create --image <img>` | 创建 sandbox 容器 |
 | `delta-cli sandbox connect <id>` | 连接 sandbox |
 | `delta-cli sandbox status <id>` | 查看 sandbox 状态 |
+| `delta-cli sandbox finish <id>` | 保存结果并销毁 |
+| `delta-cli sandbox kill <id>` | 销毁 sandbox |
 | `delta-cli sandbox run <id> --command "..."` | 同步运行命令 |
 | `delta-cli sandbox run-bg <id> --command "..."` | 后台运行命令 |
 | `delta-cli sandbox logs <id> --execution-id <eid>` | 查看后台日志 |
+| `delta-cli sandbox status bg <id> --execution-id <eid>` | 查询后台命令状态 |
+| `delta-cli sandbox cancel <id> --execution-id <eid>` | 中断后台命令 |
 | `delta-cli sandbox read <id> --path <path>` | 读取容器内文件 |
-| `delta-cli sandbox write <id> --path <path> --source <source_path>` | 写入文件 |
-| `delta-cli sandbox finish <id> --results '{...}'` | 标记完成并返回结果 |
-| `delta-cli sandbox kill <id>` | 销毁 sandbox |
+| `delta-cli sandbox write <id> --path <path> --source <本地路径>` | 写入文件 |
+| `delta-cli sandbox write-multiple <id> --entry <远程路径>=<本地路径>` | 批量写入 |
+| `delta-cli sandbox ls <id> --path <path>` | 列出目录 |
+| `delta-cli sandbox stat <id> --path <path>` | 文件元数据 |
+| `delta-cli sandbox mv <id> --entry <src=dest>` | 移动/重命名 |
+| `delta-cli sandbox replace <id> --path <path> --old <文本> --new <文本>` | 替换内容 |
+| `delta-cli sandbox chmod <id> --path <path> --mode <八进制>` | 修改权限 |
+| `delta-cli sandbox rm <id> --path <path>` | 删除文件 |
+| `delta-cli sandbox mkdir <id> --path <路径>` | 创建目录 |
+| `delta-cli sandbox search <id> --path <根目录> --pattern <glob>` | 搜索文件 |
 
 ## 输出格式
 
