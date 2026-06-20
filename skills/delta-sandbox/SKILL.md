@@ -36,14 +36,22 @@ metadata:
 6. **禁止重复创建**：同一次任务中只允许存在一个活跃 sandbox。若命令失败需要重试，优先复用已创建的 `sandbox_id`；若确实需要重新创建，必须先 `sandbox kill <旧_sandbox_id>`，确认旧实例销毁后再执行新的 `sandbox create`。可用 `delta-cli sandbox list` 查询当前用户的活跃 sandbox，但 **禁止** 用 list 来绕过“同一次任务只保留一个 sandbox”的规则。
 
 7. **长任务必须后台执行**：预计执行时间超过 60 秒的任务（例如下载模型、训练、微调、长推理、大规模数据处理），**必须**使用 `delta-cli sandbox run-bg <id> --command "..." --timeout <秒>` 提交为后台任务，禁止使用同步的 `sandbox run`。
-   - 轮询用 `delta-cli sandbox logs <id> --execution-id <exec_id>`，每 15-30 秒一次。
-   - 完成判断（按优先级）：
-     a) `finished=true` + `exit_code=0` → 正常完成
-     b) `finished=true` + `exit_code!=0` → 命令执行失败，查看 stderr
-     c) `running=true` → 仍在运行，继续等待
-   - 也可用 `delta-cli sandbox status bg <id> --execution-id <exec_id>` 直接查询后台命令的运行状态和退出码。
-   - **只消耗一次 tool call 的等待方式**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait` — CLI 在内部轮询直到完成，一次性返回结果。适用于不想多次调用 `logs` 轮询的场景。
-   - 故障诊断：连续 3 次 `running=true` 且 `content`/`cursor` 无变化且距离提交超过 60 秒 → 用 `sandbox status <id>` 检查 sandbox 是否存活。如果 sandbox 正常但 logs 无输出，用 `sandbox run <id> --command "ps aux" --timeout 15` 在容器内检查进程状态。
+
+   **推荐方式（1 次 tool call 等完成）**：
+   ```bash
+   delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait
+   ```
+   CLI 在内部每 5 秒轮询一次 `logs`，直到 `finished=true` 或超时，然后一次性返回 `{running, finished, exit_code, content}`。适合只关心最终结果、不需要查看中间进度的场景。
+
+   **手动轮询（需要查看中间进度时）**：
+   如果不加 `--wait` 或需要查看实时输出，用 `sandbox logs <id> --execution-id <exec_id>` 手动轮询：
+   - `finished=true` + `exit_code=0` → 完成
+   - `finished=true` + `exit_code!=0` → 失败  
+   - `running=true` → 仍运行
+   快速查询：`sandbox status bg <id> --execution-id <exec_id>`（只含状态，不含日志内容）
+
+   **故障诊断**：连续 3 次 `running=true` 且 `content`/`cursor` 无变化且距离提交超过 60 秒 → 用 `sandbox status <id>` 检查 sandbox 是否存活。
+
    - 后台任务成功后仍需按规则 2/3 销毁 sandbox。
 
 8. **写入文件禁止使用路径或 Shell 变量，仅允许文件名**：
@@ -56,31 +64,51 @@ metadata:
 
 ## 快速路由
 
+> ⚠️ **`list` 与 `ls` 区分**：`sandbox list` 列出用户的 **沙箱实例**（与 `docker ps` 类似），`sandbox ls <id>` 列出 **沙箱内目录**（与 `ls` 命令类似）。Tab 补全时注意区分。
+
 | 用户目标 | 命令 |
 |---------|------|
+| **发现** | |
 | 查看可用镜像 | `sandbox images` |
+| 查看可用 provider | `sandbox providers` |
+| 获取资源推荐 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]` |
 | 列出当前用户的 sandbox | `sandbox list` |
-| 创建 sandbox | `sandbox create --image <image>` |
+| **生命周期** | |
+| 创建 sandbox | `sandbox create --image <image> [--cpu N --memory XGi --gpu N --gpu-mem N --max-life M]` |
 | 连接 sandbox | `sandbox connect <id>` |
 | 查看状态 | `sandbox status <id>` |
-| 同步运行命令 | `sandbox run <id> --command "..."` |
-| 后台运行命令 | `sandbox run-bg <id> --command "..."` |
-| 查看后台日志 | `sandbox logs <id> --execution-id <exec_id>`（仅用于 `run-bg`） |
-| 查询命令状态 | `sandbox status bg <id> --execution-id <exec_id>` |
+| 完成 sandbox | `sandbox finish <id> [--results '{...}']` |
+| 销毁 sandbox | `sandbox kill <id>` |
+| **命令执行** | |
+| 同步运行命令（≤60s） | `sandbox run <id> --command "..." [--timeout <秒>]` |
+| 后台运行命令（>60s） | `sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait]` |
+| 查看后台日志 | `sandbox logs <id> --execution-id <exec_id>` |
+| 查询后台状态 | `sandbox status bg <id> --execution-id <exec_id>` |
+| 中断后台命令 | `sandbox cancel <id> --execution-id <exec_id>` |
+| **文件操作** | |
 | 读取文件 | `sandbox read <id> --path <path>` |
 | 写入文件 | `sandbox write <id> --path <path> --source <文件名>`（推荐）|
-| 文件信息 | `sandbox stat <id> --path <path>` |
-| 列出目录 | `sandbox ls <id> --path <路径>` |
-| 完成 sandbox | `sandbox finish <id> --results '{...}'` |
-| 销毁 sandbox | `sandbox kill <id>` |
+| 批量写入 | `sandbox write-multiple <id> --entry <src=path> [--entry ...]` |
+| 列出目录 | `sandbox ls <id> --path <路径>`（默认 `.`）|
+| 文件元数据 | `sandbox stat <id> --path <path>` |
+| 移动/重命名 | `sandbox mv <id> --entry <src=dest> [--entry ...]` |
+| 替换内容 | `sandbox replace <id> --path <path> --old <文本> --new <文本>` |
+| 修改权限 | `sandbox chmod <id> --path <path> --mode <八进制>` |
+| 删除文件 | `sandbox rm <id> --path <path> [--path ...]` |
+| 创建目录 | `sandbox mkdir <id> --path <路径> [--path ...]` |
+| 搜索文件 | `sandbox search <id> --path <根目录> --pattern <glob>` |
 
 ## 完整生命周期
 
-1. **选择镜像并查看可用镜像**：`delta-cli sandbox images` — 查询服务端支持的镜像列表，根据用户需求的编程语言和工具链匹配镜像。例如 `deltarouter/python:latest`（Python）、`node:20`（Node.js）、`golang:1.23`（Go），镜像决定了容器内可用的语言/运行时环境。
+1. **选择 Provider 和镜像**：
+   - `delta-cli sandbox providers` — 查看可用的计算后端（`opensandbox` / `autodl`）
+   - `delta-cli sandbox images` — 查询服务端支持的镜像列表，根据用户需求的编程语言和工具链匹配镜像。例如 `deltarouter/python:latest`（Python）、`node:20`（Node.js）、`golang:1.23`（Go），镜像决定了容器内可用的语言/运行时环境。
+   - `delta-cli sandbox recommend --cpu N --memory XGi [--gpu N]` — 获取资源配置推荐（自动选择 provider 和镜像）
 2. **创建**：`delta-cli sandbox create --image <img> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`（创建后 sandbox 立即可用，无需额外连接）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
    - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
    - 这是 `sandbox create` 支持的完整资源参数集合，不存在其它“更正确”的资源 flag，不要发明不存在的参数。
-3. **写入代码/数据**：`delta-cli sandbox write <id> --path /workspace/<filename> --source <文件名>` — **必须**使用相对路径（如 `--source train.py`），**禁止**使用 `"$WORKSPACE_ROOT/train.py"` 或 `$(pwd)/train.py` 等 Shell 变量路径。`--source` 让 CLI 自行读取本地文件，不会经过 Shell 展开，是最安全的方式。少量配置（<20 行）可用 `--data "..."`。文件路径和扩展名由镜像中的运行时决定。
+3. **写入代码/数据**：`delta-cli sandbox write <id> --path /workspace/<filename> --source <文件名>` — **必须**使用相对路径（如 `--source train.py`），**禁止**使用 `"$WORKSPACE_ROOT/train.py"` 或 `$(pwd)/train.py` 等 Shell 变量路径。`--source` 让 CLI 自行读取本地文件，不会经过 Shell 展开，是最安全的方式。写入后返回的 `size` 字段是实际磁盘字节数（来自 stat 验证），可对比确认写入完整性。批量写入用 `sandbox write-multiple <id> --entry <远程路径>=<本地路径>`。少量配置（<20 行）可用 `--data "..."`。文件路径和扩展名由镜像中的运行时决定。
+   - **写后验证**：`sandbox stat <id> --path <path>` 确认文件存在且 size 符合预期；`sandbox read <id> --path <path>` 读取内容并对比返回的 `size`（磁盘字节）和 `content_length`（字符长度）判断是否有编码偏差。
 4. **运行命令**：
    - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，结果（`stdout` / `stderr` / `exit_code`）直接返回，**不要**再调用 `sandbox logs`。根据镜像中的运行时构造命令，常见示例：
      - Python：`python /workspace/train.py`
@@ -91,7 +119,7 @@ metadata:
      - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 返回 `content`、`cursor`、`running`、`finished`、`exit_code`。当 `finished=true` 时认为完成。
      - `delta-cli sandbox status bg <id> --execution-id <execution_id>` — 返回 `running`、`finished`、`exit_code`。
      禁止对长任务使用同步 `sandbox run`
-5. **读取结果**：`delta-cli sandbox read <id> --path /workspace/result.json`
+5. **读取结果**：`delta-cli sandbox read <id> --path /workspace/result.json` — 返回 `content`（内容）、`size`（磁盘字节数，来自 stat 验证）、`content_length`（内存字符长度）。对比 `size` 与 `content_length` 可判断文件是否为纯文本。读不存在的文件会返回 error，不会静默返回空内容。
 6. **销毁**：`delta-cli sandbox kill <id>`（如需保存结果，用 `sandbox finish --results '{...}'` 替代 kill，finish 会自动销毁 sandbox）
 
 详细步骤见 [lifecycle.md](references/lifecycle.md)。
