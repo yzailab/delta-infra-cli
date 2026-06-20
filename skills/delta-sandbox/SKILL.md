@@ -1,6 +1,6 @@
 ---
 name: delta-sandbox
-version: 1.0.10
+version: 1.1.0
 description: "通过 Delta Sandbox HTTP API 在 Linux 容器中运行任意计算任务。适用于训练、推理、编译、数据处理等场景。支持 Python / Node.js / Go / Java / Rust 等语言。认证/配置/权限错误转 delta-shared。"
 metadata:
   requires:
@@ -88,15 +88,18 @@ metadata:
 | **文件操作** | |
 | 读取文件 | `sandbox read <id> --path <path>` |
 | 写入文件 | `sandbox write <id> --path <path> --source <文件名>`（推荐）|
-| 批量写入 | `sandbox write-multiple <id> --entry <src=path> [--entry ...]` |
+| 批量写入 | `sandbox write-multiple <id> --entry <远程路径>=<本地路径> [--entry ...]` |
+| 上传目录 | `sandbox upload <id> --source <本地目录> --target <沙箱路径>` |
 | 列出目录 | `sandbox ls <id> --path <路径>`（默认 `.`）|
 | 文件元数据 | `sandbox stat <id> --path <path>` |
 | 移动/重命名 | `sandbox mv <id> --entry <src=dest> [--entry ...]` |
 | 替换内容 | `sandbox replace <id> --path <path> --old <文本> --new <文本>` |
 | 修改权限 | `sandbox chmod <id> --path <path> --mode <八进制>` |
 | 删除文件 | `sandbox rm <id> --path <path> [--path ...]` |
+| 删除目录 | `sandbox rmdir <id> --path <路径> [--path ...]` |
 | 创建目录 | `sandbox mkdir <id> --path <路径> [--path ...]` |
 | 搜索文件 | `sandbox search <id> --path <根目录> --pattern <glob>` |
+| 上传目录 | `sandbox upload <id> --source <本地目录> --target <沙箱路径>` |
 
 ## 完整生命周期
 
@@ -107,7 +110,12 @@ metadata:
 2. **创建**：`delta-cli sandbox create --image <img> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`（创建后 sandbox 立即可用，无需额外连接）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
    - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
    - 这是 `sandbox create` 支持的完整资源参数集合，不存在其它“更正确”的资源 flag，不要发明不存在的参数。
-3. **写入代码/数据**：`delta-cli sandbox write <id> --path /workspace/<filename> --source <文件名>` — **必须**使用相对路径（如 `--source train.py`），**禁止**使用 `"$WORKSPACE_ROOT/train.py"` 或 `$(pwd)/train.py` 等 Shell 变量路径。`--source` 让 CLI 自行读取本地文件，不会经过 Shell 展开，是最安全的方式。写入后返回的 `size` 字段是实际磁盘字节数（来自 stat 验证），可对比确认写入完整性。批量写入用 `sandbox write-multiple <id> --entry <远程路径>=<本地路径>`。少量配置（<20 行）可用 `--data "..."`。文件路径和扩展名由镜像中的运行时决定。
+3. **写入代码/数据**：
+   - **单个文件**：`delta-cli sandbox write <id> --path /workspace/<filename> --source <文件名>` — **必须**使用相对路径（如 `--source train.py`），**禁止**使用 `"$WORKSPACE_ROOT/train.py"` 或 `$(pwd)/train.py` 等 Shell 变量路径。`--source` 让 CLI 自行读取本地文件，不会经过 Shell 展开，是最安全的方式。写入后返回的 `size` 字段是实际磁盘字节数（来自 stat 验证），可对比确认写入完整性。少量配置（<20 行）可用 `--data "..."`。文件路径和扩展名由镜像中的运行时决定。
+   - **批量写入**：`sandbox write-multiple <id> --entry <远程路径>=<本地路径> [--entry ...]`（远程路径在 `=` 左边，本地路径在右边，`--data` 批量写入不可用）
+   - **上传目录**：`sandbox upload <id> --source <本地目录> --target <沙箱路径>` — CLI 将本地目录打包为 tar.gz，通过 multipart/form-data 上传，服务端自动解压到 target 目录。返回每个文件的路径、大小、模式。上传后 CLI 自动对比本地和远程文件清单做完整性校验（大小不匹配、多余文件等会告警）。
+     - **注意**：`--source` 是**本地目录路径**，`--target` 是**沙箱内的目标目录**，target 目录不存在会自动创建。
+     - 支持嵌套目录，空目录也会被创建。
    - **写后验证**：`sandbox stat <id> --path <path>` 确认文件存在且 size 符合预期；`sandbox read <id> --path <path>` 读取内容并对比返回的 `size`（磁盘字节）和 `content_length`（字符长度）判断是否有编码偏差。
 4. **运行命令**：
    - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，结果（`stdout` / `stderr` / `exit_code`）直接返回，**不要**再调用 `sandbox logs`。根据镜像中的运行时构造命令，常见示例：
