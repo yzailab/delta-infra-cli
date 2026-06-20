@@ -184,8 +184,10 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox replace <id> --path <path> --old <文本> --new <文本>` | 替换内容 |
 | `delta-cli sandbox chmod <id> --path <path> --mode <八进制>` | 修改权限 |
 | `delta-cli sandbox rm <id> --path <path>` | 删除文件 |
+| `delta-cli sandbox rmdir <id> --path <路径>` | 递归删除目录 |
 | `delta-cli sandbox mkdir <id> --path <路径>` | 创建目录 |
 | `delta-cli sandbox search <id> --path <根目录> --pattern <glob>` | 搜索文件 |
+| `delta-cli sandbox upload <id> --source <本地目录> --target <沙箱路径>` | 上传目录（tar.gz + 自动解压） |
 
 ## 输出格式
 
