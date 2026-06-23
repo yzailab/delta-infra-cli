@@ -98,6 +98,7 @@ var _MIRROR_LIST = [
 // Quick connectivity check: fetch a small file (checksums.txt) from each
 // mirror and return only the ones that respond within the probe timeout.
 function probeMirrors(version, cb) {
+  console.error("Probing " + _MIRROR_LIST.length + " download mirrors...");
   var probeUrl = "/https://github.com/" + REPO + "/releases/download/v" + version + "/checksums.txt";
   var results = [];
   var pending = _MIRROR_LIST.length;
@@ -106,6 +107,11 @@ function probeMirrors(version, cb) {
   function finish() {
     if (done) return;
     done = true;
+    if (results.length > 0) {
+      console.error("Found " + results.length + " available mirror(s)");
+    } else {
+      console.error("No mirror responded, falling back to GitHub source");
+    }
     cb(results);
   }
 
@@ -324,6 +330,7 @@ function install() {
           console.error("Downloading from " + downloadUrls[i]);
           download(downloadUrls[i], archivePath);
           downloaded = true;
+          console.error("Download complete, verifying...");
           break;
         } catch (e) {
           console.error("Failed: " + e.message);
@@ -334,10 +341,13 @@ function install() {
 
       const expectedHash = getExpectedChecksum(archiveName);
       verifyChecksum(archivePath, expectedHash);
+      console.error("Checksum verified");
 
       if (isWindows) {
+        console.error("Extracting archive...");
         extractZipWindows(archivePath, tmpDir);
       } else {
+        console.error("Extracting archive...");
         execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], { stdio: "ignore" });
       }
 
@@ -361,6 +371,7 @@ function install() {
         }
       }
       fs.chmodSync(dest, 0o755);
+      console.error("Installed to " + dest);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
