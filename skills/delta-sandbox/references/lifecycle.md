@@ -25,7 +25,7 @@
 ```bash
 delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200 --wait
 ```
-CLI 内部每 5 秒轮询一次，`finished=true` 时返回。只消耗 **1 次 tool call**，适合不关心中间进度的场景。
+CLI 内部每 5 秒轮询一次，`finished=true` 时返回，结果中包含 `execution_id`。只消耗 **1 次 tool call**，适合不关心中间进度的场景。
 
 ### 方式二：手动轮询（需要看实时输出时）
 
