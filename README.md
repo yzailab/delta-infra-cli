@@ -4,7 +4,31 @@ Delta Infra 的命令行工具。
 
 ## 安装
 
-### 方式一：直接下载 Binary（推荐）
+### 方式一：npx 一键安装（推荐）
+
+```bash
+npx @delta-infra/cli@latest install
+```
+
+该命令会依次完成：
+1. **全局安装** `@delta-infra/cli`（含 Go 二进制）
+2. **安装 AI Skills** 到 `~/.agents/skills/`，自动适配 Claude Code、Codex、OpenCode、Cursor 等 AI 工具
+3. **初始化配置** `delta-cli config init`（交互式，非 TTY 跳过）
+4. **身份认证** `delta-cli auth login`（交互式，非 TTY 跳过）
+
+AI Agent 也可以直接使用以下指令完成安装：
+
+> 帮我安装 delta-cli：https://github.com/yzailab/delta-infra-cli
+
+### 卸载
+
+```bash
+npx @delta-infra/cli@latest uninstall
+```
+
+清理全局包、AI Skills 和配置文件。
+
+### 方式二：直接下载 Binary
 
 从 [GitHub Releases](https://github.com/yzailab/delta-infra-cli/releases) 下载对应平台的压缩包（以下使用 `latest` 指向最新版）：
 
@@ -30,7 +54,7 @@ Remove-Item -Path delta-cli.zip
 # 将 delta-cli.exe 放到 PATH 中的目录
 ```
 
-### 方式二：一键安装脚本（国内用户推荐）
+### 方式三：一键安装脚本（国内用户推荐）
 
 安装脚本会自动尝试国内 npm 镜像（npmmirror），失败后再回退到 npm 官方源：
 
@@ -42,7 +66,7 @@ curl -L https://raw.githubusercontent.com/yzailab/delta-infra-cli/main/install.s
 Invoke-RestMethod -Uri https://raw.githubusercontent.com/yzailab/delta-infra-cli/main/install.ps1 | Invoke-Expression
 ```
 
-### 方式三：npm
+### 方式四：npm
 
 ```bash
 npm install -g @delta-infra/cli
@@ -74,7 +98,7 @@ DELTA_CLI_ARCHIVE=/path/to/delta-cli-linux-amd64.tar.gz npm install -g @delta-in
 | `DELTA_CLI_FATAL_ON_ERROR` | 安装失败时退出码非 0（默认警告，用于调试）。 |
 | `DELTA_CLI_DOWNLOAD_TIMEOUT` | 单个下载源最大等待时间（毫秒，默认 120000）。 |
 
-### 方式四：Go Install
+### 方式五：Go Install
 
 ```bash
 go install github.com/delta-infra/delta-infra-cli/cmd/delta-cli@latest
@@ -171,7 +195,7 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox finish <id>` | 保存结果并销毁 |
 | `delta-cli sandbox kill <id>` | 销毁 sandbox |
 | `delta-cli sandbox run <id> --command "..."` | 同步运行命令 |
-| `delta-cli sandbox run-bg <id> --command "..."` | 后台运行命令 |
+| `delta-cli sandbox run-bg <id> --command "..." [--wait]` | 后台运行命令（`--wait` 返回 `execution_id`，命令结束后仍可查日志） |
 | `delta-cli sandbox logs <id> --execution-id <eid>` | 查看后台日志 |
 | `delta-cli sandbox status bg <id> --execution-id <eid>` | 查询后台命令状态 |
 | `delta-cli sandbox cancel <id> --execution-id <eid>` | 中断后台命令 |
