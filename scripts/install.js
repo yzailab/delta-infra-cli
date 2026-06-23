@@ -31,6 +31,13 @@ const REPO = "yzailab/delta-infra-cli";
 const DEFAULT_ALLOWED_HOSTS = new Set([
   "github.com",
   "gh-proxy.com",
+  "ghproxy.net",
+  "gh.ddlc.top",
+  "gh.llkk.cc",
+  "gh.dpik.top",
+  "gh.con.sh",
+  "slink.ltd",
+  "xget.xi-xu.me",
   "objects.githubusercontent.com",
   "release-assets.githubusercontent.com",
   "github-releases.githubusercontent.com",
@@ -75,17 +82,89 @@ function _getCurlTimeout() {
   return _curlTimeoutMs;
 }
 
-function releaseAssetUrls(version, assetName) {
+// List of well-known GitHub release download mirrors.
+// Format: [hostname, urlPrefix] — urlPrefix is prepended to the GitHub URL.
+var _MIRROR_LIST = [
+  ["gh-proxy.com",   "https://gh-proxy.com"],
+  ["ghproxy.net",    "https://ghproxy.net"],
+  ["gh.ddlc.top",    "https://gh.ddlc.top"],
+  ["gh.llkk.cc",     "https://gh.llkk.cc"],
+  ["gh.dpik.top",    "https://gh.dpik.top"],
+  ["gh.con.sh",      "https://gh.con.sh"],
+  ["slink.ltd",      "https://slink.ltd"],
+  ["xget.xi-xu.me",  "https://xget.xi-xu.me"],
+];
+
+// Quick connectivity check: fetch a small file (checksums.txt) from each
+// mirror and return only the ones that respond within the probe timeout.
+function probeMirrors(version, cb) {
+  var probeUrl = "/https://github.com/" + REPO + "/releases/download/v" + version + "/checksums.txt";
+  var results = [];
+  var pending = _MIRROR_LIST.length;
+  var done = false;
+
+  function finish() {
+    if (done) return;
+    done = true;
+    cb(results);
+  }
+
+  if (pending === 0) return finish();
+
+  for (var i = 0; i < _MIRROR_LIST.length; i++) {
+    (function(idx) {
+      var entry = _MIRROR_LIST[idx];
+      var host = entry[0];
+      var prefix = entry[1];
+      var testUrl = prefix + probeUrl;
+      var args = [
+        "--fail", "--location", "--silent", "--show-error",
+        "--connect-timeout", "3", "--max-time", "5",
+        "--output", "/dev/null", testUrl,
+      ];
+      var child;
+      try {
+        child = require("child_process").spawn("curl", args, { stdio: ["ignore", "pipe", "pipe"], timeout: 8000 });
+        var stdout = "";
+        var stderr = "";
+        child.stdout.on("data", function(d) { stdout += d; });
+        child.stderr.on("data", function(d) { stderr += d; });
+        child.on("close", function(code) {
+          if (code === 0) {
+            results.push(prefix + "/https://github.com/" + REPO + "/releases/download/v" + version + "/" + archiveName);
+          }
+          pending--;
+          if (pending === 0) finish();
+        });
+        child.on("error", function() {
+          pending--;
+          if (pending === 0) finish();
+        });
+      } catch (e) {
+        pending--;
+        if (pending === 0) finish();
+      }
+    })(i);
+  }
+  // Safety timeout: if probes hang, continue without mirrors after 10s
+  setTimeout(finish, 10000);
+}
+
+function releaseAssetUrls(version, assetName, cb) {
   var urls = [];
   var mirror = process.env.DELTA_CLI_MIRROR || "";
   if (mirror) {
     urls.push("" + mirror.replace(/\/$/, "") + "/yzailab/delta-infra-cli/releases/download/v" + version + "/" + assetName);
   }
-  // gh-proxy.com China acceleration mirror (tried before GitHub source)
-  urls.push("https://gh-proxy.com/https://github.com/yzailab/delta-infra-cli/releases/download/v" + version + "/" + assetName);
-  // GitHub source
-  urls.push(GITHUB_URL);
-  return urls;
+  // Probe mirrors in parallel first, then fallback
+  probeMirrors(version, function(mirrorUrls) {
+    for (var i = 0; i < mirrorUrls.length; i++) {
+      urls.push(mirrorUrls[i]);
+    }
+    // GitHub source (last resort)
+    urls.push(GITHUB_URL);
+    cb(urls);
+  });
 }
 
 function assertAllowedHost(url) {
@@ -232,58 +311,60 @@ function verifyChecksum(archivePath, expectedHash) {
 // ── Main install ───────────────────────────────────────────────────────────
 
 function install() {
-  const downloadUrls = releaseAssetUrls(VERSION, archiveName);
-
   fs.mkdirSync(binDir, { recursive: true });
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "delta-cli-"));
-  const archivePath = path.join(tmpDir, archiveName);
+  var tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "delta-cli-"));
+  var archivePath = path.join(tmpDir, archiveName);
 
-  try {
-    let lastErr;
-    let downloaded = false;
-    for (const url of downloadUrls) {
-      try {
-        download(url, archivePath);
-        downloaded = true;
-        break;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    if (!downloaded) throw lastErr;
-
-    const expectedHash = getExpectedChecksum(archiveName);
-    verifyChecksum(archivePath, expectedHash);
-
-    if (isWindows) {
-      extractZipWindows(archivePath, tmpDir);
-    } else {
-      execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], { stdio: "ignore" });
-    }
-
-    const binaryName = NAME + (isWindows ? ".exe" : "");
-    const extractedBinary = path.join(tmpDir, `${NAME}-${platform}-${arch}`);
-    if (fs.existsSync(extractedBinary)) {
-      fs.copyFileSync(extractedBinary, dest);
-    } else {
-      // Fallback: try the plain name (older release format)
-      const plainBinary = path.join(tmpDir, binaryName);
-      if (fs.existsSync(plainBinary)) {
-        fs.copyFileSync(plainBinary, dest);
-      } else {
-        // Search in tmpDir
-        const files = fs.readdirSync(tmpDir).filter(f => f.includes(NAME) || f.includes(binaryName));
-        if (files.length > 0) {
-          fs.copyFileSync(path.join(tmpDir, files[0]), dest);
-        } else {
-          throw new Error(`Binary not found in extracted archive. Files: ${fs.readdirSync(tmpDir).join(", ")}`);
+  releaseAssetUrls(VERSION, archiveName, function(downloadUrls) {
+    try {
+      var lastErr;
+      var downloaded = false;
+      for (var i = 0; i < downloadUrls.length; i++) {
+        try {
+          console.error("Downloading from " + downloadUrls[i]);
+          download(downloadUrls[i], archivePath);
+          downloaded = true;
+          break;
+        } catch (e) {
+          console.error("Failed: " + e.message);
+          lastErr = e;
         }
       }
+      if (!downloaded) throw lastErr;
+
+      const expectedHash = getExpectedChecksum(archiveName);
+      verifyChecksum(archivePath, expectedHash);
+
+      if (isWindows) {
+        extractZipWindows(archivePath, tmpDir);
+      } else {
+        execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], { stdio: "ignore" });
+      }
+
+      const binaryName = NAME + (isWindows ? ".exe" : "");
+      const extractedBinary = path.join(tmpDir, NAME + "-" + platform + "-" + arch);
+      if (fs.existsSync(extractedBinary)) {
+        fs.copyFileSync(extractedBinary, dest);
+      } else {
+        // Fallback: try the plain name (older release format)
+        const plainBinary = path.join(tmpDir, binaryName);
+        if (fs.existsSync(plainBinary)) {
+          fs.copyFileSync(plainBinary, dest);
+        } else {
+          // Search in tmpDir
+          const files = fs.readdirSync(tmpDir).filter(function(f) { return f.indexOf(NAME) !== -1 || f.indexOf(binaryName) !== -1; });
+          if (files.length > 0) {
+            fs.copyFileSync(path.join(tmpDir, files[0]), dest);
+          } else {
+            throw new Error("Binary not found in extracted archive. Files: " + fs.readdirSync(tmpDir).join(", "));
+          }
+        }
+      }
+      fs.chmodSync(dest, 0o755);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
-    fs.chmodSync(dest, 0o755);
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
+  });
 }
 
 // ── Entry ──────────────────────────────────────────────────────────────────
