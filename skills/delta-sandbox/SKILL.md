@@ -41,7 +41,7 @@ metadata:
    ```bash
    delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait
    ```
-   CLI 在内部每 5 秒轮询一次 `logs`，直到 `finished=true` 或超时，然后一次性返回 `{running, finished, exit_code, content}`。适合只关心最终结果、不需要查看中间进度的场景。
+   CLI 在内部每 5 秒轮询一次 `logs`，直到 `finished=true` 或超时，然后一次性返回 `{execution_id, running, finished, exit_code, content}`。返回的 `execution_id` 可在后续用于 `sandbox logs` / `status bg` / `cancel`。适合只关心最终结果、不需要查看中间进度的场景。
 
    **手动轮询（需要查看中间进度时）**：
    如果不加 `--wait` 或需要查看实时输出，用 `sandbox logs <id> --execution-id <exec_id>` 手动轮询：
