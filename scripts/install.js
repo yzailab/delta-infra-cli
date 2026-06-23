@@ -65,14 +65,24 @@ const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
 
 // ── Mirror URL resolution ──────────────────────────────────────────────────
 
+var _curlTimeoutMs = null;
+
+function _getCurlTimeout() {
+  if (_curlTimeoutMs !== null) return _curlTimeoutMs;
+  var env = process.env.DELTA_CLI_DOWNLOAD_TIMEOUT;
+  var t = env ? parseInt(env, 10) : 0;
+  _curlTimeoutMs = t > 0 ? t : 60000;
+  return _curlTimeoutMs;
+}
+
 function releaseAssetUrls(version, assetName) {
-  const urls = [];
-  const mirror = process.env.DELTA_CLI_MIRROR || "";
+  var urls = [];
+  var mirror = process.env.DELTA_CLI_MIRROR || "";
   if (mirror) {
-    urls.push(`${mirror.replace(/\/$/, "")}/yzailab/delta-infra-cli/releases/download/v${version}/${assetName}`);
+    urls.push("" + mirror.replace(/\/$/, "") + "/yzailab/delta-infra-cli/releases/download/v" + version + "/" + assetName);
   }
-  // China acceleration mirror (gh-proxy.com)
-  urls.push(`https://gh-proxy.com/https://github.com/yzailab/delta-infra-cli/releases/download/v${version}/${assetName}`);
+  // gh-proxy.com China acceleration mirror (tried before GitHub source)
+  urls.push("https://gh-proxy.com/https://github.com/yzailab/delta-infra-cli/releases/download/v" + version + "/" + assetName);
   // GitHub source
   urls.push(GITHUB_URL);
   return urls;
