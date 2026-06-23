@@ -329,19 +329,18 @@ function install() {
         try {
           console.error("Downloading from " + downloadUrls[i]);
           download(downloadUrls[i], archivePath);
+          console.error("Download complete, verifying checksum...");
+          const expectedHash = getExpectedChecksum(archiveName);
+          verifyChecksum(archivePath, expectedHash);
+          console.error("Checksum verified");
           downloaded = true;
-          console.error("Download complete, verifying...");
           break;
         } catch (e) {
-          console.error("Failed: " + e.message);
+          console.error("Failed: " + e.message + " (" + downloadUrls[i] + ")");
           lastErr = e;
         }
       }
       if (!downloaded) throw lastErr;
-
-      const expectedHash = getExpectedChecksum(archiveName);
-      verifyChecksum(archivePath, expectedHash);
-      console.error("Checksum verified");
 
       if (isWindows) {
         console.error("Extracting archive...");
