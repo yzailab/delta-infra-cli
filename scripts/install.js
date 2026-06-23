@@ -1,368 +1,317 @@
-#!/usr/bin/env node
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
-const crypto = require('crypto');
-const { execSync, spawn } = require('child_process');
+// Copyright (c) 2026 Delta Infra Authors
+// SPDX-License-Identifier: MIT
 
-const BINARY_NAME = 'delta-cli';
-const VERSION = require('../package.json').version;
+const fs = require("fs");
+const path = require("path");
+const { execFileSync } = require("child_process");
+const os = require("os");
+const crypto = require("crypto");
 
-const DEFAULT_ALLOWED_HOSTS = [
-  'github.com',
-  'gh-proxy.com',
-  'objects.githubusercontent.com',
-  'release-assets.githubusercontent.com',
-  'github-releases.githubusercontent.com',
-  'raw.githubusercontent.com',
-];
+const PKG = "@delta-infra/cli";
+
+// Resolve the version to download:
+//   env var > npm registry > local package.json (fallback)
+function resolveVersion() {
+  if (process.env.DELTA_CLI_VERSION) return process.env.DELTA_CLI_VERSION.replace(/^v/, "");
+  try {
+    const out = require("child_process").execFileSync("npm", ["view", PKG, "version"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 15000,
+      encoding: "utf8",
+    });
+    const ver = out.trim();
+    if (/^\d+\.\d+\.\d+/.test(ver)) return ver;
+  } catch {}
+  return require("../package.json").version.replace(/-.*$/, "");
+}
+
+const VERSION = resolveVersion();
+const NAME = "delta-cli";
+const REPO = "yzailab/delta-infra-cli";
+const DEFAULT_ALLOWED_HOSTS = new Set([
+  "github.com",
+  "gh-proxy.com",
+  "objects.githubusercontent.com",
+  "release-assets.githubusercontent.com",
+  "github-releases.githubusercontent.com",
+  "raw.githubusercontent.com",
+  "registry.npmmirror.com",
+]);
 const DEFAULT_ALLOWED_HOST_PREFIXES = [
-  'github-production-release-asset-',
+  "github-production-release-asset-",
 ];
-const MAX_REDIRECTS = 5;
 
-const platformMap = {
-  darwin: 'darwin',
-  linux: 'linux',
-  win32: 'windows',
+const PLATFORM_MAP = {
+  darwin: "darwin",
+  linux: "linux",
+  win32: "windows",
 };
 
-const archMap = {
-  x64: 'amd64',
-  arm64: 'arm64',
+const ARCH_MAP = {
+  x64: "amd64",
+  arm64: "arm64",
 };
 
-const RELEASE_SOURCE_BASE = 'https://github.com/yzailab/delta-infra-cli/releases/download';
-const RELEASE_DOMESTIC_BASE = 'https://gh-proxy.com/https://github.com/yzailab/delta-infra-cli/releases/download';
+const platform = PLATFORM_MAP[process.platform];
+const arch = ARCH_MAP[process.arch];
+
+const isWindows = process.platform === "win32";
+const ext = isWindows ? ".zip" : ".tar.gz";
+const archiveName = `${NAME}-${platform}-${arch}${ext}`;
+const GITHUB_URL = `https://github.com/${REPO}/releases/download/v${VERSION}/${archiveName}`;
+
+const binDir = path.join(__dirname, "..", "bin");
+const dest = path.join(binDir, NAME + (isWindows ? ".exe" : ""));
+
+// ── Mirror URL resolution ──────────────────────────────────────────────────
 
 function releaseAssetUrls(version, assetName) {
   const urls = [];
-  const mirror = process.env.DELTA_CLI_MIRROR || '';
+  const mirror = process.env.DELTA_CLI_MIRROR || "";
   if (mirror) {
-    urls.push(`${mirror.replace(/\/$/, '')}/yzailab/delta-infra-cli/releases/download/v${version}/${assetName}`);
+    urls.push(`${mirror.replace(/\/$/, "")}/yzailab/delta-infra-cli/releases/download/v${version}/${assetName}`);
   }
-  urls.push(`${RELEASE_DOMESTIC_BASE}/v${version}/${assetName}`);
-  urls.push(`${RELEASE_SOURCE_BASE}/v${version}/${assetName}`);
+  // China acceleration mirror (gh-proxy.com)
+  urls.push(`https://gh-proxy.com/https://github.com/yzailab/delta-infra-cli/releases/download/v${version}/${assetName}`);
+  // GitHub source
+  urls.push(GITHUB_URL);
   return urls;
 }
 
-function resolveUrl(base, location) {
-  if (!location) return base;
-  if (location.startsWith('http://') || location.startsWith('https://')) {
-    return location;
-  }
-  const baseUrl = new URL(base);
-  return new URL(location, baseUrl).href;
-}
-
-function loadChecksums() {
-  const checksumPath = path.join(__dirname, '..', 'checksums.txt');
-  if (!fs.existsSync(checksumPath)) {
-    return null;
-  }
-  const content = fs.readFileSync(checksumPath, 'utf8');
-  const map = new Map();
-  for (const line of content.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const idx = trimmed.indexOf('  ');
-    let hash, filename;
-    if (idx === -1) {
-      const parts = trimmed.split(/\s+/);
-      if (parts.length < 2) continue;
-      hash = parts[0];
-      filename = parts[1];
-    } else {
-      hash = trimmed.slice(0, idx);
-      filename = trimmed.slice(idx + 2);
-    }
-    map.set(filename, hash.toLowerCase());
-  }
-  return map;
-}
-
-function fileSha256(filePath) {
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash('sha256');
-    const stream = fs.createReadStream(filePath);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('end', () => resolve(hash.digest('hex')));
-    stream.on('error', reject);
-  });
-}
-
-function isAllowListedUrl(urlStr) {
-  let url;
-  try {
-    url = new URL(urlStr);
-  } catch {
-    return false;
-  }
-  if (url.protocol !== 'https:') {
-    return false;
-  }
-  const host = url.hostname.toLowerCase();
+function assertAllowedHost(url) {
+  const { hostname } = new URL(url);
   const allowlist = new Set(DEFAULT_ALLOWED_HOSTS);
-  (process.env.DELTA_CLI_MIRROR_ALLOWLIST || '')
-    .split(',')
+  (process.env.DELTA_CLI_MIRROR_ALLOWLIST || "")
+    .split(",")
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean)
     .forEach((h) => allowlist.add(h));
   for (const allowed of allowlist) {
-    if (host === allowed || host.endsWith('.' + allowed)) {
-      return true;
-    }
+    if (hostname === allowed || hostname.endsWith("." + allowed)) return;
   }
   for (const prefix of DEFAULT_ALLOWED_HOST_PREFIXES) {
-    if (host.startsWith(prefix)) {
-      return true;
-    }
+    if (hostname.startsWith(prefix)) return;
   }
-  return false;
+  throw new Error(`Download host not allowed: ${hostname}`);
 }
 
-function getHttpProxy() {
-  return (
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy ||
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
-    ''
-  );
+// ── curl version detection (for --ssl-revoke-best-effort) ──────────────────
+
+function isCurlVersionSupported(versionOutput) {
+  const match = String(versionOutput).match(/^\s*curl\s+(\d+)\.(\d+)\.(\d+)/i);
+  if (!match) return false;
+  const major = parseInt(match[1], 10);
+  const minor = parseInt(match[2], 10);
+  return major > 7 || (major === 7 && minor >= 70);
 }
 
-const DOWNLOAD_TIMEOUT_MS = parseInt(process.env.DELTA_CLI_DOWNLOAD_TIMEOUT, 10) || 120000;
+let _curlSupportsSslRevokeBestEffort;
 
-function nodeDownload(url, dest, redirectCount = 0) {
-  return new Promise((resolve, reject) => {
-    if (!isAllowListedUrl(url)) {
-      reject(new Error(`Download URL is not allow-listed: ${url}`));
-      return;
-    }
-    if (redirectCount > MAX_REDIRECTS) {
-      reject(new Error('Too many redirects while downloading'));
-      return;
-    }
-
-    const file = fs.createWriteStream(dest);
-    const hash = crypto.createHash('sha256');
-    let finished = false;
-    const maxTimer = setTimeout(() => {
-      cleanup(new Error(`Download did not complete within ${DOWNLOAD_TIMEOUT_MS}ms`));
-    }, DOWNLOAD_TIMEOUT_MS);
-
-    const cleanup = (err) => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(maxTimer);
-      try {
-        file.destroy();
-        fs.unlinkSync(dest);
-      } catch {}
-      reject(err);
-    };
-
-    https
-      .get(url, { timeout: 60000 }, (response) => {
-        if (response.statusCode >= 301 && response.statusCode <= 308 && response.headers.location) {
-          const nextUrl = resolveUrl(url, response.headers.location);
-          if (!isAllowListedUrl(nextUrl)) {
-            cleanup(new Error(`Redirect URL is not allow-listed: ${nextUrl}`));
-            return;
-          }
-          file.destroy();
-          try {
-            fs.unlinkSync(dest);
-          } catch {}
-          nodeDownload(nextUrl, dest, redirectCount + 1).then(resolve).catch(reject);
-          return;
-        }
-        if (response.statusCode !== 200) {
-          cleanup(new Error(`Download failed: HTTP ${response.statusCode}`));
-          return;
-        }
-        response.pipe(file);
-        response.on('data', (chunk) => hash.update(chunk));
-        file.on('finish', () => {
-          file.close((err) => {
-            if (finished) return;
-            if (err) {
-              cleanup(err);
-              return;
-            }
-            finished = true;
-            clearTimeout(maxTimer);
-            resolve(hash.digest('hex'));
-          });
-        });
-        file.on('error', cleanup);
-      })
-      .on('error', cleanup)
-      .on('timeout', () => {
-        cleanup(new Error('Download timed out'));
-      });
-  });
-}
-
-function curlDownload(url, dest, proxy) {
-  return new Promise((resolve, reject) => {
-    const maxSeconds = Math.ceil(DOWNLOAD_TIMEOUT_MS / 1000);
-    const args = ['-L', '--fail', '--show-error', '--silent', '--max-time', String(maxSeconds), '-o', dest];
-    if (proxy) {
-      args.push('--proxy', proxy);
-    }
-    args.push(url);
-    const child = spawn('curl', args, { stdio: ['ignore', 'inherit', 'inherit'] });
-    child.on('error', (err) => {
-      reject(new Error(`curl not available or failed to start: ${err.message}`));
+function curlSupportsSslRevokeBestEffort() {
+  if (_curlSupportsSslRevokeBestEffort !== undefined) {
+    return _curlSupportsSslRevokeBestEffort;
+  }
+  try {
+    const output = execFileSync("curl", ["--version"], {
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+      timeout: 5000,
     });
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`curl download failed (exit ${code})`));
-        return;
-      }
-      fileSha256(dest).then(resolve).catch(reject);
-    });
-  });
+    _curlSupportsSslRevokeBestEffort = isCurlVersionSupported(output);
+  } catch {
+    _curlSupportsSslRevokeBestEffort = false;
+  }
+  return _curlSupportsSslRevokeBestEffort;
 }
 
-async function download(url, dest) {
-  const proxy = getHttpProxy();
-  const preferCurl =
-    process.env.DELTA_CLI_USE_CURL === '1' || (!!proxy && process.env.DELTA_CLI_USE_CURL !== '0');
+// ── Download ───────────────────────────────────────────────────────────────
 
-  if (preferCurl) {
+function download(url, destPath) {
+  assertAllowedHost(url);
+  const args = [
+    "--fail", "--location", "--silent", "--show-error",
+    "--connect-timeout", "10", "--max-time", "120",
+    "--max-redirs", "3",
+    "--output", destPath,
+  ];
+  if (isWindows && curlSupportsSslRevokeBestEffort()) {
+    args.unshift("--ssl-revoke-best-effort");
+  }
+  args.push(url);
+  execFileSync("curl", args, { stdio: ["ignore", "ignore", "pipe"] });
+}
+
+// ── Extraction ─────────────────────────────────────────────────────────────
+
+function extractZipWindows(archivePath, destDir) {
+  const psOpts = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"];
+  const psEnv = {
+    DELTA_CLI_ARCHIVE: archivePath,
+    DELTA_CLI_DEST: destDir,
+  };
+  try {
+    const dotnet =
+      "$ErrorActionPreference='Stop';" +
+      "Add-Type -AssemblyName System.IO.Compression.FileSystem;" +
+      "[System.IO.Compression.ZipFile]::ExtractToDirectory($env:DELTA_CLI_ARCHIVE,$env:DELTA_CLI_DEST)";
+    execFileSync("powershell.exe", [...psOpts, dotnet], { stdio: ["ignore", "inherit", "inherit"], env: psEnv });
+  } catch (primaryErr) {
     try {
-      return await curlDownload(url, dest, proxy);
-    } catch (err) {
-      if (process.env.DELTA_CLI_USE_CURL === '1') {
-        throw err;
+      const cmdlet =
+        "$ErrorActionPreference='Stop';" +
+        "Expand-Archive -LiteralPath $env:DELTA_CLI_ARCHIVE -DestinationPath $env:DELTA_CLI_DEST -Force";
+      execFileSync("powershell.exe", [...psOpts, cmdlet], { stdio: ["ignore", "inherit", "inherit"], env: psEnv });
+    } catch (secondErr) {
+      try {
+        execFileSync("tar", ["-xf", archivePath, "-C", destDir], { stdio: "ignore" });
+      } catch (fallbackErr) {
+        throw new Error(
+          `Failed to extract ${archivePath}. ` +
+          `.NET ZipFile: ${primaryErr.message}. ` +
+          `Expand-Archive: ${secondErr.message}. ` +
+          `tar: ${fallbackErr.message}`
+        );
       }
-      console.warn(`[delta-cli] curl download failed (${err.message}), falling back to Node https.`);
     }
   }
-
-  return nodeDownload(url, dest);
 }
 
-function verifyAsset(assetName, filePath, checksums) {
-  if (!checksums) {
-    console.warn('[delta-cli] checksums.txt not found; skipping checksum verification.');
-    return;
+// ── Checksum ───────────────────────────────────────────────────────────────
+
+function getExpectedChecksum(archiveName, checksumsDir) {
+  const dir = checksumsDir || path.join(__dirname, "..");
+  const checksumsPath = path.join(dir, "checksums.txt");
+  if (!fs.existsSync(checksumsPath)) {
+    console.error("[WARN] checksums.txt not found, skipping checksum verification");
+    return null;
   }
-  const expected = checksums.get(assetName);
-  if (!expected) {
-    throw new Error(`No checksum found for ${assetName} in checksums.txt`);
+  const content = fs.readFileSync(checksumsPath, "utf8");
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const idx = trimmed.indexOf("  ");
+    if (idx === -1) continue;
+    const hash = trimmed.slice(0, idx);
+    const name = trimmed.slice(idx + 2);
+    if (name === archiveName) return hash;
   }
-  const actual = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
-  if (actual !== expected) {
-    throw new Error(`Checksum mismatch for ${assetName}: expected ${expected}, got ${actual}`);
-  }
-  console.log(`[delta-cli] Checksum OK for ${assetName}.`);
+  throw new Error(`Checksum entry not found for ${archiveName}`);
 }
 
-function extract(archivePath, destDir, platform) {
-  fs.mkdirSync(destDir, { recursive: true });
-  if (platform === 'windows') {
-    const escapedArchive = archivePath.replace(/'/g, "''");
-    const escapedDest = destDir.replace(/'/g, "''");
-    execSync(
-      `powershell.exe -NoProfile -Command "Expand-Archive -Path '${escapedArchive}' -DestinationPath '${escapedDest}' -Force"`,
-      { stdio: 'inherit' }
+function verifyChecksum(archivePath, expectedHash) {
+  if (expectedHash === null) return;
+  const hash = crypto.createHash("sha256");
+  const fd = fs.openSync(archivePath, "r");
+  try {
+    const buf = Buffer.alloc(64 * 1024);
+    let bytesRead;
+    while ((bytesRead = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
+      hash.update(buf.subarray(0, bytesRead));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  const actual = hash.digest("hex");
+  if (actual.toLowerCase() !== expectedHash.toLowerCase()) {
+    throw new Error(
+      `[SECURITY] Checksum mismatch for ${path.basename(archivePath)}: expected ${expectedHash} but got ${actual}`
     );
-  } else {
-    execSync(`tar -xzf "${archivePath}" -C "${destDir}"`, { stdio: 'inherit' });
   }
 }
 
-async function install(options = {}) {
-  const fatal = options.fatal === true;
-  const allowSkip = options.allowSkip !== false;
+// ── Main install ───────────────────────────────────────────────────────────
 
-  if (allowSkip && (process.env.CI === 'true' || process.env.CI === '1' || process.env.DELTA_CLI_SKIP_POSTINSTALL)) {
-    console.log('[delta-cli] postinstall skipped (CI or DELTA_CLI_SKIP_POSTINSTALL).');
-    return;
-  }
-
-  const platform = platformMap[process.platform];
-  const arch = archMap[process.arch];
-  if (!platform || !arch) {
-    throw new Error(`Unsupported platform: ${process.platform} ${process.arch}`);
-  }
-
-  const isWin = platform === 'windows';
-  const archiveExt = isWin ? '.zip' : '.tar.gz';
-  const binaryExt = isWin ? '.exe' : '';
-  const assetName = `${BINARY_NAME}-${platform}-${arch}${archiveExt}`;
-  const binDir = path.join(__dirname, '..', 'bin');
-  const archivePath = path.join(binDir, assetName);
-  const binaryPath = path.join(binDir, `${BINARY_NAME}${binaryExt}`);
+function install() {
+  const downloadUrls = releaseAssetUrls(VERSION, archiveName);
 
   fs.mkdirSync(binDir, { recursive: true });
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "delta-cli-"));
+  const archivePath = path.join(tmpDir, archiveName);
 
-  const localArchive = process.env.DELTA_CLI_ARCHIVE;
-  if (localArchive) {
-    if (!fs.existsSync(localArchive)) {
-      throw new Error(`DELTA_CLI_ARCHIVE file not found: ${localArchive}`);
-    }
-    fs.copyFileSync(localArchive, archivePath);
-  } else {
-    const urls = releaseAssetUrls(VERSION, assetName);
+  try {
     let lastErr;
-    let checksum;
-    for (const url of urls) {
-      console.log(`[delta-cli] Downloading ${assetName} from ${new URL(url).hostname}...`);
+    let downloaded = false;
+    for (const url of downloadUrls) {
       try {
-        checksum = await download(url, archivePath);
+        download(url, archivePath);
+        downloaded = true;
         break;
-      } catch (err) {
-        console.warn(`[delta-cli] Download failed from ${url}: ${err.message}`);
-        lastErr = err;
+      } catch (e) {
+        lastErr = e;
       }
     }
-    if (checksum === undefined) {
-      throw lastErr || new Error('All download sources failed');
+    if (!downloaded) throw lastErr;
+
+    const expectedHash = getExpectedChecksum(archiveName);
+    verifyChecksum(archivePath, expectedHash);
+
+    if (isWindows) {
+      extractZipWindows(archivePath, tmpDir);
+    } else {
+      execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], { stdio: "ignore" });
     }
+
+    const binaryName = NAME + (isWindows ? ".exe" : "");
+    const extractedBinary = path.join(tmpDir, `${NAME}-${platform}-${arch}`);
+    if (fs.existsSync(extractedBinary)) {
+      fs.copyFileSync(extractedBinary, dest);
+    } else {
+      // Fallback: try the plain name (older release format)
+      const plainBinary = path.join(tmpDir, binaryName);
+      if (fs.existsSync(plainBinary)) {
+        fs.copyFileSync(plainBinary, dest);
+      } else {
+        // Search in tmpDir
+        const files = fs.readdirSync(tmpDir).filter(f => f.includes(NAME) || f.includes(binaryName));
+        if (files.length > 0) {
+          fs.copyFileSync(path.join(tmpDir, files[0]), dest);
+        } else {
+          throw new Error(`Binary not found in extracted archive. Files: ${fs.readdirSync(tmpDir).join(", ")}`);
+        }
+      }
+    }
+    fs.chmodSync(dest, 0o755);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
-
-  const checksums = loadChecksums();
-  verifyAsset(assetName, archivePath, checksums);
-
-  console.log(`[delta-cli] Extracting to ${binDir}...`);
-  extract(archivePath, binDir, platform);
-  fs.unlinkSync(archivePath);
-
-  const extractedBinary = path.join(binDir, `${BINARY_NAME}-${platform}-${arch}${binaryExt}`);
-  if (fs.existsSync(extractedBinary) && extractedBinary !== binaryPath) {
-    fs.renameSync(extractedBinary, binaryPath);
-  }
-
-  if (!fs.existsSync(binaryPath)) {
-    throw new Error(`Binary not found after extraction: ${binaryPath}`);
-  }
-
-  if (platform !== 'windows') {
-    fs.chmodSync(binaryPath, 0o755);
-  }
-
-  console.log(`[delta-cli] Installed at ${binaryPath}.`);
 }
 
-function handleError(err) {
-  const fatal = process.env.DELTA_CLI_FATAL_ON_ERROR === '1';
-  const message = err && err.message ? err.message : String(err);
-  if (fatal) {
-    console.error('[delta-cli] install failed:', message);
-    process.exit(1);
-  }
-  console.error('[delta-cli] postinstall warning:', message);
-  console.error('The wrapper is installed, but the native binary may be missing.');
-  console.error('Run "delta-cli" once to retry, or set DELTA_CLI_ARCHIVE to a local archive path.');
-  process.exit(0);
-}
+// ── Entry ──────────────────────────────────────────────────────────────────
 
 if (require.main === module) {
-  install({ allowSkip: true }).catch(handleError);
+  if (!platform || !arch) {
+    console.error(`Unsupported platform: ${process.platform}-${process.arch}`);
+    process.exit(1);
+  }
+
+  // npx postinstall guard: skip binary download in ephemeral npx context
+  const isNpxPostinstall =
+    process.env.npm_command === "exec" && !process.env.DELTA_CLI_RUN;
+
+  if (isNpxPostinstall) {
+    process.exit(0);
+  }
+
+  try {
+    install();
+    console.log(`${NAME} v${VERSION} installed successfully`);
+  } catch (err) {
+    console.error(`Failed to install ${NAME}:`, err.message);
+    console.error(
+      `\nIf you are behind a firewall or in a restricted network, try one of:\n` +
+      `  # 1. Use a proxy:\n` +
+      `  export https_proxy=http://your-proxy:port\n` +
+      `  npm install -g @delta-infra/cli\n\n` +
+      `  # 2. Point to a corporate npm mirror:\n` +
+      `  npm install -g @delta-infra/cli --registry=https://your-corp-mirror/\n` +
+      `\nOr manually download from:\n` +
+      `  https://github.com/${REPO}/releases/tag/v${VERSION}`
+    );
+    process.exit(1);
+  }
 }
 
-module.exports = { install };
+module.exports = {
+  getExpectedChecksum, verifyChecksum, assertAllowedHost,
+  isCurlVersionSupported, curlSupportsSslRevokeBestEffort,
+};
