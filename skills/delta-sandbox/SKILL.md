@@ -1,6 +1,6 @@
 ---
 name: delta-sandbox
-version: 1.1.8
+version: 1.2.0
 description: "在 Delta Sandbox Linux 容器中运行任意命令或脚本。适用于训练、推理、编译、数据处理等任意需要 sandbox 的计算任务，支持 Python / Node.js / Go / Java / Rust 等语言。所有任务通用同一套输出约定：命令在 stdout 末尾输出结构化 JSON，skill 提取为本地 result.json 的 summary，并生成一行 RESULT: 结论。Planner 调用本 skill 时，请在 plan step 的 required_outputs 中声明 [{kind: 'file', extensions: ['.json']}]。请求中用中性动词（运行/执行）描述命令，只有真的会落盘文件时，才使用创建/写入/保存等动词并带上扩展名。认证/配置/权限错误转 delta-shared。"
 metadata:
   requires:
@@ -85,6 +85,11 @@ metadata:
       3. 已执行 `sandbox kill <id>` 销毁 sandbox；
       4. `final_response` 只有一行 `RESULT: <result_summary>`。
 
+14. **避免冗余检查与验证**
+    - 如果 `skill_request` 或用户请求已经明确指定了镜像与资源，**不要**在 `sandbox create` 前先调用 `sandbox providers` 或 `sandbox images`。
+    - 文件写入 sandbox 后，只需要 `sandbox stat`（可选）确认 size 正常即可。**禁止**用 `sandbox ls` + `sandbox read` 把刚写入的文件读回宿主再验证内容；这会产生一次无意义的往返。
+    - 不要在 `sandbox create` 成功后反复调用 `sandbox status` 轮询；create 返回时 sandbox 已就绪。
+
 ## 请求措辞约定
 
 为降低被 host 的 Phase-10B 文件扩展名校验误判的概率，构造 `skill_request` 时遵守：
@@ -159,10 +164,12 @@ required_outputs:
 
 ## 完整生命周期
 
-1. **选择 Provider 和镜像**：
-   - `delta-cli sandbox providers` — 查看可用的计算后端（`opensandbox` / `autodl`）
-   - `delta-cli sandbox images` — 查询服务端支持的镜像列表，根据用户需求的编程语言和工具链匹配镜像。例如 `deltarouter/python:latest`（Python）、`node:20`（Node.js）、`golang:1.23`（Go），镜像决定了容器内可用的语言/运行时环境。
-   - `delta-cli sandbox recommend --cpu N --memory XGi [--gpu N]` — 获取资源配置推荐（自动选择 provider 和镜像）
+1. **选择 Provider 和镜像（按需）**：
+   - 如果请求里已经明确指定了镜像（例如 `--image image.yangtzeailab.com/opensandbox/pytorch-cuda13`）和资源（cpu/memory/gpu），**直接跳到步骤 2 创建 sandbox**，不要再调 `sandbox providers` / `sandbox images` / `sandbox recommend`。
+   - 只有在用户要求“推荐一个配置”或需要查询可用镜像/Provider 时，才调用：
+     - `delta-cli sandbox providers` — 可用的计算后端
+     - `delta-cli sandbox images` — 服务端支持的镜像列表
+     - `delta-cli sandbox recommend --cpu N --memory XGi [--gpu N]` — 资源配置推荐
 2. **创建**：`delta-cli sandbox create --image <img> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`。**返回的 JSON 信封中是 `data.sandbox_id`，不是 `data.id`；后续所有命令必须使用这个真实的 `sandbox_id`。**（创建后 sandbox 立即可用，无需额外连接）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
     - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
     - 这是 `sandbox create` 支持的完整资源参数集合，不存在其它“更正确”的资源 flag，不要发明不存在的参数。
@@ -173,7 +180,7 @@ required_outputs:
    - **上传目录**：`sandbox upload <id> --source <本地目录> --target <沙箱路径>` — CLI 将本地目录打包为 tar.gz，通过 multipart/form-data 上传，服务端自动解压到 target 目录。返回每个文件的路径、大小、模式。上传后 CLI 自动对比本地和远程文件清单做完整性校验（大小不匹配、多余文件等会告警）。
      - **注意**：`--source` 是**本地目录路径**，`--target` 是**沙箱内的目标目录**，target 目录不存在会自动创建。
      - 支持嵌套目录，空目录也会被创建。
-   - **写后验证**：`sandbox stat <id> --path <path>` 确认文件存在且 size 符合预期；`sandbox read <id> --path <path>` 读取内容并对比返回的 `size`（磁盘字节）和 `content_length`（字符长度）判断是否有编码偏差。
+    - **写后验证（可选）**：`sandbox stat <id> --path <path>` 确认文件存在且 size 符合预期即可。**不要**用 `sandbox ls` + `sandbox read` 把刚写入的文件读回宿主再逐字对比；无异常时不需要读回。
 4. **运行命令**：
     - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，返回 `stderr` / `exit_code` / `result_file`，完整 `stdout` 在结果文件中，**不要**再调用 `sandbox logs`。可通过 `--result-file <路径>` 自定义结果文件路径；默认值为 `/tmp/delta-result-{execution_id}.json`。根据镜像中的运行时构造命令，常见示例：
      - Python：`python /workspace/train.py`
@@ -201,18 +208,13 @@ required_outputs:
          env = json.load(open("/tmp/_delta_result_envelope.json", encoding="utf-8"))
          raw = json.loads(env["data"]["content"])
 
-         concise = {
-             "execution_id": raw.get("execution_id"),
-             "sandbox_id": raw.get("sandbox_id"),
-             "command": raw.get("command"),
-             "exit_code": raw.get("exit_code"),
-             "finished": raw.get("finished"),
-             "result_file": raw.get("result_file"),
-             "finished_at": raw.get("finished_at"),
-             "summary": {},
-             "error": raw.get("error"),
-             "stderr_preview": (raw.get("stderr") or "")[:500],
-         }
+          # 精简到用户关心的极简字段，避免 host read_file 预览截断
+          concise = {
+              "exit_code": raw.get("exit_code"),
+              "finished": raw.get("finished"),
+              "summary": {},
+              "error": raw.get("error"),
+          }
 
          # 优先提取 stdout 末尾的独立 JSON 对象作为 summary
          stdout = raw.get("stdout", "")
@@ -260,28 +262,25 @@ required_outputs:
 
 这样 SKILL 可以用同一套代码把它提取到 `result.json` 的 `summary` 字段，再生成 `RESULT:` 行。
 
+- **禁止**在 stdout 中打印 `FINAL_ANSWER: ...` 这类冗余标记行；多余的标记会让 Runner 把普通文本误认为结果字段。
+- `summary` 中**不要**使用 `final_answer` 这类与 schema 重复的关键字。统一用语义字段表示结果，例如推理任务用 `generated_text` / `output` / `result`，训练任务用 `final_loss` / `final_accuracy`，数据处理用 `output_file` / `output_rows`。
+
 ### 本地 `result.json` 通用 Schema
 
 ```json
 {
-  "execution_id": "...",
-  "sandbox_id": "...",
-  "command": "...",
   "exit_code": 0,
   "finished": true,
-  "result_file": "/tmp/delta-result-xxx.json",
-  "finished_at": "...",
   "summary": {},
   "result_summary": "exit_code=0, status=ok, torch_version=..., ...",
-  "error": null,
-  "stderr_preview": ""
+  "error": null
 }
 ```
 
 关键字段：
 - `summary`: 命令输出的结构化结果对象。
 - `result_summary`: **一行字符串**，与最终回答的 `RESULT:` 行内容一致，方便 Runner 直接读取。
-- `stderr_preview`: stderr 的前 500 字符，用于快速排错。
+- `error`: 命令失败时的错误信息；成功时一般为 `null`。
 - **不要把完整 `stdout` 塞进来**。完整日志仍保留在 sandbox 的 `result_file` 中。
 
 ## 输出阅读与最终回答格式
@@ -308,6 +307,15 @@ required_outputs:
    - 错误：在 `RESULT:` 后追加 `Let me know if you need anything else.` 等多余句子。
    - **规则**：`final_response` 里出现的字符，必须是 `RESULT:` 及其后的内容，不允许其它任何自然语言。
 6. **不要依赖或被截断的 `stdout`/`stderr` 字段**，关键结论必须来自 `result.json` 的 `summary` / `result_summary`。
+7. **`sandbox kill` 成功后不再调用任何工具**。kill 命令返回 `{ok:true}` 即表示任务已收尾，下一回合直接输出一行 `RESULT: <result_summary>`。禁止再调 `bash`/`read_file`/`ls` 等工具，也不要以 "Need final answer exactly..."、"Sandbox killed." 等独白开头。
+
+## 宿主 / Planner 调用提示
+
+本 skill 设计成“结论自包含”：执行结束后，**`result.json` 的 `result_summary` 与 `final_response` 已经包含最终面向用户的结论**。因此：
+
+- **Planner** 调用本 skill 的 plan step 时，`required_outputs` 必须声明 `.json`（见上方“请求措辞约定”）。
+- **宿主（host / Runner / finalize 阶段）** 在收到 skill 返回后，应直接把 `final_response` 或 `result.json` 里的 `result_summary` 作为最终答案，**不要再让大模型去读取 result.json、验证文件内容或重新推理**。
+- 如果宿主担心内容不可信，可以读取 `result.json` 核对，但**最终输出仍必须是 `RESULT:` 开头的一行**，不允许把“我需要先读取文件验证”、“Wait, I don't have...”等思考过程暴露给用户。
 
 ## 常见恢复
 
