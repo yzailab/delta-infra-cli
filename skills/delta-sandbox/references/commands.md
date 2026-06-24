@@ -25,9 +25,9 @@
 
 | 命令 | 说明 |
 |------|------|
-| `sandbox run <id> --command "..." [--timeout N]` | 同步运行命令，结果直接返回 |
-| `sandbox run-bg <id> --command "..." [--timeout N] [--wait]` | 后台运行命令，返回 execution_id |
-| `sandbox logs <id> --execution-id <eid>` | 获取后台命令日志 |
+| `sandbox run <id> --command "..." [--timeout N]` | 同步运行命令；返回 stderr/exit_code/result_file（完整 stdout 在结果文件中） |
+| `sandbox run-bg <id> --command "..." [--timeout N] [--wait]` | 后台运行命令；--wait 完成后返回状态与 result_file |
+| `sandbox logs <id> --execution-id <eid>` | 获取后台命令日志；返回 cursor/exit_code/result_file |
 | `sandbox status bg <id> --execution-id <eid>` | 查询后台命令状态（不含日志内容） |
 | `sandbox cancel <id> --execution-id <eid>` | 中断正在运行的后台命令 |
 
