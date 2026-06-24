@@ -118,19 +118,30 @@ metadata:
      - 支持嵌套目录，空目录也会被创建。
    - **写后验证**：`sandbox stat <id> --path <path>` 确认文件存在且 size 符合预期；`sandbox read <id> --path <path>` 读取内容并对比返回的 `size`（磁盘字节）和 `content_length`（字符长度）判断是否有编码偏差。
 4. **运行命令**：
-   - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，结果（`stdout` / `stderr` / `exit_code`）直接返回，**不要**再调用 `sandbox logs`。根据镜像中的运行时构造命令，常见示例：
+    - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，返回 `stderr` / `exit_code` / `result_file`，完整 `stdout` 在结果文件中，**不要**再调用 `sandbox logs`。可通过 `--result-file <路径>` 自定义结果文件路径；默认值为 `/tmp/delta-result-{execution_id}.json`。根据镜像中的运行时构造命令，常见示例：
      - Python：`python /workspace/train.py`
      - Node.js：`node /workspace/app.js`
      - Go：`go run /workspace/main.go`
      - Shell：`bash /workspace/run.sh`
-   - **长任务（预计 > 60 秒，如下载模型、训练、编译、大规模数据处理）**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒>` 提交后台任务，获得 `execution_id` 后通过以下命令轮询：
-     - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 返回 `content`、`cursor`、`running`、`finished`、`exit_code`。当 `finished=true` 时认为完成。
+   - **长任务（预计 > 60 秒，如下载模型、训练、编译、大规模数据处理）**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> [--result-file <路径>]` 提交后台任务，获得 `execution_id` 后通过以下命令轮询：
+      - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 返回 `cursor`、`running`、`finished`、`exit_code`、`result_file`（完成后）。当 `finished=true` 时认为完成，完整输出需读取 `result_file`。
      - `delta-cli sandbox status bg <id> --execution-id <execution_id>` — 返回 `running`、`finished`、`exit_code`。
      禁止对长任务使用同步 `sandbox run`
 5. **读取结果**：`delta-cli sandbox read <id> --path /workspace/result.json` — 返回 `content`（内容）、`size`（磁盘字节数，来自 stat 验证）、`content_length`（内存字符长度）。对比 `size` 与 `content_length` 可判断文件是否为纯文本。读不存在的文件会返回 error，不会静默返回空内容。
 6. **销毁**：`delta-cli sandbox kill <id>`（如需保存结果，用 `sandbox finish --results '{...}'` 替代 kill，finish 会自动销毁 sandbox）
 
 详细步骤见 [lifecycle.md](references/lifecycle.md)。
+
+## 输出阅读与最终回答格式
+
+1. **`sandbox run` / `sandbox run-bg --wait` / `sandbox logs` 返回的 JSON 中包含 `data.result_file`**（沙箱内结构化结果文件的路径）。
+2. **只要 `data.result_file` 存在，必须优先使用 `delta-cli sandbox read <id> --path <result_file>` 读取该文件。**
+   - 结果文件包含完整 `stdout`、`stderr`、`exit_code`、`finished`、`command`、`error`。
+3. **基于结果文件内容给出最终结论**，开头用 `RESULT:`，例如：
+   ```
+   RESULT: exit_code=0, CUDA available=True, GPU=NVIDIA H100 80GB HBM3, tensor addition on cuda:0 succeeded.
+   ```
+4. **不要依赖或被截断的 `stdout`/`stderr` 字段**，关键结论必须来自读取结果文件后的分析。
 
 ## 常见恢复
 
