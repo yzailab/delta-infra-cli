@@ -24,6 +24,8 @@ required_outputs:
 
 SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary` 与最终 `RESULT:` 行。
 
+**不要**再输出 `FINAL_ANSWER: ...` 这样的标记行，也不要在 JSON 里使用 `final_answer` 字段。summary 里的语义字段（如 `output`、`result`、`generated_text`、`final_accuracy`）已经足够表达结果。
+
 不同任务的关键字段示例：
 
 - **CUDA 检查**：`status`, `torch_version`, `cuda_available`, `device_name`
@@ -103,12 +105,12 @@ SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary
 
 说明：
 
-- 请求里不要贴完整 Python 代码，也不要指定宿主文件路径（如 `@ROOT/inference.py`、本地绝对路径等）。脚本内容、模型下载、执行路径都由 skill 内部通过 `delta-cli sandbox write` 写入 sandbox 后运行。
+- 请求里不要贴完整 Python 代码，也不要指定宿主文件路径（如 `@ROOT/inference.py`、本地绝对路径等），更不要要求脚本输出 `FINAL_ANSWER:` 标记行。脚本内容、模型下载、执行路径都由 skill 内部通过 `delta-cli sandbox write` 写入 sandbox 后运行。
 - 推荐让脚本在 `stdout` 末尾打印一行结构化 JSON，例如：
   ```json
-  {"status":"ok","cuda_available":true,"device":"cuda","model":"Qwen/Qwen2.5-0.5B-Instruct","input":"100+10","output":"110"}
+  {"status":"ok","cuda_available":true,"device":"cuda","model":"Qwen/Qwen2.5-0.5B-Instruct","input":"100+10","generated_text":"110"}
   ```
-- skill 会把它提取为 `result.json` 的 `summary`，最终输出 `RESULT: exit_code=0, status=ok, cuda_available=True, output=110, ...`。
+- skill 会把它提取为 `result.json` 的 `summary`，最终输出 `RESULT: exit_code=0, status=ok, cuda_available=True, generated_text=110, ...`。
 
 ## 注意事项
 
@@ -122,6 +124,6 @@ SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary
 
 - 本地 `result.json` 是一份**精简摘要**，用于 host deliverable 校验，不是完整日志存档。
 - 必须包含 `result_summary` 字段，内容与最终 `RESULT:` 行一致，方便 Runner 直接读取结论。
-- 只写入关键字段（`execution_id`、`sandbox_id`、`exit_code`、`finished`、`summary`、`result_summary`、`error`、`stderr_preview` 等）。
+- 只写入关键字段（`exit_code`、`finished`、`summary`、`result_summary`、`error`）。**不要**额外添加 `final_answer` 等字段。
 - 不要把完整原始 `stdout` 塞进 `result.json`，否则 host 的 `read_file` 工具预览时会截断，Runner 可能误以为文件被截断。
 - 完整原始输出保留在 sandbox 的 `result_file` 中，需要时再 `sandbox read`。
