@@ -123,6 +123,21 @@ function osHomedir() {
     "/root";
 }
 
+function isInteractiveEnv() {
+  return !!process.stdin.isTTY &&
+    !process.env.CI &&
+    !process.env.NO_COLOR &&
+    process.env.TERM !== "dumb";
+}
+
+function createSpinner() {
+  if (isInteractiveEnv()) return p.spinner();
+  return {
+    start: (msg) => { if (msg) console.log(msg); },
+    stop: (msg) => { if (msg) console.log(msg); },
+  };
+}
+
 function whichDeltaCli() {
   try {
     const prefix = execFileSync("npm", ["prefix", "-g"], {
@@ -189,7 +204,7 @@ async function stepInstallGlobally(msg) {
   }
 
   const targetVer = latestVer || installedVer;
-  const s = p.spinner();
+  const s = createSpinner();
   if (needsUpgrade) {
     s.start(fmt(msg.upgrade, PKG, installedVer, latestVer));
   } else {
@@ -226,7 +241,7 @@ async function skillsAlreadyInstalled() {
 }
 
 async function stepInstallSkills(msg) {
-  const s = p.spinner();
+  const s = createSpinner();
   s.start(msg.step2Spinner);
   try {
     if (await skillsAlreadyInstalled()) {
@@ -260,7 +275,7 @@ async function stepInstallSkills(msg) {
 }
 
 async function stepConfigInit(msg) {
-  const s = p.spinner();
+  const s = createSpinner();
   s.start(msg.step3);
 
   const deltaCli = whichDeltaCli();
@@ -325,7 +340,7 @@ async function stepAuthLogin(msg) {
 // ── Uninstall steps ─────────────────────────────────────────────────────────
 
 async function stepUninstallSkills(msg) {
-  const s = p.spinner();
+  const s = createSpinner();
   s.start("Removing AI skills...");
   try {
     await runSilentAsync("npx", ["-y", "skills", "remove", "delta-sandbox", "delta-shared", "-g"], {
@@ -350,7 +365,7 @@ async function stepUninstallPackage(msg) {
   if (!installedVer) {
     return;
   }
-  const s = p.spinner();
+  const s = createSpinner();
   s.start("Removing global package...");
   try {
     await runSilentAsync("npm", ["uninstall", "-g", PKG], { timeout: 60000 });
@@ -364,7 +379,7 @@ async function stepUninstallPackage(msg) {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 async function doInstall() {
-  const isInteractive = !!process.stdin.isTTY;
+  const isInteractive = isInteractiveEnv();
 
   if (isInteractive) {
     p.intro(messages.zh.setup);
@@ -382,7 +397,7 @@ async function doInstall() {
 }
 
 async function doUninstall() {
-  const isInteractive = !!process.stdin.isTTY;
+  const isInteractive = isInteractiveEnv();
 
   if (isInteractive) {
     const ok = await p.confirm({
