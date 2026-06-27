@@ -33,11 +33,6 @@ const DEFAULT_ALLOWED_HOSTS = new Set([
   "gh-proxy.com",
   "ghproxy.net",
   "gh.ddlc.top",
-  "gh.llkk.cc",
-  "gh.dpik.top",
-  "gh.con.sh",
-  "slink.ltd",
-  "xget.xi-xu.me",
   "objects.githubusercontent.com",
   "release-assets.githubusercontent.com",
   "github-releases.githubusercontent.com",
@@ -82,17 +77,12 @@ function _getCurlTimeout() {
   return _curlTimeoutMs;
 }
 
-// List of well-known GitHub release download mirrors.
+// GitHub release download mirrors.
 // Format: [hostname, urlPrefix] — urlPrefix is prepended to the GitHub URL.
 var _MIRROR_LIST = [
-  ["gh-proxy.com",   "https://gh-proxy.com"],
-  ["ghproxy.net",    "https://ghproxy.net"],
   ["gh.ddlc.top",    "https://gh.ddlc.top"],
-  ["gh.llkk.cc",     "https://gh.llkk.cc"],
-  ["gh.dpik.top",    "https://gh.dpik.top"],
-  ["gh.con.sh",      "https://gh.con.sh"],
-  ["slink.ltd",      "https://slink.ltd"],
-  ["xget.xi-xu.me",  "https://xget.xi-xu.me"],
+  ["ghproxy.net",    "https://ghproxy.net"],
+  ["gh-proxy.com",   "https://gh-proxy.com"],
 ];
 
 // Quick connectivity check: fetch a small file (checksums.txt) from each
