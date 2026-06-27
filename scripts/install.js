@@ -130,7 +130,7 @@ function probeMirrors(version, cb) {
       ];
       var child;
       try {
-        child = require("child_process").spawn("curl", args, { stdio: ["ignore", "pipe", "pipe"], timeout: 8000 });
+        child = require("child_process").spawn("curl", args, { stdio: ["ignore", "pipe", "pipe"], timeout: 5000 });
         var stdout = "";
         var stderr = "";
         child.stdout.on("data", function(d) { stdout += d; });
@@ -153,7 +153,7 @@ function probeMirrors(version, cb) {
     })(i);
   }
   // Safety timeout: if probes hang, continue without mirrors after 10s
-  setTimeout(finish, 10000);
+  setTimeout(finish, 5000);
 }
 
 function releaseAssetUrls(version, assetName, cb) {
@@ -225,7 +225,9 @@ function download(url, destPath) {
   assertAllowedHost(url);
   const args = [
     "--fail", "--location", "--silent", "--show-error",
-    "--connect-timeout", "10", "--max-time", "120",
+    "--connect-timeout", "10",
+    "--max-time", "45",
+    "--speed-limit", "50000", "--speed-time", "10",
     "--max-redirs", "3",
     "--output", destPath,
   ];
