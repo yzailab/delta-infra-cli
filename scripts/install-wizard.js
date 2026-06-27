@@ -106,8 +106,12 @@ function runSilentAsync(cmd, args, opts = {}) {
     execFile(actualCmd, actualArgs, {
       stdio: ["ignore", "pipe", "pipe"],
       ...opts,
-    }, (err, stdout) => {
-      if (err) reject(err);
+    }, (err, stdout, stderr) => {
+      if (err) {
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+      }
       else resolve(stdout);
     });
   });
@@ -127,6 +131,7 @@ function osHomedir() {
 
 function isInteractiveEnv() {
   return !!process.stdin.isTTY &&
+    !!process.stdout.isTTY &&
     !process.env.CI &&
     !process.env.NO_COLOR &&
     process.env.TERM !== "dumb";
@@ -254,12 +259,22 @@ async function skillsAlreadyInstalled() {
 }
 
 function installSkillsFromLocalPackage() {
-  const npmRoot = runSilent("npm", ["root", "-g"], { timeout: 10000 })
-    .toString().trim();
-  const pkgSkillsDir = path.join(npmRoot, PKG, "skills");
-  if (!fs.existsSync(path.join(pkgSkillsDir, "delta-sandbox", "SKILL.md"))) {
-    return false;
+  const candidates = [];
+  try {
+    const npmRoot = runSilent("npm", ["root", "-g"], { timeout: 10000 })
+      .toString().trim();
+    candidates.push(path.join(npmRoot, PKG, "skills"));
+  } catch {}
+  candidates.push(path.join(__dirname, "..", "skills"));
+
+  let pkgSkillsDir = null;
+  for (const c of candidates) {
+    if (fs.existsSync(path.join(c, "delta-sandbox", "SKILL.md"))) {
+      pkgSkillsDir = c;
+      break;
+    }
   }
+  if (!pkgSkillsDir) return false;
 
   const home = osHomedir();
   const agentsDir = path.join(home, ".agents", "skills");
@@ -306,21 +321,24 @@ async function stepInstallSkills(msg) {
     } catch { }
 
     const urls = [
-      `https://gh-proxy.com/https://github.com/${SKILLS_REPO}`,
-      `https://gh.llkk.cc/https://github.com/${SKILLS_REPO}`,
+      `https://gh.ddlc.top/https://github.com/${SKILLS_REPO}`,
+      `https://ghproxy.net/https://github.com/${SKILLS_REPO}`,
       `https://github.com/${SKILLS_REPO}`,
     ];
     let lastErr;
     for (const url of urls) {
       try {
+        s.start(`${msg.step2Spinner} (try ${url.split("/")[2]})`);
         await runSilentAsync("npx", ["-y", "skills", "add", url, "-y", "-g"], {
-          timeout: 60000,
+          timeout: 15000,
           env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
         });
         s.stop(msg.step2Done);
         return;
       } catch (e) {
         lastErr = e;
+        if (e && e.stderr) console.error(`[skills mirror failed] ${url}: ${e.stderr.toString().trim().slice(0, 200)}`);
+        else if (e && e.message) console.error(`[skills mirror failed] ${url}: ${e.message}`);
       }
     }
     throw lastErr;
