@@ -252,12 +252,6 @@ async function stepInstallGlobally(msg) {
   }
 }
 
-async function skillsAlreadyInstalled() {
-  const agentsDir = path.join(osHomedir(), ".agents", "skills");
-  return fs.existsSync(path.join(agentsDir, "delta-sandbox", "SKILL.md")) &&
-         fs.existsSync(path.join(agentsDir, "delta-shared", "SKILL.md"));
-}
-
 function installSkillsFromLocalPackage() {
   const candidates = [];
   try {
@@ -308,11 +302,6 @@ async function stepInstallSkills(msg) {
   const s = createSpinner();
   s.start(msg.step2Spinner);
   try {
-    if (await skillsAlreadyInstalled()) {
-      s.stop(msg.step2Skip);
-      return;
-    }
-
     try {
       if (installSkillsFromLocalPackage()) {
         s.stop(msg.step2Done);
