@@ -214,12 +214,12 @@ async function stepInstallGlobally(msg) {
     // Install the npm package (which triggers postinstall → install.js),
     // then explicitly download the correct version binary in case the
     // npx cache has stale package.json that misleads install.js.
-    await runSilentAsync("npm", ["install", "-g", PKG], { timeout: 120000 });
+    await runSilentAsync("npm", ["install", "-g", PKG], { timeout: 300000 });
     if (targetVer) {
       await runSilentAsync(process.execPath, [
         path.join(__dirname, "install.js"),
       ], {
-        timeout: 120000,
+        timeout: 300000,
         env: { ...process.env, DELTA_CLI_RUN: "true", DELTA_CLI_VERSION: targetVer },
       });
     }
