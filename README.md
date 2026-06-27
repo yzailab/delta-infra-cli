@@ -28,6 +28,24 @@ npx @delta-infra/cli@latest uninstall
 
 清理全局包、AI Skills 和配置文件。
 
+### 升级
+
+```bash
+# 升级 CLI + AI Skills
+delta-cli upgrade
+
+# 只检查是否有更新（不执行升级）
+delta-cli upgrade --check
+
+# 只升级 CLI 二进制
+delta-cli upgrade --cli-only
+
+# 只升级 AI Skills
+delta-cli upgrade --skills-only
+```
+
+升级 CLI 时会通过 `npm install -g @delta-infra/cli@latest` 拉取最新版本；升级 Skills 时会通过 `npx skills add` 重新安装 AI Skills。
+
 ### 方式二：直接下载 Binary
 
 从 [GitHub Releases](https://github.com/yzailab/delta-infra-cli/releases) 下载对应平台的压缩包（以下使用 `latest` 指向最新版）：
@@ -175,8 +193,12 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli auth login` | 交互式登录 |
 | `delta-cli auth login --token <token>` | Token 认证 |
 | `delta-cli auth status` | 查看认证状态 |
-| `delta-cli update check` | 检查更新 |
-| `delta-cli update` | 安装最新版本 |
+| `delta-cli update check` | 检查更新（deprecated，请用 `upgrade --check`） |
+| `delta-cli update` | 安装最新版本（deprecated，请用 `upgrade`） |
+| `delta-cli upgrade` | 升级 CLI 和 AI Skills 到最新版本 |
+| `delta-cli upgrade --check` | 检查是否有可用更新 |
+| `delta-cli upgrade --cli-only` | 只升级 CLI 二进制 |
+| `delta-cli upgrade --skills-only` | 只升级 AI Skills |
 | `delta-cli --version` | 显示版本 |
 
 ### Sandbox 命令
