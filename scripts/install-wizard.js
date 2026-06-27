@@ -232,12 +232,45 @@ async function stepInstallGlobally(msg) {
 }
 
 async function skillsAlreadyInstalled() {
-  try {
-    const out = await runSilentAsync("npx", ["-y", "skills", "ls", "-g"], {
-      timeout: 120000,
-    });
-    return /^delta-/m.test(out.toString());
-  } catch { return false; }
+  const agentsDir = path.join(osHomedir(), ".agents", "skills");
+  return fs.existsSync(path.join(agentsDir, "delta-sandbox", "SKILL.md")) &&
+         fs.existsSync(path.join(agentsDir, "delta-shared", "SKILL.md"));
+}
+
+function installSkillsFromLocalPackage() {
+  const npmRoot = runSilent("npm", ["root", "-g"], { timeout: 10000 })
+    .toString().trim();
+  const pkgSkillsDir = path.join(npmRoot, PKG, "skills");
+  if (!fs.existsSync(path.join(pkgSkillsDir, "delta-sandbox", "SKILL.md"))) {
+    return false;
+  }
+
+  const home = osHomedir();
+  const agentsDir = path.join(home, ".agents", "skills");
+  fs.mkdirSync(agentsDir, { recursive: true });
+
+  for (const skill of ["delta-sandbox", "delta-shared"]) {
+    const src = path.join(pkgSkillsDir, skill);
+    if (!fs.existsSync(src)) continue;
+    const dst = path.join(agentsDir, skill);
+    fs.rmSync(dst, { recursive: true, force: true });
+    fs.cpSync(src, dst, { recursive: true });
+  }
+
+  const claudeDir = path.join(home, ".claude", "skills");
+  if (fs.existsSync(path.dirname(claudeDir))) {
+    fs.mkdirSync(claudeDir, { recursive: true });
+    for (const skill of ["delta-sandbox", "delta-shared"]) {
+      const linkPath = path.join(claudeDir, skill);
+      const targetPath = path.join(agentsDir, skill);
+      try {
+        fs.rmSync(linkPath, { force: true });
+        fs.symlinkSync(path.relative(path.dirname(linkPath), targetPath), linkPath);
+      } catch { /* symlink may fail on some platforms */ }
+    }
+  }
+
+  return true;
 }
 
 async function stepInstallSkills(msg) {
@@ -248,17 +281,24 @@ async function stepInstallSkills(msg) {
       s.stop(msg.step2Skip);
       return;
     }
+
+    try {
+      if (installSkillsFromLocalPackage()) {
+        s.stop(msg.step2Done);
+        return;
+      }
+    } catch { }
+
     const GH_PROXY = "https://gh-proxy.com/https://github.com";
     const urls = [
       `${GH_PROXY}/${SKILLS_REPO}`,
-      SKILLS_REPO,
       `https://github.com/${SKILLS_REPO}`,
     ];
     let lastErr;
     for (const url of urls) {
       try {
         await runSilentAsync("npx", ["-y", "skills", "add", url, "-y", "-g"], {
-          timeout: 120000,
+          timeout: 60000,
           env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
         });
         s.stop(msg.step2Done);
@@ -342,9 +382,28 @@ async function stepAuthLogin(msg) {
 async function stepUninstallSkills(msg) {
   const s = createSpinner();
   s.start("Removing AI skills...");
+
+  const home = osHomedir();
+  const agentsDir = path.join(home, ".agents", "skills");
+  const claudeDir = path.join(home, ".claude", "skills");
+  let removedLocally = false;
+
+  for (const skill of ["delta-sandbox", "delta-shared"]) {
+    try {
+      fs.rmSync(path.join(agentsDir, skill), { recursive: true, force: true });
+      fs.rmSync(path.join(claudeDir, skill), { force: true });
+      removedLocally = true;
+    } catch { }
+  }
+
+  if (removedLocally) {
+    s.stop("AI skills removed");
+    return;
+  }
+
   try {
     await runSilentAsync("npx", ["-y", "skills", "remove", "delta-sandbox", "delta-shared", "-g"], {
-      timeout: 120000,
+      timeout: 60000,
     });
     s.stop("AI skills removed");
   } catch {
