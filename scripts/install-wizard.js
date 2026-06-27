@@ -10,7 +10,7 @@ const p = require("@clack/prompts");
 const PKG = "@delta-infra/cli";
 const SKILLS_REPO = "yzailab/delta-infra-cli";
 const NPM_REGISTRIES = ["https://registry.npmmirror.com", "https://registry.npmjs.org"];
-const GH_MIRRORS = ["https://gh-proxy.com", "https://gh.llkk.cc"];
+const GH_MIRRORS = ["https://gh.ddlc.top", "https://ghproxy.net", "https://gh-proxy.com"];
 const CONFIG_DIR = path.join(osHomedir(), ".delta-infra");
 const isWindows = process.platform === "win32";
 
