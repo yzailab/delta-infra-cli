@@ -9,6 +9,8 @@ const p = require("@clack/prompts");
 
 const PKG = "@delta-infra/cli";
 const SKILLS_REPO = "yzailab/delta-infra-cli";
+const NPM_REGISTRIES = ["https://registry.npmmirror.com", "https://registry.npmjs.org"];
+const GH_MIRRORS = ["https://gh-proxy.com", "https://gh.llkk.cc"];
 const CONFIG_DIR = path.join(osHomedir(), ".delta-infra");
 const isWindows = process.platform === "win32";
 
@@ -211,17 +213,31 @@ async function stepInstallGlobally(msg) {
     s.start(fmt(msg.step1, PKG));
   }
   try {
-    // Install the npm package (which triggers postinstall → install.js),
-    // then explicitly download the correct version binary in case the
-    // npx cache has stale package.json that misleads install.js.
-    await runSilentAsync("npm", ["install", "-g", PKG], { timeout: 300000 });
+    let installed = false;
+    for (const registry of NPM_REGISTRIES) {
+      try {
+        await runSilentAsync("npm", ["install", "-g", PKG, "--registry", registry], {
+          timeout: 300000,
+          env: { ...process.env, DELTA_CLI_MIRROR: GH_MIRRORS[0] },
+        });
+        installed = true;
+        break;
+      } catch { }
+    }
+    if (!installed) throw new Error("all npm registries failed");
+
     if (targetVer) {
-      await runSilentAsync(process.execPath, [
-        path.join(__dirname, "install.js"),
-      ], {
-        timeout: 300000,
-        env: { ...process.env, DELTA_CLI_RUN: "true", DELTA_CLI_VERSION: targetVer },
-      });
+      for (const mirror of GH_MIRRORS) {
+        try {
+          await runSilentAsync(process.execPath, [
+            path.join(__dirname, "install.js"),
+          ], {
+            timeout: 300000,
+            env: { ...process.env, DELTA_CLI_RUN: "true", DELTA_CLI_VERSION: targetVer, DELTA_CLI_MIRROR: mirror },
+          });
+          break;
+        } catch { }
+      }
     }
     s.stop(needsUpgrade ? fmt(msg.step1Upgraded, latestVer) : msg.step1Done);
     return needsUpgrade;
@@ -289,9 +305,9 @@ async function stepInstallSkills(msg) {
       }
     } catch { }
 
-    const GH_PROXY = "https://gh-proxy.com/https://github.com";
     const urls = [
-      `${GH_PROXY}/${SKILLS_REPO}`,
+      `https://gh-proxy.com/https://github.com/${SKILLS_REPO}`,
+      `https://gh.llkk.cc/https://github.com/${SKILLS_REPO}`,
       `https://github.com/${SKILLS_REPO}`,
     ];
     let lastErr;
