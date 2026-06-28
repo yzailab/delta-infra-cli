@@ -175,7 +175,7 @@ delta-cli sandbox run <sandbox_id> \
   --timeout 3600
 
 # v1.0.55+ 默认带 --summary，返回 JSON 中 data.result_summary 字段已含 stdout 末尾 JSON 提取结果
-# 无需再手动读取 result_file 做二次解析（除非使用了 --no-summary）
+# 无需再手动读取 log_file 做二次解析（除非使用了 --no-summary）
 delta-cli sandbox run <sandbox_id> --command "echo '{\"status\":\"ok\",\"result\":\"done\"}'" --timeout 60
 
 # 读取结果文件
