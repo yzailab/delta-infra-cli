@@ -9,7 +9,7 @@
 3. **创建** `delta-cli sandbox create --image <image> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`（创建后立即可用，无需连接；--max-life 指定 sandbox 最大存活时间（分钟），默认 30；这些是 `create` 全部资源参数，不要发明其它 flag。`--provider autodl` 可指定使用 AutoDL 后端。）
 4. **写入代码/数据** `delta-cli sandbox write <id> --path /workspace/<filename> --source <文件名>` — 将本地文件直接写入 sandbox。**必须**使用相对路径（如 `--source infer.py`），禁止使用 `"$WORKSPACE_ROOT/<filename>"`。也可用 `--data "..."` 写入少量内联内容，`--mode 755` 可设置文件权限。写入后返回的 `size` 字段是 stat 验证后的实际磁盘字节数，可确认写入完整。批量写入用 `write-multiple`。文件路径和扩展名由镜像中的运行时决定。
 5. **运行命令** — 根据镜像中的运行时构造命令，常见示例：`python /workspace/train.py`（Python）、`node /workspace/app.js`（Node.js）、`go run /workspace/main.go`（Go）、`bash /workspace/run.sh`（Shell）
-   - **短任务 ≤60s**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，返回 `stdout`/`stderr`/`exit_code` (默认带 --summary，返回 JSON data.summary 已含 stdout 末尾 JSON 提取结果)
+   - **短任务 ≤60s**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，返回 `stdout`/`stderr`/`exit_code` (默认带 --summary，返回 JSON data.result_summary 已含 stdout 末尾 JSON 提取结果)
    - **长任务 >60s**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait` 后台执行（推荐），或 `run-bg` + `logs` 手动轮询 (run-bg --wait 默认带 --summary；不加 --wait 立即返回 {execution_id, sandbox_id})
 6. **读取结果** `delta-cli sandbox read <id> --path /workspace/result.json` — 返回 `content`（内容）、`size`（磁盘字节，来自 stat）、`content_length`（字符数）。读不存在的文件返回 error 而非空内容。
 7. **销毁** `delta-cli sandbox kill <id>`（如需保存结果用 finish，finish 会自动销毁）
@@ -27,7 +27,7 @@ delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200 --wait
 ```
 CLI 内部每 5 秒轮询一次，`finished=true` 时返回，结果中包含 `execution_id`。只消耗 **1 次 tool call**，适合不关心中间进度的场景。
 
-> v1.0.55 起 `--wait` 默认带 `--summary`，返回的 JSON `data.summary` 字段已包含 stdout 末尾结构化 JSON 的提取结果。常用场景无需再调 `sandbox read` 二次解析 result_file。
+> v1.0.55 起 `--wait` 默认带 `--summary`，返回的 JSON `data.result_summary` 字段已包含 stdout 末尾结构化 JSON 的提取结果。常用场景无需再调 `sandbox read` 二次解析 result_file。
 
 ### 方式二：手动轮询（需要看实时输出时）
 
