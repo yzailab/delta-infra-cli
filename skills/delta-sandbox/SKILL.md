@@ -1,7 +1,7 @@
 ---
 name: delta-sandbox
-version: 1.2.0
-description: "在 Delta Sandbox Linux 容器中运行任意命令或脚本。适用于训练、推理、编译、数据处理等任意需要 sandbox 的计算任务，支持 Python / Node.js / Go / Java / Rust 等语言。所有任务通用同一套输出约定：命令在 stdout 末尾输出结构化 JSON，skill 提取为本地 result.json 的 summary，并生成一行 RESULT: 结论。Planner 调用本 skill 时，请在 plan step 的 required_outputs 中声明 [{kind: 'file', extensions: ['.json']}]。请求中用中性动词（运行/执行）描述命令，只有真的会落盘文件时，才使用创建/写入/保存等动词并带上扩展名。认证/配置/权限错误转 delta-shared。"
+version: 1.3.0
+description: "在 Delta Sandbox Linux 容器中运行任意命令或脚本。适用于训练、推理、编译、数据处理等任意需要 sandbox 的计算任务，支持 Python / Node.js / Go / Java / Rust 等语言。所有任务通用同一套输出约定：命令在 stdout 末尾输出结构化 JSON，CLI 反向扫描 stdout 末尾 JSON 自动提取 summary 字段。Planner 调用本 skill 时，请在 plan step 的 required_outputs 中声明 [{kind: 'file', extensions: ['.json']}]。请求中用中性动词（运行/执行）描述命令，只有真的会落盘文件时，才使用创建/写入/保存等动词并带上扩展名。认证/配置/权限错误转 delta-shared。"
 metadata:
   requires:
     bins: ["delta-cli"]
@@ -41,14 +41,13 @@ metadata:
    ```bash
    delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait
    ```
-   CLI 在内部每 5 秒轮询一次 `logs`，直到 `finished=true` 或超时，然后一次性返回 `{execution_id, running, finished, exit_code, content}`。返回的 `execution_id` 可在后续用于 `sandbox logs` / `status bg` / `cancel`。适合只关心最终结果、不需要查看中间进度的场景。
+   CLI 在内部每 5 秒轮询一次 `logs`，直到 `finished=true` 或超时，然后一次性返回 `{execution_id, running, finished, exit_code, content}`。返回的 `execution_id` 可在后续用于 `sandbox logs` / `cancel`。适合只关心最终结果、不需要查看中间进度的场景。
 
    **手动轮询（需要查看中间进度时）**：
    如果不加 `--wait` 或需要查看实时输出，用 `sandbox logs <id> --execution-id <exec_id>` 手动轮询：
    - `finished=true` + `exit_code=0` → 完成
    - `finished=true` + `exit_code!=0` → 失败  
    - `running=true` → 仍运行
-   快速查询：`sandbox status bg <id> --execution-id <exec_id>`（只含状态，不含日志内容）
 
    **故障诊断**：连续 3 次 `running=true` 且 `content`/`cursor` 无变化且距离提交超过 60 秒 → 用 `sandbox status <id>` 检查 sandbox 是否存活。
 
@@ -81,7 +80,7 @@ metadata:
 13. **`result.json` 是完成前的必要条件**
     - 在调用 `step_finish` 之前，必须确认：
       1. `delta-cli sandbox run` / `run-bg --wait` 已返回且 `finished=true`；
-      2. 已从 `result_file` 生成本地 `result.json`（包含 `summary` 与 `result_summary`）；
+      2. （默认）直接复用 `sandbox run` / `run-bg --wait` 返回的 `summary` 字段写入 `result.json`；或（fallback）从 `result_file` 用 `sandbox read` + Python 解析
       3. 已执行 `sandbox kill <id>` 销毁 sandbox；
       4. `final_response` 只有一行 `RESULT: <result_summary>`。
 
@@ -141,13 +140,13 @@ required_outputs:
 | 完成 sandbox | `sandbox finish <id> [--results '{...}']` |
 | 销毁 sandbox | `sandbox kill <id>` |
 | **命令执行** | |
-| 同步运行命令（≤60s） | `sandbox run <id> --command "..." [--timeout <秒>]` |
-| 后台运行命令（>60s） | `sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait]` |
-| 查看后台日志 | `sandbox logs <id> --execution-id <exec_id>` |
-| 查询后台状态 | `sandbox status bg <id> --execution-id <exec_id>` |
+| 同步运行命令（≤60s） | `sandbox run <id> --command "..." [--timeout <秒>] [--summary/--no-summary] [--artifacts]` |
+| 后台运行命令（>60s） | `sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--summary/--no-summary] [--artifacts]` |
+| 查看后台日志 | `sandbox logs <id> --execution-id <exec_id> [--tail N --grep <pattern> --context N --max-bytes N]` |
 | 中断后台命令 | `sandbox cancel <id> --execution-id <exec_id>` |
 | **文件操作** | |
-| 读取文件 | `sandbox read <id> --path <path>` |
+| 读取文件 | `sandbox read <id> --path <path> [--output <本地路径> --tail N --grep <pattern> --offset N --limit N --context N --max-bytes N --parse-json]` |
+| 拉取文件/目录 | `sandbox pull <id> --source <本地路径> --target <沙箱路径>` — 单文件或目录递归，含 sha1 校验（mirror of upload） |
 | 写入文件 | `sandbox write <id> --path <path> --source <文件名>`（推荐）|
 | 批量写入 | `sandbox write-multiple <id> --entry <远程路径>=<本地路径> [--entry ...]` |
 | 上传目录 | `sandbox upload <id> --source <本地目录> --target <沙箱路径>` |
@@ -189,61 +188,84 @@ required_outputs:
      - Shell：`bash /workspace/run.sh`
    - **长任务（预计 > 60 秒，如下载模型、训练、编译、大规模数据处理）**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> [--result-file <路径>]` 提交后台任务，获得 `execution_id` 后通过以下命令轮询：
       - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 返回 `cursor`、`running`、`finished`、`exit_code`、`result_file`（完成后）。当 `finished=true` 时认为完成，完整输出需读取 `result_file`。
-     - `delta-cli sandbox status bg <id> --execution-id <execution_id>` — 返回 `running`、`finished`、`exit_code`。
            禁止对长任务使用同步 `sandbox run`
 
-   **推荐实践**：让 sandbox 脚本在 `stdout` 末尾打印一个独立的结构化 JSON 对象（例如 `{"status":"ok", ...}`）， SKILL 步骤 5 可直接把它提取为 `result.json` 的 `summary`。这样即使 `stdout` 前面是大量训练/下载日志，skill 也无需让大模型去“读整段日志再摘要”。
-5. **读取 result_file 并生成精简本地副本**：从 `sandbox run` / `sandbox run-bg --wait` / `sandbox logs` 返回数据中获得 `result_file` 路径。
-    - `sandbox read` 返回的是 CLI 信封 `{"ok":true,"data":{"content":"..."}}`，真实结果 JSON 在 `data.content` 字段里。
-    - **不要把 CLI 信封或完整长 `stdout` 原样写入本地 `result.json`**；应该解析后生成一份精简的结构化摘要。
-    - **推荐做法（避免 heredoc 引号失败）**：先用 `bash` 把信封写入临时文件，再用 `python3`（或 `python_repl`）读取该文件并生成 `result.json`。**不要**把 `delta-cli sandbox read` 的输出通过管道直接喂给内联 heredoc，管道+heredoc 的组合极易因 Shell 转义/引号问题失败。
-      1. `bash` 保存信封：
-         ```bash
-         delta-cli sandbox read <sandbox_id> --path <result_file> > /tmp/_delta_result_envelope.json
-         ```
-      2. `python3` / `python_repl` 生成 `result.json`：
-         ```python
-         import json, os
+   **推荐实践**：让 sandbox 脚本在 `stdout` 末尾打印一个独立的结构化 JSON 对象（例如 `{"status":"ok", ...}`），CLI 的 `--summary` 默认会自动反向扫描 stdout 末尾 JSON 提取为 `data.summary` 字段。这样即使 `stdout` 前面是大量训练/下载日志，skill 也无需让大模型去“读整段日志再摘要”。
+5. **生成 result.json**（默认路径使用 CLI 返回的 `summary` 字段；fallback 路径用 `sandbox read` + Python 解析）：
+    - **5a（默认路径，推荐）**：`run` / `run-bg --wait` 已返回 `summary` 字段（CLI 自动 reverse-scan stdout 末尾 JSON）。直接构造 `result.json`：
+      ```bash
+      delta-cli sandbox run <id> --command "..." --timeout 60 > /tmp/_run.json
+      ```
+      ```python
+      import json, os
+      r = json.load(open("/tmp/_run.json"))
+      data = r.get("data", {})
+      result = {
+          "exit_code": data.get("exit_code"),
+          "finished": data.get("finished", True),
+          "summary": data.get("summary") or {},
+          "result_summary": ", ".join(f"{k}={v}" for k,v in (data.get("summary") or {}).items()
+                                       if isinstance(v, (str,int,float,bool)) and len(str(v))<200),
+          "error": data.get("error"),
+      }
+      if not result["result_summary"]:
+          result["result_summary"] = f"exit_code={result['exit_code']}, finished={result['finished']}"
+      ws = os.environ.get("WORKSPACE_ROOT", ".")
+      json.dump(result, open(os.path.join(ws, "result.json"), "w", encoding="utf-8"),
+                indent=2, ensure_ascii=False)
+      print(result["result_summary"])
+      ```
+    - **5b（fallback，仅当 `--no-summary` 或 `summary` 为 null）**：从 `sandbox run` / `sandbox run-bg --wait` / `sandbox logs` 返回数据中获得 `result_file` 路径，用 `sandbox read` + Python 解析。
+      - `sandbox read` 返回的是 CLI 信封 `{"ok":true,"data":{"content":"..."}}`，真实结果 JSON 在 `data.content` 字段里。
+      - **不要把 CLI 信封或完整长 `stdout` 原样写入本地 `result.json`**；应该解析后生成一份精简的结构化摘要。
+      - **推荐做法（避免 heredoc 引号失败）**：先用 `bash` 把信封写入临时文件，再用 `python3`（或 `python_repl`）读取该文件并生成 `result.json`。**不要**把 `delta-cli sandbox read` 的输出通过管道直接喂给内联 heredoc，管道+heredoc 的组合极易因 Shell 转义/引号问题失败。
+        1. `bash` 保存信封：
+           ```bash
+           delta-cli sandbox read <sandbox_id> --path <result_file> > /tmp/_delta_result_envelope.json
+           ```
+        2. `python3` / `python_repl` 生成 `result.json`：
+           ```python
+           import json, os
 
-         env = json.load(open("/tmp/_delta_result_envelope.json", encoding="utf-8"))
-         raw = json.loads(env["data"]["content"])
+           env = json.load(open("/tmp/_delta_result_envelope.json", encoding="utf-8"))
+           raw = json.loads(env["data"]["content"])
 
-          # 精简到用户关心的极简字段，避免 host read_file 预览截断
-          concise = {
-              "exit_code": raw.get("exit_code"),
-              "finished": raw.get("finished"),
-              "summary": {},
-              "error": raw.get("error"),
-          }
+            # 精简到用户关心的极简字段，避免 host read_file 预览截断
+            concise = {
+                "exit_code": raw.get("exit_code"),
+                "finished": raw.get("finished"),
+                "summary": {},
+                "error": raw.get("error"),
+            }
 
-         # 优先提取 stdout 末尾的独立 JSON 对象作为 summary
-         stdout = raw.get("stdout", "")
-         for line in reversed(stdout.strip().splitlines()):
-             s = line.strip()
-             if s.startswith("{") and s.endswith("}"):
-                 try:
-                     concise["summary"] = json.loads(s)
-                     break
-                 except Exception:
-                     pass
+           # 优先提取 stdout 末尾的独立 JSON 对象作为 summary
+           stdout = raw.get("stdout", "")
+           for line in reversed(stdout.strip().splitlines()):
+               s = line.strip()
+               if s.startswith("{") and s.endswith("}"):
+                   try:
+                       concise["summary"] = json.loads(s)
+                       break
+                   except Exception:
+                       pass
 
-         # 构造 result_summary：一行字符串，最终回答的 RESULT: 行直接用它
-         parts = [f"exit_code={concise['exit_code']}", f"finished={concise['finished']}"]
-         for key, value in concise["summary"].items():
-             # 避免把长文本塞进 result_summary
-             if isinstance(value, (str, int, float, bool)) and len(str(value)) < 200:
-                 parts.append(f"{key}={value}")
-         concise["result_summary"] = ", ".join(parts)
+           # 构造 result_summary：一行字符串，最终回答的 RESULT: 行直接用它
+           parts = [f"exit_code={concise['exit_code']}", f"finished={concise['finished']}"]
+           for key, value in concise["summary"].items():
+               # 避免把长文本塞进 result_summary
+               if isinstance(value, (str, int, float, bool)) and len(str(value)) < 200:
+                   parts.append(f"{key}={value}")
+           concise["result_summary"] = ", ".join(parts)
 
-         ws = os.environ.get("WORKSPACE_ROOT", ".")
-         with open(os.path.join(ws, "result.json"), "w", encoding="utf-8") as f:
-             json.dump(concise, f, indent=2, ensure_ascii=False)
-         print(concise["result_summary"])
-         ```
-      3. 如果当前环境没有 `python3`，用 `jq`、`node` 或任何可解析 JSON 的工具实现**相同逻辑**：1）读取 `/tmp/_delta_result_envelope.json`；2）解开 CLI 信封取 `data.content`；3）解析内部 JSON；4）从 `stdout` 末尾提取 summary JSON；5）生成 `result_summary` 并写入 `result.json`。
-   - 如果 `stdout` 非常大（训练日志、下载日志等），不要把整段 `stdout` 写进 `result.json`；只保留关键指标和 preview。
-   - 写入本地副本的目的是让 host 的 deliverable 校验识别到真实的 `.json` 文件；由于校验是“或”语义，`.json` 文件会盖过 `torch.cuda` 等 token 被误判出的 `.cuda` 文件承诺。
-   - 完整原始输出仍保留在 sandbox 的 `result_file` 中，必要时可再次 `sandbox read` 获取。
+           ws = os.environ.get("WORKSPACE_ROOT", ".")
+           with open(os.path.join(ws, "result.json"), "w", encoding="utf-8") as f:
+               json.dump(concise, f, indent=2, ensure_ascii=False)
+           print(concise["result_summary"])
+           ```
+        3. 如果当前环境没有 `python3`，用 `jq`、`node` 或任何可解析 JSON 的工具实现**相同逻辑**：1）读取 `/tmp/_delta_result_envelope.json`；2）解开 CLI 信封取 `data.content`；3）解析内部 JSON；4）从 `stdout` 末尾提取 summary JSON；5）生成 `result_summary` 并写入 `result.json`。
+      - 如果 `stdout` 非常大（训练日志、下载日志等），不要把整段 `stdout` 写进 `result.json`；只保留关键指标和 preview。
+      - 完整原始输出仍保留在 sandbox 的 `result_file` 中，必要时可再次 `sandbox read` 获取。
+    - 写入本地副本的目的是让 host 的 deliverable 校验识别到真实的 `.json` 文件；由于校验是“或”语义，`.json` 文件会盖过 `torch.cuda` 等 token 被误判出的 `.cuda` 文件承诺。
 6. **销毁**：`delta-cli sandbox kill <id>`（如需保存结果，用 `sandbox finish --results '{...}'` 替代 kill，finish 会自动销毁 sandbox）
 
 详细步骤见 [lifecycle.md](references/lifecycle.md)。
@@ -285,10 +307,10 @@ required_outputs:
 
 ## 输出阅读与最终回答格式
 
-1. **`sandbox run` / `sandbox run-bg --wait` / `sandbox logs` 返回的 JSON 中包含 `data.result_file`**（沙箱内结构化结果文件的路径）。
-2. **只要 `data.result_file` 存在，必须优先使用 `delta-cli sandbox read <id> --path <result_file>` 读取该文件，并解析 CLI 信封得到真实结果 JSON。**
+1. **`sandbox run` / `run-bg --wait` 默认带 `--summary`，返回的 JSON 中 `data.summary` 字段已包含 stdout 末尾 JSON 提取结果。也包含 `data.result_file`**（沙箱内结构化结果文件的路径），作为 fallback 路径。
+2. **默认优先用 `data.summary`**；仅当 `summary` 字段为 null（使用了 `--no-summary` 或 stdout 无 JSON）时，再用 `sandbox read <id> --path <result_file>` 读取 result_file 并解析 CLI 信封。
    - 结果文件包含完整 `stdout`、`stderr`、`exit_code`、`finished`、`command`、`error`。
-3. **读取 result_file 后，生成本地精简 `result.json`**（见“完整生命周期”步骤 5 和“通用结构化输出约定”）。本地副本只应包含关键字段和摘要，**不应包含完整长 `stdout`**。
+3. **生成本地精简 `result.json`**（见“完整生命周期”步骤 5 和“通用结构化输出约定”）。本地副本只应包含关键字段和摘要，**不应包含完整长 `stdout`**。
 4. **最终回答必须且只能是 `RESULT:` 开头的一行。**
    - 优先直接复用 `result.json` 里的 `result_summary` 字段：
      ```text
