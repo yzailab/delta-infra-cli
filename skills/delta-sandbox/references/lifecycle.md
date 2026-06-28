@@ -27,7 +27,7 @@ delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200 --wait
 ```
 CLI 内部每 5 秒轮询一次，`finished=true` 时返回，结果中包含 `execution_id`。只消耗 **1 次 tool call**，适合不关心中间进度的场景。
 
-> v1.0.55 起 `--wait` 默认带 `--summary`，返回的 JSON `data.result_summary` 字段已包含 stdout 末尾结构化 JSON 的提取结果。常用场景无需再调 `sandbox read` 二次解析 result_file。
+> `--wait` 默认带 `--summary`，返回的 JSON `data.result_summary` 字段已包含 stdout 末尾结构化 JSON 的提取结果。常用场景无需再调 `sandbox read` 二次解析 result_file。
 
 ### 方式二：手动轮询（需要看实时输出时）
 
