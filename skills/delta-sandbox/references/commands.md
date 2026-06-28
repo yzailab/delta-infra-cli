@@ -38,7 +38,7 @@
 | `sandbox write <id> --path <path> --source <文件名>` | 写入文件（推荐，相对路径） |
 | `sandbox write <id> --path <path> --data "..."` | 写入少量内联内容 |
 | `sandbox write-multiple <id> --entry <src=path> [--entry ...]` | 批量写入多个文件 |
-| `sandbox pull <id> --source <本地路径> --target <沙箱路径>` | 拉取文件/目录（mirror of upload）；单文件或递归目录；CLI 端 + 服务端双向 sha1 完整性校验 |
+| `sandbox pull <id> --source <沙箱路径> --target <本地路径> [--recursive] [--pattern <glob>]` | 拉取文件/目录到本地（mirror of `upload`，flag 方向相反：`--source`=远程沙箱路径，`--target`=本地路径）；单文件自动识别；目录默认递归；CLI 端 + 服务端双向 sha1 完整性校验 |
 | `sandbox ls <id> --path <path>` | 列出目录内容（默认 `.`） |
 | `sandbox stat <id> --path <path>` | 获取文件元数据（size / mode / owner / group） |
 | `sandbox mv <id> --entry <source=dest> [--entry ...]` | 移动或重命名文件 |
