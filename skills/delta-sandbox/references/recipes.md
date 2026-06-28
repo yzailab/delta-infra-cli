@@ -22,6 +22,8 @@ required_outputs:
 {"status":"ok","key_metric_1":"value_1","key_metric_2":123}
 ```
 
+> **v1.0.55 起**：`sandbox run` / `run-bg --wait` 默认带 `--summary`，CLI 会自动 reverse-scan stdout 末尾的 JSON 并填入响应 `data.summary` 字段。脚本作者只需保证 stdout 最后一行是合法 JSON，skill 端无需再做提取。
+
 SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary` 与最终 `RESULT:` 行。
 
 **不要**再输出 `FINAL_ANSWER: ...` 这样的标记行，也不要在 JSON 里使用 `final_answer` 字段。summary 里的语义字段（如 `output`、`result`、`generated_text`、`final_accuracy`）已经足够表达结果。
@@ -122,6 +124,8 @@ SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary
 
 ## 本地 `result.json` 的内容约定
 
+- **v1.0.55+ 默认路径**：`run` / `run-bg --wait` 返回 JSON 的 `data.summary` 字段已含 CLI 提取结果。写本地 `result.json` 时直接复用 `data.summary` 即可，无需再走 `sandbox read` 解析 `result_file`。
+- **fallback 路径**（用 `--no-summary` 时或 `summary` 为 null）：保留 `delta-cli sandbox read <id> --path <result_file>` + Python 解析的旧路。
 - 本地 `result.json` 是一份**精简摘要**，用于 host deliverable 校验，不是完整日志存档。
 - 必须包含 `result_summary` 字段，内容与最终 `RESULT:` 行一致，方便 Runner 直接读取结论。
 - 只写入关键字段（`exit_code`、`finished`、`summary`、`result_summary`、`error`）。**不要**额外添加 `final_answer` 等字段。
