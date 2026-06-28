@@ -25,20 +25,20 @@
 
 | 命令 | 说明 |
 |------|------|
-| `sandbox run <id> --command "..." [--timeout N]` | 同步运行命令；返回 stderr/exit_code/result_file（完整 stdout 在结果文件中） |
-| `sandbox run-bg <id> --command "..." [--timeout N] [--wait]` | 后台运行命令；--wait 完成后返回状态与 result_file |
-| `sandbox logs <id> --execution-id <eid>` | 获取后台命令日志；返回 cursor/exit_code/result_file |
-| `sandbox status bg <id> --execution-id <eid>` | 查询后台命令状态（不含日志内容） |
+| `sandbox run <id> --command "..." [--timeout N] [--summary/--no-summary] [--artifacts]` | 同步运行命令；默认 `--summary` 开启，返回 JSON 中 `summary` 字段已含 stdout 末尾 JSON 提取结果；`--artifacts` 附带 workspace 产物清单 |
+| `sandbox run-bg <id> --command "..." [--timeout N] [--wait] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`；加 `--wait` 等待完成返回含 `summary` 的完整结果 |
+| `sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N --max-bytes N]` | 获取后台命令日志；默认返回 `stderr_size + stderr_tail`（避免上下文爆炸）；可用 `--tail/--grep` 过滤 |
 | `sandbox cancel <id> --execution-id <eid>` | 中断正在运行的后台命令 |
 
 ## 文件操作
 
 | 命令 | 说明 |
 |------|------|
-| `sandbox read <id> --path <path>` | 读取文件；返回 `content` + `size`（磁盘字节）+ `content_length`（字符长度） |
+| `sandbox read <id> --path <path> [--output <本地路径>] [--tail N] [--grep <pattern>] [--offset N] [--limit N] [--context N] [--max-bytes N] [--parse-json]` | 读取文件；返回 `content` + `size` + `content_length`；`--output <path>` 保存到本地；`--tail/--grep` 用于过滤；非 UTF-8 文件 CLI 自动走 base64 fallback |
 | `sandbox write <id> --path <path> --source <文件名>` | 写入文件（推荐，相对路径） |
 | `sandbox write <id> --path <path> --data "..."` | 写入少量内联内容 |
 | `sandbox write-multiple <id> --entry <src=path> [--entry ...]` | 批量写入多个文件 |
+| `sandbox pull <id> --source <本地路径> --target <沙箱路径>` | 拉取文件/目录（mirror of upload）；单文件或递归目录；CLI 端 + 服务端双向 sha1 完整性校验 |
 | `sandbox ls <id> --path <path>` | 列出目录内容（默认 `.`） |
 | `sandbox stat <id> --path <path>` | 获取文件元数据（size / mode / owner / group） |
 | `sandbox mv <id> --entry <source=dest> [--entry ...]` | 移动或重命名文件 |
