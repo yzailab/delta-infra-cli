@@ -174,6 +174,10 @@ delta-cli sandbox run <sandbox_id> \
   --command "<命令>" \
   --timeout 3600
 
+# v1.0.55+ 默认带 --summary，返回 JSON 中 data.summary 字段已含 stdout 末尾 JSON 提取结果
+# 无需再手动读取 result_file 做二次解析（除非使用了 --no-summary）
+delta-cli sandbox run <sandbox_id> --command "echo '{\"status\":\"ok\",\"result\":\"done\"}'" --timeout 60
+
 # 读取结果文件
 delta-cli sandbox read <sandbox_id> --path /workspace/result.json
 
@@ -216,12 +220,12 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox status <id>` | 查看 sandbox 状态 |
 | `delta-cli sandbox finish <id>` | 保存结果并销毁 |
 | `delta-cli sandbox kill <id>` | 销毁 sandbox |
-| `delta-cli sandbox run <id> --command "..."` | 同步运行命令 |
-| `delta-cli sandbox run-bg <id> --command "..." [--wait]` | 后台运行命令（`--wait` 返回 `execution_id`，命令结束后仍可查日志） |
-| `delta-cli sandbox logs <id> --execution-id <eid>` | 查看后台日志 |
-| `delta-cli sandbox status bg <id> --execution-id <eid>` | 查询后台命令状态 |
+| `delta-cli sandbox run <id> --command "..." [--timeout <秒>] [--summary/--no-summary] [--artifacts]` | 同步运行命令；默认带 `--summary`，返回 JSON 中 `summary` 字段已含 stdout 末尾 JSON 提取结果；`--artifacts` 附带 workspace 产物清单 |
+| `delta-cli sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`；加 `--wait` 等待完成返回含 `summary` 的完整结果 |
+| `delta-cli sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N --max-bytes N]` | 查看后台日志；默认返回 `stderr_size + stderr_tail`（避免上下文爆炸）；可用 `--tail/--grep` 过滤 |
 | `delta-cli sandbox cancel <id> --execution-id <eid>` | 中断后台命令 |
-| `delta-cli sandbox read <id> --path <path>` | 读取容器内文件 |
+| `delta-cli sandbox read <id> --path <path> [--output <本地路径>] [--tail N] [--grep <pattern>] [--offset N] [--limit N] [--context N] [--max-bytes N] [--parse-json]` | 读取容器内文件；`--output <path>` 保存到本地；`--tail/--grep` 过滤；非 UTF-8 文件 CLI 自动走 base64 fallback |
+| `delta-cli sandbox pull <id> --source <沙箱路径> --target <本地路径>` | 从沙箱拉取文件/目录到本地（mirror of `upload`）；单文件或递归目录；CLI 端 + 服务端双向 sha1 完整性校验 |
 | `delta-cli sandbox write <id> --path <path> --source <本地路径>` | 写入文件 |
 | `delta-cli sandbox write-multiple <id> --entry <远程路径>=<本地路径>` | 批量写入 |
 | `delta-cli sandbox ls <id> --path <path>` | 列出目录 |
