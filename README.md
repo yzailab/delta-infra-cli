@@ -174,7 +174,7 @@ delta-cli sandbox run <sandbox_id> \
   --command "<命令>" \
   --timeout 3600
 
-# v1.0.55+ 默认带 --summary，返回 JSON 中 data.summary 字段已含 stdout 末尾 JSON 提取结果
+# v1.0.55+ 默认带 --summary，返回 JSON 中 data.result_summary 字段已含 stdout 末尾 JSON 提取结果
 # 无需再手动读取 result_file 做二次解析（除非使用了 --no-summary）
 delta-cli sandbox run <sandbox_id> --command "echo '{\"status\":\"ok\",\"result\":\"done\"}'" --timeout 60
 
@@ -225,7 +225,7 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N --max-bytes N]` | 查看后台日志；默认返回 `stderr_size + stderr_tail`（避免上下文爆炸）；可用 `--tail/--grep` 过滤 |
 | `delta-cli sandbox cancel <id> --execution-id <eid>` | 中断后台命令 |
 | `delta-cli sandbox read <id> --path <path> [--output <本地路径>] [--tail N] [--grep <pattern>] [--offset N] [--limit N] [--context N] [--max-bytes N] [--parse-json]` | 读取容器内文件；`--output <path>` 保存到本地；`--tail/--grep` 过滤；非 UTF-8 文件 CLI 自动走 base64 fallback |
-| `delta-cli sandbox pull <id> --source <沙箱路径> --target <本地路径>` | 从沙箱拉取文件/目录到本地（mirror of `upload`）；单文件或递归目录；CLI 端 + 服务端双向 sha1 完整性校验 |
+| `delta-cli sandbox pull <id> --source <沙箱路径> --target <本地路径> [--recursive] [--pattern <glob>]` | 从沙箱拉取文件/目录到本地（mirror of `upload`，flag 方向相反：source=远程，target=本地）；单文件或递归目录；CLI 端 + 服务端双向 sha1 完整性校验 |
 | `delta-cli sandbox write <id> --path <path> --source <本地路径>` | 写入文件 |
 | `delta-cli sandbox write-multiple <id> --entry <远程路径>=<本地路径>` | 批量写入 |
 | `delta-cli sandbox ls <id> --path <path>` | 列出目录 |
