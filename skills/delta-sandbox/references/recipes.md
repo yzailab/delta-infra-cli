@@ -4,7 +4,7 @@
 
 ## Planner 调用本 skill 时的 required_outputs
 
-所有直接调用 `delta-sandbox` 的 plan step 都应该声明会落盘一个 `.json` 文件。这样 skill 运行命令后把 sandbox `result_file` 写入本地 `result.json` 时，host 可以正确通过 Phase-10B deliverable 校验。
+所有直接调用 `delta-sandbox` 的 plan step 都应该声明会落盘一个 `.json` 文件。这样 skill 运行命令后把 sandbox `log_file` 写入本地 `result.json` 时，host 可以正确通过 Phase-10B deliverable 校验。
 
 ```yaml
 required_outputs:
@@ -54,8 +54,8 @@ SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary
    "memory_before_mb":{"allocated":0,"reserved":0,"max_allocated":0},
    "memory_after_mb":{"allocated":0.0005,"reserved":2.0,"max_allocated":0.001}}
   ```
-- skill 会从 `result_file` 提取这个 JSON 作为本地 `result.json` 的 `summary`，最终只输出一行 `RESULT: ...`。
-- 完整 `nvidia-smi` 原始输出保留在 sandbox 的 `result_file` 中。
+- skill 会从 `log_file` 提取这个 JSON 作为本地 `result.json` 的 `summary`，最终只输出一行 `RESULT: ...`。
+- 完整 `nvidia-smi` 原始输出保留在 sandbox 的 `log_file` 中。
 
 ## 2. 运行用户已有的脚本
 
@@ -124,10 +124,10 @@ SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary
 
 ## 本地 `result.json` 的内容约定
 
-- **默认路径**：`run` / `run-bg --wait` 返回 JSON 的 `data.result_summary` 字段已含 CLI 提取结果。写本地 `result.json` 时直接复用 `data.result_summary` 即可，无需再走 `sandbox read` 解析 `result_file`。
-- **fallback 路径**（用 `--no-summary` 时或 `summary` 为 null）：保留 `delta-cli sandbox read <id> --path <result_file>` + Python 解析的旧路。
+- **默认路径**：`run` / `run-bg --wait` 返回 JSON 的 `data.result_summary` 字段已含 CLI 提取结果。写本地 `result.json` 时直接复用 `data.result_summary` 即可，无需再走 `sandbox read` 解析 `log_file`。
+- **fallback 路径**（用 `--no-summary` 时或 `summary` 为 null）：保留 `delta-cli sandbox read <id> --path <log_file>` + Python 解析的旧路。
 - 本地 `result.json` 是一份**精简摘要**，用于 host deliverable 校验，不是完整日志存档。
 - 必须包含 `result_summary` 字段，内容与最终 `RESULT:` 行一致，方便 Runner 直接读取结论。
 - 只写入关键字段（`exit_code`、`finished`、`summary`、`result_summary`、`error`）。**不要**额外添加 `final_answer` 等字段。
 - 不要把完整原始 `stdout` 塞进 `result.json`，否则 host 的 `read_file` 工具预览时会截断，Runner 可能误以为文件被截断。
-- 完整原始输出保留在 sandbox 的 `result_file` 中，需要时再 `sandbox read`。
+- 完整原始输出保留在 sandbox 的 `log_file` 中，需要时再 `sandbox read`。
