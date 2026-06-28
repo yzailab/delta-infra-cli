@@ -1,6 +1,6 @@
 ---
 name: delta-sandbox
-version: 1.3.1
+version: 1.3.2
 description: "在 Delta Sandbox Linux 容器中运行任意命令或脚本。适用于训练、推理、编译、数据处理等任意需要 sandbox 的计算任务，支持 Python / Node.js / Go / Java / Rust 等语言。所有任务通用同一套输出约定：命令在 stdout 末尾输出结构化 JSON，CLI 反向扫描 stdout 末尾 JSON 自动提取为 `data.result_summary` 字段。Planner 调用本 skill 时，请在 plan step 的 required_outputs 中声明 [{kind: 'file', extensions: ['.json']}]。请求中用中性动词（运行/执行）描述命令，只有真的会落盘文件时，才使用创建/写入/保存等动词并带上扩展名。认证/配置/权限错误转 delta-shared。"
 metadata:
   requires:
@@ -62,7 +62,7 @@ metadata:
 9. **每个 `run-bg` 生成独立 `execution_id`**：每次调用 `sandbox run-bg` 都会返回一个唯一的 `execution_id`，多个后台任务之间通过它区分。务必保存每次返回的 `execution_id` 并与任务对应，后续通过 `sandbox logs <id> --execution-id <exec_id>` 分别查询各任务的结果。同步 `sandbox run` 无需 `execution_id`，结果直接返回。
 
 10. **执行 delta-cli 命令必须使用 `bash` 工具，禁止用 `python_repl` 包装 `subprocess`**
-    - `delta-cli` 返回的是结构化 JSON，用 `bash` 直接执行最清晰，也便于 `result_file` 提取。
+    - `delta-cli` 返回的是结构化 JSON，用 `bash` 直接执行最清晰，也便于 `log_file` 提取。
     - ❌ **禁止**：在 `python_repl` 里写 `subprocess.run(['delta-cli', ...])`。这会把输出混在 Python 代码块中，既难读又多走一步解析。
     - ✅ **正确**：`bash` 工具直接执行 `delta-cli sandbox ...`。
     - 只有在**解析 JSON**（例如从 `sandbox read` 的信封中提取 `summary` 并写入 `result.json`）时，才使用 `python3`/`python_repl`。
@@ -74,13 +74,13 @@ metadata:
 
 12. **任务完成标准是执行结果，而不是脚本文件存在**
     - 本 skill 的交付物是**命令在 sandbox 中执行后的结果摘要**（本地 `result.json` 及其 `result_summary`），而不是 `.py`、`.sh` 等脚本文件本身。
-    - 仅把脚本写入 disk 不代表任务完成；必须完成 `write → run → read result_file → create result.json → kill sandbox` 整个生命周期，才能调用 `step_finish`。
+    - 仅把脚本写入 disk 不代表任务完成；必须完成 `write → run → read log_file → create result.json → kill sandbox` 整个生命周期，才能调用 `step_finish`。
     - 因此，`skill_request` 中不要用“写出/保存/创建某某文件并执行”这类把文件落盘当成里程碑的措辞，而是直接要求“运行某某命令并返回结果摘要”。
 
 13. **`result.json` 是完成前的必要条件**
     - 在调用 `step_finish` 之前，必须确认：
       1. `delta-cli sandbox run` / `run-bg --wait` 已返回且 `finished=true`；
-      2. （默认）直接复用 `sandbox run` / `run-bg --wait` 返回的 `summary` 字段写入 `result.json`；或（fallback）从 `result_file` 用 `sandbox read` + Python 解析
+      2. （默认）直接复用 `sandbox run` / `run-bg --wait` 返回的 `summary` 字段写入 `result.json`；或（fallback）从 `log_file` 用 `sandbox read` + Python 解析
       3. 已执行 `sandbox kill <id>` 销毁 sandbox；
       4. `final_response` 只有一行 `RESULT: <result_summary>`。
 
@@ -120,7 +120,7 @@ required_outputs:
     extensions: [".json"]
 ```
 
-原因：本 skill 运行命令后会从 sandbox 读取 `result_file` 并写入本地 `result.json`。host 的 Phase-10B deliverable 校验是“或”语义（任意一个 required 扩展名被真实文件满足即可）；显式声明 `.json` 可以避免 `torch.cuda` 等代码 token 被误判为 `.cuda` 文件承诺，从而防止 `VERIFICATION_FAILED` 导致的重复执行。
+原因：本 skill 运行命令后会从 sandbox 读取 `log_file` 并写入本地 `result.json`。host 的 Phase-10B deliverable 校验是“或”语义（任意一个 required 扩展名被真实文件满足即可）；显式声明 `.json` 可以避免 `torch.cuda` 等代码 token 被误判为 `.cuda` 文件承诺，从而防止 `VERIFICATION_FAILED` 导致的重复执行。
 
 ## 快速路由
 
@@ -181,13 +181,13 @@ required_outputs:
      - 支持嵌套目录，空目录也会被创建。
      - **写后验证（可选）**：`sandbox stat <id> --path <path>` 确认文件存在且 size 符合预期即可。**不要**用 `sandbox ls` + `sandbox read` 把刚写入的文件读回宿主再逐字对比；无异常时不需要读回。
 4. **运行命令**：
-    - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，返回 `stderr` / `exit_code` / `result_file`，完整 `stdout` 在结果文件中，**不要**再调用 `sandbox logs`。可通过 `--result-file <路径>` 自定义结果文件路径；默认值为 `/tmp/delta-result-{execution_id}.json`。根据镜像中的运行时构造命令，常见示例：
+    - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，返回 `stderr` / `exit_code` / `log_file`，完整 `stdout` 在 run envelope 日志文件中，**不要**再调用 `sandbox logs`。可通过 `--log-file <路径>` 自定义 run envelope 日志文件路径；默认值为 `/tmp/delta-result-{execution_id}.json`。根据镜像中的运行时构造命令，常见示例：
      - Python：`python /workspace/train.py`
      - Node.js：`node /workspace/app.js`
      - Go：`go run /workspace/main.go`
      - Shell：`bash /workspace/run.sh`
-   - **长任务（预计 > 60 秒，如下载模型、训练、编译、大规模数据处理）**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> [--result-file <路径>]` 提交后台任务，获得 `execution_id` 后通过以下命令轮询：
-      - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 返回 `cursor`、`running`、`finished`、`exit_code`、`result_file`（完成后）。当 `finished=true` 时认为完成，完整输出需读取 `result_file`。
+   - **长任务（预计 > 60 秒，如下载模型、训练、编译、大规模数据处理）**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> [--log-file <路径>]` 提交后台任务，获得 `execution_id` 后通过以下命令轮询：
+      - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 返回 `cursor`、`running`、`finished`、`exit_code`、`log_file`（完成后）。当 `finished=true` 时认为完成，完整输出需读取 `log_file`。
            禁止对长任务使用同步 `sandbox run`
 
    **推荐实践**：让 sandbox 脚本在 `stdout` 末尾打印一个独立的结构化 JSON 对象（例如 `{"status":"ok", ...}`），CLI 的 `--summary` 默认会自动反向扫描 stdout 末尾 JSON 提取为 `data.result_summary` 字段。这样即使 `stdout` 前面是大量训练/下载日志，skill 也无需让大模型去“读整段日志再摘要”。
@@ -217,13 +217,13 @@ required_outputs:
                 indent=2, ensure_ascii=False)
       print(result["result_summary"])
       ```
-    - **5b（fallback，仅当 `--no-summary` 或 `result_summary` 为 null）**：从 `sandbox run` / `sandbox run-bg --wait` / `sandbox logs` 返回数据中获得 `result_file` 路径，用 `sandbox read` + Python 解析。
+    - **5b（fallback，仅当 `--no-summary` 或 `result_summary` 为 null）**：从 `sandbox run` / `sandbox run-bg --wait` / `sandbox logs` 返回数据中获得 `log_file` 路径，用 `sandbox read` + Python 解析。
       - `sandbox read` 返回的是 CLI 信封 `{"ok":true,"data":{"content":"..."}}`，真实结果 JSON 在 `data.content` 字段里。
       - **不要把 CLI 信封或完整长 `stdout` 原样写入本地 `result.json`**；应该解析后生成一份精简的结构化摘要。
       - **推荐做法（避免 heredoc 引号失败）**：先用 `bash` 把信封写入临时文件，再用 `python3`（或 `python_repl`）读取该文件并生成 `result.json`。**不要**把 `delta-cli sandbox read` 的输出通过管道直接喂给内联 heredoc，管道+heredoc 的组合极易因 Shell 转义/引号问题失败。
         1. `bash` 保存信封：
            ```bash
-           delta-cli sandbox read <sandbox_id> --path <result_file> > /tmp/_delta_result_envelope.json
+           delta-cli sandbox read <sandbox_id> --path <log_file> > /tmp/_delta_result_envelope.json
            ```
         2. `python3` / `python_repl` 生成 `result.json`：
            ```python
@@ -266,7 +266,7 @@ required_outputs:
            ```
         3. 如果当前环境没有 `python3`，用 `jq`、`node` 或任何可解析 JSON 的工具实现**相同逻辑**：1）读取 `/tmp/_delta_result_envelope.json`；2）解开 CLI 信封取 `data.content`；3）解析内部 JSON；4）从 `stdout` 末尾提取 summary JSON；5）生成 `result_summary` 并写入 `result.json`。
       - 如果 `stdout` 非常大（训练日志、下载日志等），不要把整段 `stdout` 写进 `result.json`；只保留关键指标和 preview。
-      - 完整原始输出仍保留在 sandbox 的 `result_file` 中，必要时可再次 `sandbox read` 获取。
+      - 完整原始输出仍保留在 sandbox 的 `log_file` 中，必要时可再次 `sandbox read` 获取。
     - 写入本地副本的目的是让 host 的 deliverable 校验识别到真实的 `.json` 文件；由于校验是“或”语义，`.json` 文件会盖过 `torch.cuda` 等 token 被误判出的 `.cuda` 文件承诺。
 6. **销毁**：`delta-cli sandbox kill <id>`（如需保存结果，用 `sandbox finish --results '{...}'` 替代 kill，finish 会自动销毁 sandbox）
 
@@ -305,13 +305,13 @@ required_outputs:
 - `summary`: 命令输出的结构化结果对象。
 - `result_summary`: **一行字符串**，与最终回答的 `RESULT:` 行内容一致，方便 Runner 直接读取。
 - `error`: 命令失败时的错误信息；成功时一般为 `null`。
-- **不要把完整 `stdout` 塞进来**。完整日志仍保留在 sandbox 的 `result_file` 中。
+- **不要把完整 `stdout` 塞进来**。完整日志仍保留在 sandbox 的 `log_file` 中。
 
 ## 输出阅读与最终回答格式
 
-1. **`sandbox run` / `run-bg --wait` 默认带 `--summary`，返回的 JSON 中 `data.result_summary` 字段已包含 stdout 末尾 JSON 提取结果（注意：这里是 `result_summary`，不是 `summary`）。也包含 `data.result_file`**（沙箱内结构化结果文件的路径），作为 fallback 路径。
-2. **默认优先用 `data.result_summary`**；仅当 `result_summary` 字段为 null（使用了 `--no-summary` 或 stdout 无 JSON）时，再用 `sandbox read <id> --path <result_file>` 读取 result_file 并解析 CLI 信封。
-   - 结果文件包含完整 `stdout`、`stderr`、`exit_code`、`finished`、`command`、`error`。
+1. **`sandbox run` / `run-bg --wait` 默认带 `--summary`，返回的 JSON 中 `data.result_summary` 字段已包含 stdout 末尾 JSON 提取结果（注意：这里是 `result_summary`，不是 `summary`）。也包含 `data.log_file`**（沙箱内 run envelope 日志文件的路径），作为 fallback 路径。
+2. **默认优先用 `data.result_summary`**；仅当 `result_summary` 字段为 null（使用了 `--no-summary` 或 stdout 无 JSON）时，再用 `sandbox read <id> --path <log_file>` 读取 log_file 并解析 CLI 信封。
+   - run envelope 日志文件包含完整 `stdout`、`stderr`、`exit_code`、`finished`、`command`、`error`。
 3. **生成本地精简 `result.json`**（见“完整生命周期”步骤 5 和“通用结构化输出约定”）。本地副本只应包含关键字段和摘要，**不应包含完整长 `stdout`**。
 4. **最终回答必须且只能是 `RESULT:` 开头的一行。**
    - 优先直接复用 `result.json` 里的 `result_summary` 字段：
@@ -322,16 +322,18 @@ required_outputs:
      ```text
      RESULT: exit_code=0, status=ok, torch_version=2.7.0+cu128, cuda_available=True, device_name=NVIDIA GeForce RTX 3090.
      ```
-5. **绝对禁止任何前缀、后缀、说明、过渡句或内心独白**
+5. **`final_response` 必须以 `RESULT:` 开头**
+   - **首位字符必须是 `R`，紧接 `ESULT:` 前缀**，整串只有 `RESULT: <result_summary>` 一行，不允许任何前置自然语言、空行、过渡句或过程汇报。
+   - 原因：host Runner 与下游 LLM 默认只识别 `RESULT:` 开头的 `final_response` 并把其后内容作为任务结论转述给用户。任何前置文字——包括"沙箱已销毁"、"任务完成"、"完整的生命周期已完成"等中性过程汇报——都会让 Runner 把 `final_response` 当作过程摘录而非最终结论，转而向用户输出"未包含具体内容"等失败回复，让真实结论丢失。
    - 正确：`RESULT: exit_code=0, cuda_available=True, torch_version=2.5.1+cu121, device_name=NVIDIA H100 80GB HBM3`
+   - 错误（前缀污染，真实案例）：`沙箱已成功销毁。完整的生命周期已完成：创建 → 写入 → 运行 → 生成 result.json → 销毁。\n\nRESULT: torch_version=2.5.1+cu121, cuda_available=True, ...` —— Runner 读到"沙箱已成功销毁..."前缀后已放弃读取后段 `RESULT:`，用户最终看到"未包含 result.json 的具体内容"的失败回复。
    - 错误：`Sandbox killed successfully. Final answer with result summary. RESULT: ...`
    - 错误：`Sandbox killed. Task done. Need final answer exactly RESULT: line from result_summary. RESULT: ...`
    - 错误：`The user wants me to verify CUDA... RESULT: ...`
    - 错误：`Summary: ... RESULT: ...`
    - 错误：在 `RESULT:` 后追加 `Let me know if you need anything else.` 等多余句子。
-   - **规则**：`final_response` 里出现的字符，必须是 `RESULT:` 及其后的内容，不允许其它任何自然语言。
 6. **不要依赖或被截断的 `stdout`/`stderr` 字段**，关键结论必须来自 `result.json` 的 `summary` / `result_summary`。
-7. **`sandbox kill` 成功后不再调用任何工具**。kill 命令返回 `{ok:true}` 即表示任务已收尾，下一回合直接输出一行 `RESULT: <result_summary>`。禁止再调 `bash`/`read_file`/`ls` 等工具，也不要以 "Need final answer exactly..."、"Sandbox killed." 等独白开头。
+7. **`sandbox kill` 成功后不再调用任何工具**。kill 命令返回 `{ok:true}` 即表示任务已收尾，**下一回合的 `final_response` 必须严格遵守 RULE 5 的 `RESULT:` 开头格式**。禁止在 `RESULT:` 之前插入"沙箱已成功销毁"、"完整的生命周期已完成"、"任务完成"、"Sandbox killed" 等任何过渡句或过程汇报——这些信息 Runner 不需要，且会把 `RESULT:` 挤到 `final_response` 后段，触发 RULE 5 所述的结论丢失问题。也禁止再调 `bash`/`read_file`/`ls` 等工具，禁止以 "Need final answer exactly..." 等内心独白开头。
 
 ## 宿主 / Planner 调用提示
 
