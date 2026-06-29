@@ -41,7 +41,7 @@ metadata:
    ```bash
    delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait
    ```
-   CLI 在内部每 5 秒轮询一次 `logs`，直到 `finished=true` 或超时，然后一次性返回 `{execution_id, running, finished, exit_code, content}`。返回的 `execution_id` 可在后续用于 `sandbox logs` / `cancel`。适合只关心最终结果、不需要查看中间进度的场景。
+   CLI 在内部每 5 秒轮询一次 `logs`，直到 `finished=true` 或超时（`--timeout` 同时充当服务端命令超时和客户端轮询 deadline，默认 300s），然后一次性返回 `CommandResult` 信封：`{execution_id, sandbox_id, finished, exit_code, stderr_tail, stderr_size, log_file, result_summary, hints, error}`。**stdout 不直接暴露**——命令的 stdout 在 `finished=true` 时被写入沙箱内的 `log_file`，需要读全文时用 `sandbox read <id> --path <log_file>`；默认开启的 `--summary` 会自动 reverse-scan stdout 末尾 JSON 并填入 `data.result_summary`，常用场景无需手动读 `log_file`。返回的 `execution_id` 可在后续用于 `sandbox logs` / `cancel`。适合只关心最终结果、不需要查看中间进度的场景。
 
    **手动轮询（需要查看中间进度时）**：
    如果不加 `--wait` 或需要查看实时输出，用 `sandbox logs <id> --execution-id <exec_id>` 手动轮询：
@@ -49,7 +49,7 @@ metadata:
    - `finished=true` + `exit_code!=0` → 失败  
    - `running=true` → 仍运行
 
-   **故障诊断**：连续 3 次 `running=true` 且 `content`/`cursor` 无变化且距离提交超过 60 秒 → 用 `sandbox status <id>` 检查 sandbox 是否存活。
+   **故障诊断**：连续 3 次 `running=true` 且 `stderr_tail`/`cursor` 无变化且距离提交超过 60 秒 → 用 `sandbox status <id>` 检查 sandbox 是否存活。注意：`cursor` 字段无 `omitempty`，永远会出现在响应中（即使为 0）；`stderr_tail` 默认只保留 **最后 200 字节** stderr 片段（CLI 硬编码 `tailString(s, 200)`，按字节截取；ASCII 文本等同于 200 字符，多字节 UTF-8 可能被截断），`cursor=0` 通常意味着服务端从 provider 还没读到任何 stderr 行。
 
    - 后台任务成功后仍需按规则 2/3 销毁 sandbox。
 
