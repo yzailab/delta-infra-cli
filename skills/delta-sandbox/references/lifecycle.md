@@ -51,30 +51,30 @@ delta-cli sandbox kill <id>
 `sandbox logs` 返回的数据结构为：
 
 ```json
-{"ok":true,"data":{"sandbox_id":"...","execution_id":"...","stderr_tail":"...","stderr_size":1234,"cursor":5,"running":false,"finished":true,"exit_code":0,"log_file":"/tmp/delta-result-...json"}}
+{"ok":true,"data":{"sandbox_id":"...","execution_id":"...","stdout_tail":"...","stderr_tail":"...","stdout_size":1234,"stderr_size":1234,"cursor":5,"running":false,"finished":true,"exit_code":0,"log_file":"/tmp/delta-result-...json"}}
 ```
 
 字段说明：
 - `sandbox_id` / `execution_id` — 与请求一致
-- `stderr_tail` — CLI 默认保留的 **最后 200 字节** stderr 片段（CLI 硬编码 `tailString(s, 200)` 按字节截取；ASCII 等同 200 字符，多字节 UTF-8 可能被截断），避免上下文爆炸。不传任何 range flag 时，CLI 会把原始 `stderr` 字段清空，只暴露 `stderr_tail` 和 `stderr_size`
+- `stdout_tail` — CLI 默认保留的 **最后 800 字节** stdout 片段，避免上下文爆炸
+- `stderr_tail` — CLI 默认保留的 **最后 200 字节** stderr 片段（CLI 硬编码 `tailString(s, n)` 按字节截取；ASCII 等同 n 字符，多字节 UTF-8 可能被截断），避免上下文爆炸。不传任何 range flag 时，CLI 会把原始 `stdout`/`stderr` 字段清空，只暴露 `stdout_tail`/`stderr_tail` 和 `stdout_size`/`stderr_size`
+- `stdout_size` — 原始 stdout 字节数（CLI 端计算）
 - `stderr_size` — 原始 stderr 字节数（CLI 端计算）
-- `cursor` — 服务端 stderr 行计数器；**该字段无 `omitempty`，永远出现在响应中**（即使为 0 也露）。`cursor=0` 通常意味着服务端从 provider 还没读到任何 stderr 行
+- `cursor` — 服务端 stderr 行计数器；**该字段无 `omitempty`，永远出现在响应中**（即使为 0）。`cursor=0` 通常意味着服务端从 provider 还没读到任何 stderr 行
 - `running` — 命令是否仍在运行
 - `finished` — 命令是否已完成（`finished = not running`）
 - `exit_code` — 退出码（完成后才有值，运行中字段省略）
 - `log_file` — 仅 `finished=true` 时出现，是 run envelope 日志文件路径（含完整 stdout + stderr + exit_code + finished + command + error），需读它用 `delta-cli sandbox read <id> --path <log_file>`
 
-**stdout 路径说明**：`sandbox logs` **永远不直接返回 stdout**——stdout 在命令结束时被写入沙箱内的 `log_file`，必须用 `sandbox read` 读。CLI `run-bg --wait` 完成后默认开启 `--summary`，会自动 reverse-scan stdout 末尾 JSON 填入 `data.result_summary`，常用场景无需手动读 `log_file`。
+**stdout 路径说明**：`sandbox logs` 默认返回 stdout 末尾 800 字节（`stdout_tail`）提供实时中间进度预览，完整 stdout 仍在命令结束时被写入沙箱内的 `log_file`，需全文时用 `sandbox read` 读。CLI `run-bg --wait` 完成后默认开启 `--summary`，会自动 reverse-scan stdout 末尾 JSON 填入 `data.result_summary`，常用场景无需手动读 `log_file`。
 
-要用 `--tail/--grep/--context/--max-bytes` 自定义切片：传任意一个 flag 时，CLI 会把过滤后的 stderr 写回 `stderr` 字段并更新 `stderr_size`；不传则保持 `stderr=""` + `stderr_tail` 末尾 200 字节预览。
+要用 `--tail/--grep/--context` 自定义切片：传任意一个 flag 时，CLI 会把过滤后的 stdout 和 stderr 分别写回 `stdout`/`stderr` 字段并更新 `stdout_size`/`stderr_size`；不传则保持 `stdout=""` + `stdout_tail` 末尾 800 字节预览 + `stderr=""` + `stderr_tail` 末尾 200 字节预览（总计约 1KB）。
 
 ```bash
-# 看最后 50 行 stderr
+# 看最后 50 行 stdout 和 stderr
 delta-cli sandbox logs <id> --execution-id <eid> --tail 50
-# 过滤 ERROR/warning 行
+# 过滤 ERROR/warning 行（同时作用于 stdout 和 stderr）
 delta-cli sandbox logs <id> --execution-id <eid> --grep "ERROR|warning" --context 2
-# 兜底限流 32KB
-delta-cli sandbox logs <id> --execution-id <eid> --max-bytes 32768
 ```
 
 判断任务状态的规则（按优先顺序）：
