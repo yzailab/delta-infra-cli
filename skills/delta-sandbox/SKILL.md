@@ -49,7 +49,7 @@ metadata:
    - `finished=true` + `exit_code!=0` → 失败  
    - `running=true` → 仍运行
 
-   **故障诊断**：连续 3 次 `running=true` 且 `stderr_tail`/`cursor` 无变化且距离提交超过 60 秒 → 用 `sandbox status <id>` 检查 sandbox 是否存活。注意：`cursor` 字段无 `omitempty`，永远会出现在响应中（即使为 0）；`stderr_tail` 默认只保留 **最后 200 字节** stderr 片段（CLI 硬编码 `tailString(s, 200)`，按字节截取；ASCII 文本等同于 200 字符，多字节 UTF-8 可能被截断），`cursor=0` 通常意味着服务端从 provider 还没读到任何 stderr 行。
+   **故障诊断**：连续 3 次 `running=true` 且 `stderr_tail`/`stdout_tail`/`cursor` 无变化且距离提交超过 60 秒 → 用 `sandbox status <id>` 检查 sandbox 是否存活。注意：`cursor` 字段无 `omitempty`，永远会出现在响应中（即使为 0）；`stderr_tail` 默认只保留 **最后 200 字节** stderr 片段，`stdout_tail` 默认保留 **最后 800 字节** stdout 片段（CLI 硬编码 `tailString(s, n)`，按字节截取；ASCII 文本等同于 n 字符，多字节 UTF-8 可能被截断），`cursor=0` 通常意味着服务端从 provider 还没读到任何 stderr 行。
 
    - 后台任务成功后仍需按规则 2/3 销毁 sandbox。
 
@@ -142,7 +142,7 @@ required_outputs:
 | **命令执行** | |
 | 同步运行命令（≤60s） | `sandbox run <id> --command "..." [--timeout <秒>] [--summary/--no-summary] [--artifacts]` |
 | 后台运行命令（>60s） | `sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--summary/--no-summary] [--artifacts]` |
-| 查看后台日志 | `sandbox logs <id> --execution-id <exec_id> [--tail N --grep <pattern> --context N --max-bytes N]` |
+| 查看后台日志 | `sandbox logs <id> --execution-id <exec_id> [--tail N --grep <pattern> --context N]` |
 | 中断后台命令 | `sandbox cancel <id> --execution-id <exec_id>` |
 | **文件操作** | |
 | 读取文件 | `sandbox read <id> --path <path> [--output <本地路径> --tail N --grep <pattern> --offset N --limit N --context N --max-bytes N --parse-json]` |
@@ -187,7 +187,7 @@ required_outputs:
      - Go：`go run /workspace/main.go`
      - Shell：`bash /workspace/run.sh`
    - **长任务（预计 > 60 秒，如下载模型、训练、编译、大规模数据处理）**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> [--log-file <路径>]` 提交后台任务，获得 `execution_id` 后通过以下命令轮询：
-      - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 返回 `cursor`、`running`、`finished`、`exit_code`、`log_file`（完成后）。当 `finished=true` 时认为完成，完整输出需读取 `log_file`。
+       - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 返回 `stdout_tail`（末尾 800 字节）、`stderr_tail`（末尾 200 字节）、`stdout_size`、`stderr_size`、`cursor`、`running`、`finished`、`exit_code`、`log_file`（完成后）。当 `finished=true` 时认为完成，完整输出需读取 `log_file`。
            禁止对长任务使用同步 `sandbox run`
 
    **推荐实践**：让 sandbox 脚本在 `stdout` 末尾打印一个独立的结构化 JSON 对象（例如 `{"status":"ok", ...}`），CLI 的 `--summary` 默认会自动反向扫描 stdout 末尾 JSON 提取为 `data.result_summary` 字段。这样即使 `stdout` 前面是大量训练/下载日志，skill 也无需让大模型去“读整段日志再摘要”。
