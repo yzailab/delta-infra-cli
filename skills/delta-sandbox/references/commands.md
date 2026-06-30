@@ -27,7 +27,7 @@
 |------|------|
 | `sandbox run <id> --command "..." [--timeout N] [--summary/--no-summary] [--artifacts]` | 同步运行命令；默认 `--summary` 开启，返回 JSON 中 `summary` 字段已含 stdout 末尾 JSON 提取结果；`--artifacts` 附带 workspace 产物清单 |
 | `sandbox run-bg <id> --command "..." [--timeout N] [--wait] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`；加 `--wait` 等待完成返回含 `summary` 的完整结果 |
-| `sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N --max-bytes N]` | 获取后台命令日志；**默认返回 `stderr_tail`（CLI 硬编码 `tailString(s, 200)` 截取最后 200 字节，ASCII 等同 200 字符）+ `stderr_size` + `cursor`**，避免上下文爆炸；可用 `--tail/--grep` 过滤；**`cursor` 字段无 `omitempty`，0 也常驻响应**；**stdout 不通过此接口暴露**，需在 `finished=true` 后读 `log_file`。 |
+| `sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N]` | 获取后台命令日志；**默认返回 `stdout_tail`（末尾 800 字节）+ `stderr_tail`（末尾 200 字节）+ `stderr_size` + `cursor`**，总计约 1KB，避免上下文爆炸；`--tail N` 同时作用于 stdout 和 stderr（各取尾 N 行）；`--grep <pattern>` 同时过滤 stdout 和 stderr（正则）；`--context N` 提供 grep 匹配行前后 N 行上下文（同时用于 stdout 和 stderr）；**`cursor` 字段无 `omitempty`，0 也常驻响应**。 |
 | `sandbox cancel <id> --execution-id <eid>` | 中断正在运行的后台命令 |
 
 ## 文件操作
