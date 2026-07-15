@@ -1,39 +1,45 @@
 # skills/ — AI Agent Skill Packages
 
-**Generated:** 2026-06-16 (Deep Refresh)
+**Generated:** 2026-07-15
 **Parent:** `../AGENTS.md`
 
 ## OVERVIEW
 
-Markdown-based skill definitions for AI agents interacting with delta-cli. Two packages: `delta-sandbox` (sandbox lifecycle operations) and `delta-shared` (auth, config, error handling conventions).
+Markdown skill definitions consumed by the host planner. Two skills: `delta-sandbox` (sandbox lifecycle, command execution, file I/O) and `delta-shared` (auth, config, error interpretation).
 
 ## STRUCTURE
 
 ```
 skills/
 ├── delta-sandbox/
-│   ├── SKILL.md              # YAML frontmatter + Markdown operation guide
-│   └── references/           # (empty or planned)
+│   ├── SKILL.md
+│   └── references/
+│       ├── commands.md
+│       ├── lifecycle.md
+│       └── recipes.md
 └── delta-shared/
-    └── SKILL.md              # Shared auth/config rules
+    └── SKILL.md
 ```
 
 ## WHERE TO LOOK
 
 | Path | Content |
 |------|---------|
-| `delta-sandbox/SKILL.md` | Sandbox create/run/read/write/kill workflow for AI agents |
-| `delta-shared/SKILL.md` | Shared auth commands, config management, error interpretation |
+| `delta-sandbox/SKILL.md` | Create/run/read/write/kill workflow for sandbox tasks |
+| `delta-sandbox/references/commands.md` | Command cheat sheet |
+| `delta-sandbox/references/lifecycle.md` | Full create-to-kill lifecycle |
+| `delta-sandbox/references/recipes.md` | Common task recipes |
+| `delta-shared/SKILL.md` | Auth status, config init, exit-code/error mapping |
 
 ## CONVENTIONS
 
-- YAML frontmatter with `name`, `description`, `metadata.requires.bins`, `metadata.cliHelp`
-- Markdown body with tables for commands and examples; sections for preconditions
-- Skills are included in npm package `files` array and shipped with the CLI distribution
-- References directory for supplementary docs (lifecycle guides, command cheatsheets)
+- YAML frontmatter: `name`, `description`, `metadata.requires.bins`, `metadata.cliHelp`
+- Markdown body with command tables and copy-paste examples; cross-link via relative paths
+- Each skill ships in the npm tarball through the `files` array in `package.json`
+- `references/` holds supplementary docs like lifecycle guides and cheat sheets
 
 ## ANTI-PATTERNS
 
-- Do not embed realistic credentials, API keys, or tokens in skill examples
+- Do not embed realistic credentials, API keys, or tokens in examples
 - Do not break relative links between skills or references
-- Do not reference internal Go package paths in skill docs — use CLI command names
+- Do not reference internal Go package paths; use CLI command names
