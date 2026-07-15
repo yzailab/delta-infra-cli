@@ -12,9 +12,10 @@ npx @delta-infra/cli@latest install
 
 该命令会依次完成：
 1. **全局安装** `@delta-infra/cli`（含 Go 二进制）
-2. **安装 AI Skills** 到 `~/.agents/skills/`，自动适配 Claude Code、Codex、OpenCode、Cursor 等 AI 工具
-3. **初始化配置** `delta-cli config init`（交互式，非 TTY 跳过）
-4. **身份认证** `delta-cli auth login`（交互式，非 TTY 跳过）
+2. **选择 AI 工具平台**（可多选）：通用 Agent 目录 `~/.agents/skills/`（Codex/Cursor/OpenCode）、Claude Code `~/.claude/skills/`、OpenCode 原生 `~/.config/opencode/skills/`、Cursor `~/.cursor/skills/`、Memento-S 开发模式 `~/memento_s/skills/`
+3. **安装 AI Skills** 到所选平台的 skills 目录
+4. **初始化配置** `delta-cli config init`（交互式，非 TTY 跳过）
+5. **身份认证** `delta-cli auth login`（交互式，非 TTY 跳过）
 
 AI Agent 也可以直接使用以下指令完成安装：
 
@@ -26,7 +27,7 @@ AI Agent 也可以直接使用以下指令完成安装：
 npx @delta-infra/cli@latest uninstall
 ```
 
-清理全局包、AI Skills 和配置文件。
+清理全局包、所有已知平台的 AI Skills 和配置文件。
 
 ### 升级
 
@@ -197,8 +198,6 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli auth login` | 交互式登录 |
 | `delta-cli auth login --token <token>` | Token 认证 |
 | `delta-cli auth status` | 查看认证状态 |
-| `delta-cli update check` | 检查更新（deprecated，请用 `upgrade --check`） |
-| `delta-cli update` | 安装最新版本（deprecated，请用 `upgrade`） |
 | `delta-cli upgrade` | 升级 CLI 和 AI Skills 到最新版本 |
 | `delta-cli upgrade --check` | 检查是否有可用更新 |
 | `delta-cli upgrade --cli-only` | 只升级 CLI 二进制 |
