@@ -76,12 +76,12 @@ AI Agent 解析规则：
 | api | 7 | 服务端非 2xx |
 | internal | 10 | 客户端内部错误 |
 
-## 更新检查
+## 升级检查
 
 完成用户请求后，如果 JSON 中有 `_notice.update`，可建议：
 
 ```bash
-delta-cli update
+delta-cli upgrade
 ```
 
 ## 常见恢复
