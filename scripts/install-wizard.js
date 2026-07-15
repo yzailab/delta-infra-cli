@@ -14,6 +14,38 @@ const GH_MIRRORS = ["https://gh.ddlc.top", "https://ghproxy.net", "https://gh-pr
 const CONFIG_DIR = path.join(osHomedir(), ".delta-infra");
 const isWindows = process.platform === "win32";
 
+const PLATFORM_PATHS = {
+  agents:   [".agents", "skills"],
+  claude:   [".claude", "skills"],
+  opencode: [".config", "opencode", "skills"],
+  cursor:   [".cursor", "skills"],
+  mementos: ["memento_s", "skills"],
+};
+
+const PLATFORM_LABELS = {
+  zh: {
+    agents:   "通用 Agent 目录 (~/.agents/skills) — Codex / Cursor / OpenCode",
+    claude:   "Claude Code (~/.claude/skills)",
+    opencode: "OpenCode 原生目录 (~/.config/opencode/skills)",
+    cursor:   "Cursor (~/.cursor/skills)",
+    mementos: "Memento-S 开发模式 (~/memento_s/skills)",
+  },
+  en: {
+    agents:   "Generic agent dir (~/.agents/skills) — Codex / Cursor / OpenCode",
+    claude:   "Claude Code (~/.claude/skills)",
+    opencode: "OpenCode native dir (~/.config/opencode/skills)",
+    cursor:   "Cursor (~/.cursor/skills)",
+    mementos: "Memento-S dev mode (~/memento_s/skills)",
+  },
+};
+
+const SKILL_NAMES = ["delta-sandbox", "delta-shared"];
+const LANG = "zh";
+
+function platformSkillDir(platform) {
+  return path.join(osHomedir(), ...PLATFORM_PATHS[platform]);
+}
+
 // ── i18n ────────────────────────────────────────────────────────────────────
 
 const messages = {
@@ -26,8 +58,10 @@ const messages = {
     step1Upgraded:  "已升级到 v%s",
     step1Fail:      "全局安装失败。运行以下命令重试: npm install -g %s",
     step2:          "安装 AI Skills",
+    step2SelectPlatforms: "选择需要安装 Delta Skills 的 AI 工具平台（可多选）",
     step2Spinner:   "正在安装 Skills...",
     step2Done:      "Skills 已安装",
+    step2DoneFor:   "已安装至: %s",
     step2Skip:      "已安装，跳过",
     step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g",
     step3:          "正在初始化配置...",
@@ -52,8 +86,10 @@ const messages = {
     step1Upgraded:  "Upgraded to v%s",
     step1Fail:      "Failed to install globally. Run manually: npm install -g %s",
     step2:          "Install AI skills",
+    step2SelectPlatforms: "Select AI tool platforms to install Delta Skills (multi-select)",
     step2Spinner:   "Installing skills...",
     step2Done:      "Skills installed",
+    step2DoneFor:   "Installed to: %s",
     step2Skip:      "Already installed. Skipped",
     step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g",
     step3:          "Initializing config...",
@@ -252,7 +288,7 @@ async function stepInstallGlobally(msg) {
   }
 }
 
-function installSkillsFromLocalPackage() {
+function findPackageSkillsDir() {
   const candidates = [];
   try {
     const npmRoot = runSilent("npm", ["root", "-g"], { timeout: 10000 })
@@ -261,53 +297,68 @@ function installSkillsFromLocalPackage() {
   } catch {}
   candidates.push(path.join(__dirname, "..", "skills"));
 
-  let pkgSkillsDir = null;
   for (const c of candidates) {
     if (fs.existsSync(path.join(c, "delta-sandbox", "SKILL.md"))) {
-      pkgSkillsDir = c;
-      break;
+      return c;
     }
   }
+  return null;
+}
+
+function installSkillsFromLocalPackage(platforms) {
+  const pkgSkillsDir = findPackageSkillsDir();
   if (!pkgSkillsDir) return false;
 
-  const home = osHomedir();
-  const agentsDir = path.join(home, ".agents", "skills");
-  fs.mkdirSync(agentsDir, { recursive: true });
-
-  for (const skill of ["delta-sandbox", "delta-shared"]) {
-    const src = path.join(pkgSkillsDir, skill);
-    if (!fs.existsSync(src)) continue;
-    const dst = path.join(agentsDir, skill);
-    fs.rmSync(dst, { recursive: true, force: true });
-    fs.cpSync(src, dst, { recursive: true });
-  }
-
-  const claudeDir = path.join(home, ".claude", "skills");
-  if (fs.existsSync(path.dirname(claudeDir))) {
-    fs.mkdirSync(claudeDir, { recursive: true });
-    for (const skill of ["delta-sandbox", "delta-shared"]) {
-      const linkPath = path.join(claudeDir, skill);
-      const targetPath = path.join(agentsDir, skill);
-      try {
-        fs.rmSync(linkPath, { force: true });
-        fs.symlinkSync(path.relative(path.dirname(linkPath), targetPath), linkPath);
-      } catch { /* symlink may fail on some platforms */ }
+  for (const platform of platforms) {
+    const targetDir = platformSkillDir(platform);
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const skill of SKILL_NAMES) {
+      const src = path.join(pkgSkillsDir, skill);
+      if (!fs.existsSync(src)) continue;
+      const dst = path.join(targetDir, skill);
+      try { fs.rmSync(dst, { recursive: true, force: true }); } catch {}
+      fs.cpSync(src, dst, { recursive: true });
     }
   }
-
   return true;
 }
 
-async function stepInstallSkills(msg) {
+async function stepSelectPlatforms(msg) {
+  if (!isInteractiveEnv()) {
+    return ["agents"];
+  }
+  const labels = PLATFORM_LABELS[LANG];
+  const defaultPlatforms = fs.existsSync(path.dirname(platformSkillDir("claude")))
+    ? ["agents", "claude"]
+    : ["agents"];
+  const selected = await p.multiselect({
+    message: msg.step2SelectPlatforms,
+    options: Object.keys(PLATFORM_PATHS).map((key) => ({
+      value: key,
+      label: labels[key],
+    })),
+    initialValues: defaultPlatforms,
+    required: true,
+  });
+  handleCancel(selected, msg);
+  return selected;
+}
+
+async function stepInstallSkills(msg, platforms) {
   const s = createSpinner();
   s.start(msg.step2Spinner);
   try {
     try {
-      if (installSkillsFromLocalPackage()) {
+      if (installSkillsFromLocalPackage(platforms)) {
         s.stop(msg.step2Done);
+        p.log.info(fmt(msg.step2DoneFor, platforms.join(", ")));
         return;
       }
     } catch { }
+
+    if (!platforms.includes("agents")) {
+      throw new Error("local skills package not found and agent dir not selected");
+    }
 
     const urls = [
       `https://gh.ddlc.top/https://github.com/${SKILLS_REPO}`,
@@ -323,6 +374,7 @@ async function stepInstallSkills(msg) {
           env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
         });
         s.stop(msg.step2Done);
+        p.log.info(fmt(msg.step2DoneFor, "agents"));
         return;
       } catch (e) {
         lastErr = e;
@@ -406,17 +458,15 @@ async function stepUninstallSkills(msg) {
   const s = createSpinner();
   s.start("Removing AI skills...");
 
-  const home = osHomedir();
-  const agentsDir = path.join(home, ".agents", "skills");
-  const claudeDir = path.join(home, ".claude", "skills");
   let removedLocally = false;
-
-  for (const skill of ["delta-sandbox", "delta-shared"]) {
-    try {
-      fs.rmSync(path.join(agentsDir, skill), { recursive: true, force: true });
-      fs.rmSync(path.join(claudeDir, skill), { force: true });
-      removedLocally = true;
-    } catch { }
+  for (const platform of Object.keys(PLATFORM_PATHS)) {
+    const dir = platformSkillDir(platform);
+    for (const skill of SKILL_NAMES) {
+      try {
+        fs.rmSync(path.join(dir, skill), { recursive: true, force: true });
+        removedLocally = true;
+      } catch { }
+    }
   }
 
   if (removedLocally) {
@@ -466,14 +516,16 @@ async function doInstall() {
   if (isInteractive) {
     p.intro(messages.zh.setup);
     await stepInstallGlobally(messages.zh);
-    await stepInstallSkills(messages.zh);
+    const platforms = await stepSelectPlatforms(messages.zh);
+    await stepInstallSkills(messages.zh, platforms);
     await stepConfigInit(messages.zh);
     await stepAuthLogin(messages.zh);
     p.outro(messages.zh.done);
   } else {
     console.log(messages.zh.setup);
     await stepInstallGlobally(messages.zh);
-    await stepInstallSkills(messages.zh);
+    const platforms = ["agents"];
+    await stepInstallSkills(messages.zh, platforms);
     console.log(messages.zh.nonTtyHint);
   }
 }
