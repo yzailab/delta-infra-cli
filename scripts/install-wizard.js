@@ -12,6 +12,8 @@ const SKILLS_REPO = "yzailab/delta-infra-cli";
 const NPM_REGISTRIES = ["https://registry.npmmirror.com", "https://registry.npmjs.org"];
 const GH_MIRRORS = ["https://gh.ddlc.top", "https://ghproxy.net", "https://gh-proxy.com"];
 const CONFIG_DIR = path.join(osHomedir(), ".delta-infra");
+const CONFIG_VERSION = 1;
+const DEFAULT_BASE_URL = "https://delta-infra-nacos-test.yangtzeailab.com/sandbox/api/v1";
 const isWindows = process.platform === "win32";
 
 const PLATFORM_PATHS = {
@@ -234,6 +236,21 @@ function getExistingConfig() {
   } catch { return null; }
 }
 
+function writeDefaultConfig(existing = null) {
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  const config = {
+    version: CONFIG_VERSION,
+    base_url: DEFAULT_BASE_URL,
+  };
+  if (existing && existing.token) {
+    config.token = existing.token;
+  }
+  if (existing && existing.science_base_url) {
+    config.science_base_url = existing.science_base_url;
+  }
+  fs.writeFileSync(path.join(CONFIG_DIR, "config.json"), JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+}
+
 // ── Steps ───────────────────────────────────────────────────────────────────
 
 async function stepInstallGlobally(msg) {
@@ -393,33 +410,29 @@ async function stepConfigInit(msg) {
   const s = createSpinner();
   s.start(msg.step3);
 
-  const deltaCli = whichDeltaCli();
-  if (!deltaCli) {
-    s.stop(msg.step3);
-    p.log.warn("delta-cli not found on PATH after global install.");
-    p.log.info(msg.step3Fail);
-    return;
-  }
-
-  // Check if config already exists with valid data
   const existingConfig = getExistingConfig();
-  s.stop(msg.step3);
 
   if (existingConfig && existingConfig.base_url) {
+    s.stop(msg.step3);
     const reuse = await p.confirm({
       message: `发现已有配置 (Server: ${existingConfig.base_url})，继续使用？`,
     });
-    if (handleCancel(reuse, msg) && reuse) {
+    if (p.isCancel(reuse)) {
+      handleCancel(reuse, msg);
+      return;
+    }
+    if (reuse) {
       p.log.info(msg.step3Skip);
       return;
     }
   }
 
   try {
-    run(deltaCli, ["config", "init"]);
-    p.log.success(msg.step3Done);
-  } catch {
-    p.log.error(msg.step3Fail);
+    writeDefaultConfig(existingConfig);
+    s.stop(msg.step3Done);
+  } catch (e) {
+    s.stop(msg.step3Fail);
+    p.log.error(e.message || String(e));
     process.exit(1);
   }
 }
