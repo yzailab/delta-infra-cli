@@ -238,6 +238,17 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox search <id> --path <根目录> --pattern <glob>` | 搜索文件 |
 | `delta-cli sandbox upload <id> --source <本地目录> --target <沙箱路径>` | 上传目录（tar.gz + 自动解压） |
 
+### Science 工具
+
+> 需要先在配置中设置 `science_base_url`（`delta-cli config set science_base_url <url>` 或环境变量 `DELTA_INFRA_SCIENCE_BASE_URL`）。
+
+| 命令 | 说明 |
+|------|------|
+| `delta-cli science list` | 列出所有已启用的 science 工具 |
+| `delta-cli science get <tool_name>` | 查看指定工具的详情 |
+| `delta-cli science invoke --tool <tool_name> --endpoint <endpoint_name> [--data '{"key":"value"}'] [--params '{"key":"value"}']` | 调用工具端点 |
+| `delta-cli science endpoints list <tool_name>` | 列出指定工具的所有端点 |
+
 ## 输出格式
 
 所有命令返回统一的 JSON envelope：
@@ -364,7 +375,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.0.5
+./release.sh v1.0.64
 ```
 
 脚本执行步骤：
