@@ -1,6 +1,6 @@
 # delta-cli
 
-Delta Infra 的命令行工具。
+Delta Infra 的命令行工具，用于管理 Delta Sandbox GPU/CPU 计算任务和调用 Science 工具。
 
 ## 安装
 
