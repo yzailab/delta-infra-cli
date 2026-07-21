@@ -131,7 +131,7 @@ go install github.com/delta-infra/delta-infra-cli/cmd/delta-cli@latest
 delta-cli config init
 ```
 
-执行时会交互式提示输入服务端地址（默认：`http://172.17.152.6:8000/api/v1`）以及 Bearer Token（可选，也可后续用 `auth login` 配置）。
+执行时会交互式提示输入服务端地址（默认：`https://delta-infra-nacos-test.yangtzeailab.com/sandbox/api/v1`）以及 Bearer Token（可选，也可后续用 `auth login` 配置）。
 
 非交互式环境（如 CI）会直接使用默认值，也可以通过 flag 或环境变量一次性指定：
 
@@ -375,7 +375,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.0.68
+./release.sh v1.0.69
 ```
 
 脚本执行步骤：
