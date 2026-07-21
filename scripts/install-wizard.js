@@ -329,8 +329,8 @@ async function stepSelectPlatforms(msg) {
   }
   const labels = PLATFORM_LABELS[LANG];
   const defaultPlatforms = fs.existsSync(path.dirname(platformSkillDir("claude")))
-    ? ["agents", "claude"]
-    : ["agents"];
+    ? ["agents", "claude", "mementos"]
+    : ["agents", "mementos"];
   const selected = await p.multiselect({
     message: msg.step2SelectPlatforms,
     options: Object.keys(PLATFORM_PATHS).map((key) => ({
