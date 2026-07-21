@@ -50,7 +50,7 @@ function platformSkillDir(platform) {
 
 const messages = {
   zh: {
-    setup:          "正在设置 Delta Sandbox CLI...",
+    setup:          "正在设置 Delta Infra CLI...",
     upgrade:        "正在升级 %s (v%s → v%s)...",
     step1:          "正在安装 %s...",
     step1Skip:      "已安装 (v%s)，跳过",
@@ -78,7 +78,7 @@ const messages = {
     nonTtyHint:     "要完成配置，请在终端中运行：\n  delta-cli config init\n  delta-cli auth login",
   },
   en: {
-    setup:          "Setting up Delta Sandbox CLI...",
+    setup:          "Setting up Delta Infra CLI...",
     upgrade:        "Upgrading %s (v%s → v%s)...",
     step1:          "Installing %s globally...",
     step1Skip:      "Already installed (v%s). Skipped",
