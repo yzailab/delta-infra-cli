@@ -1,5 +1,11 @@
 # 跨服务工作流
 
+每一步必须直接使用对应的具名 service Skill，并由该 Skill 的 `python_repl` 调用
+`delta-science/scripts/invoke.py`。禁止把步骤派发给 `task[general-purpose]`、通用
+subagent 或自由文本执行器；禁止 Bash、目录探测和直接 HTTP。wrapper 成功后每一步
+只消费 `result["native"]` 顶层。目标 operation 不在 CLI catalog 时，立即标记为
+不支持且未发送远端请求，不猜测相近 endpoint。
+
 ## 单个已命名分子
 
 1. 用 PubChem `compound-summary` 解析名称并取得身份字段。
@@ -17,10 +23,13 @@
 5. 用 PubChem 记录的原始 `input` 作为 molecule id，并按文档顺序从嵌套属性中提取 SMILES。
 6. 保持输入顺序，报告每个分数时明确对应的分子对。
 7. 除非用户明确要求，不要渲染、保存用户文件、检查健康状态或探测额外描述符。
+8. `ranked_pairs` 使用命名字段 `a`、`b`、`similarity`。找指定目标的最近邻时，
+   在包含该目标的记录中取最大 `similarity`，另一侧字段就是最近邻；不要使用
+   `i`、`j`、`score` 或猜测矩阵下标。
 
 ## 材料工作流
 
-1. 使用 pymatgen 校验化学式/结构并转换 CIF。
+1. 使用 pymatgen 校验化学式/结构并转换 CIF；无机式量只能取当前 native `weight`。
 2. GSAS-II 只能接收真实 CIF 文本后再做衍射计算。
 3. LAMMPS 只能在已有明确的力场、data 和脚本设置后运行；部署检查可以使用内置有界示例。
 4. 从 LAMMPS 返回 pymatgen 或 GSAS-II 前，需要从弛豫结果重新构造 CIF/POSCAR。不要直接传递 LAMMPS data/dump 文件。
@@ -32,3 +41,4 @@
 - 带真实历史结果的分类反应条件：SynBO
 
 禁止为了让优化器运行而编造观测数据。用户没有提供测量结果时，只能使用初始化或随机建议模式，并明确说明它是待实验验证的建议，不是已经验证的最优条件。
+SynBO/Delta-BO 没有返回 recommendations 时，不得用本地回归、GP、UCB 或人工排序替代。
