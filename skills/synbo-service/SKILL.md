@@ -1,6 +1,11 @@
 ---
 name: synbo-service
 description: 当用户需要对分类反应条件空间做初始采样，或基于真实历史反应结果使用 SynBO 推荐下一批催化剂、溶剂、碱等条件时使用。支持 health、initialize、optimize；所有调用只走 Delta CLI，重型 optimize 串行执行且超时不自动重试。
+metadata:
+  allowed-tools:
+    - read_file
+    - python_repl
+    - step_finish
 ---
 
 # SynBO 服务
