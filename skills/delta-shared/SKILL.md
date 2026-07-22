@@ -1,6 +1,5 @@
 ---
 name: delta-shared
-version: 1.1.0
 description: "delta-cli 全局共享规则：配置/认证检查、安全红线、错误处理、sandbox 销毁。"
 ---
 
