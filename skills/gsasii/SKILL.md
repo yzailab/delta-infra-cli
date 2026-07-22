@@ -1,6 +1,11 @@
 ---
 name: gsasii
 description: 当用户要求使用真实 CIF 模拟粉末 XRD/中子衍射，或使用真实粉末数据、仪器参数与相模型执行 GSAS-II Rietveld 精修时使用。所有实时请求只走 Delta CLI wrapper；禁止伪造 CIF、粉末数据或仪器文件。
+metadata:
+  allowed-tools:
+    - read_file
+    - python_repl
+    - step_finish
 ---
 
 # GSAS-II 服务
