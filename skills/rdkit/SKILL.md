@@ -1,6 +1,11 @@
 ---
 name: rdkit
 description: 当用户需要通过已部署的 Delta Science 服务校验或规范化 SMILES/InChI、计算 RDKit 描述符、指纹、相似度、渲染或子结构筛选时使用。所有实时请求只能由 python_repl 直接执行 delta-science Skill 的 invoke.py；禁止 Bash、目录探测、直接 HTTP、本地 RDKit 和 native.data 路径。
+metadata:
+  allowed-tools:
+    - read_file
+    - python_repl
+    - step_finish
 ---
 
 # RDKit 服务
