@@ -166,7 +166,7 @@ delta-cli auth status
 ```bash
 # 创建带 GPU 的 sandbox（--max-life 默认 30 分钟，长任务请调高）
 delta-cli sandbox create \
-  --image deltarouter/pytorch-cuda13:latest \
+  --image image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
   --cpu 4 --memory 16Gi --gpu 1 \
   --max-life 120
 
@@ -375,7 +375,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.0.70
+./release.sh v1.0.71
 ```
 
 脚本执行步骤：
