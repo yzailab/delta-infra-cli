@@ -42,7 +42,7 @@ const PLATFORM_LABELS = {
   },
 };
 
-const SKILL_NAMES = ["delta-sandbox", "delta-shared", "delta-science"];
+const { skills: SKILL_NAMES } = require("../skills/manifest.json");
 const LANG = "zh";
 
 function platformSkillDir(platform) {
@@ -246,12 +246,8 @@ function writeConfig({ baseUrl, scienceUrl, existing = null } = {}) {
   const config = {
     version: CONFIG_VERSION,
     base_url: baseUrl || DEFAULT_BASE_URL,
+    science_base_url: scienceUrl || existing?.science_base_url || DEFAULT_SCIENCE_BASE_URL,
   };
-  if (scienceUrl) {
-    config.science_base_url = scienceUrl;
-  } else if (existing && existing.science_base_url) {
-    config.science_base_url = existing.science_base_url;
-  }
   if (existing && existing.token) {
     config.token = existing.token;
   }
@@ -509,13 +505,13 @@ async function stepUninstallSkills(msg) {
   }
 
   try {
-    await runSilentAsync("npx", ["-y", "skills", "remove", "delta-sandbox", "delta-shared", "-g"], {
+    await runSilentAsync("npx", ["-y", "skills", "remove", ...SKILL_NAMES, "-g"], {
       timeout: 60000,
     });
     s.stop("AI skills removed");
   } catch {
     s.stop("Warning: skill removal failed. You can retry:");
-    p.log.info("  npx skills remove delta-sandbox delta-shared -g");
+    p.log.info(`  npx skills remove ${SKILL_NAMES.join(" ")} -g`);
   }
 }
 
