@@ -1,6 +1,6 @@
 {
   "name": "@delta-infra/cli",
-  "version": "1.0.75",
+  "version": "1.0.76",
   "description": "Delta Infra CLI for sandbox compute and science tools.",
   "bin": {
     "delta-cli": "scripts/run.js"
@@ -14,6 +14,7 @@
     "scripts/install-wizard.js",
     "scripts/run.js",
     "skills/manifest.json",
+    "skills/science-tools.json",
     "skills/delta-sandbox/",
     "skills/delta-shared/",
     "skills/delta-science/",
