@@ -43,6 +43,7 @@ skills/
 | `delta-science/SKILL.md` | Science request routing, CLI-only execution, and cross-service handoffs |
 | `delta-science/references/` | CLI contract, service payloads, and multi-tool workflows |
 | `delta-science/scripts/invoke.py` | Deterministic wrapper for `delta-cli science invoke` |
+| `science-tools.json` | Single source for Science tools, operations, legacy aliases, and packaged Skill names |
 
 ## CONVENTIONS
 
@@ -50,6 +51,8 @@ skills/
 - Markdown body with command tables and copy-paste examples; cross-link via relative paths
 - Each skill ships in the npm tarball through the `files` array in `package.json`
 - `references/` holds supplementary docs like lifecycle guides and cheat sheets
+- Named Science skills whitelist `read_file`, `python_repl`, and `step_finish`; do not restore the full host tool catalog
+- Run `node scripts/generate-science-catalog.js` after editing `science-tools.json`, then use `--check` in validation
 
 ## ANTI-PATTERNS
 
