@@ -1,6 +1,11 @@
 ---
 name: pymatgen
 description: 当用户需要解析材料化学式与组成、计算式量、解析或总结 CIF/POSCAR/JSON/CSSR/XSF 晶体结构、转换结构格式或分析空间群和对称性时使用。所有实时请求只走 Delta CLI wrapper；无机化学式优先使用本 Skill，不用 PubChem 或本地元素表替代。
+metadata:
+  allowed-tools:
+    - read_file
+    - python_repl
+    - step_finish
 ---
 
 # pymatgen 服务
