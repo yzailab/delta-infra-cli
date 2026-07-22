@@ -11,6 +11,10 @@ Tool：`pubchem`。
 - 批量查询不要添加 `properties` 或 `synonym_limit`，尤其不能把 `CID` 放进 `properties`。
 - 其他 operation：`compound-resolve-cids`、`compound-properties`、`compound-synonyms`。
 
+单个 `compound-summary` 的业务字段直接位于 wrapper 的 `native` 顶层：读取
+`native.valid`、`native.cid`、`native.properties` 和 `native.synonyms`；不存在
+`native.data` 这一层。
+
 模糊问题优先使用 summary。按 `CanonicalSMILES`、`ConnectivitySMILES`、`SMILES`、`IsomericSMILES` 的顺序提取 SMILES。PubChem 返回的 `MolecularWeight`、`XLogP` 和 `TPSA` 必须保留为 PubChem 数据。
 
 批量 native 输出为 `{"results":[...]}`。每条记录用 `input` 保存原始标签，化合物字段位于嵌套的 `properties`；记录不是平铺结构，集合键也不是 `compounds`。
@@ -29,6 +33,10 @@ Tool：`rdkit`。
 
 `batch-parse-describe` 使用 `molecules`，不能用 `inputs`；分子字段使用 `smiles`，不能用 `input`。fingerprint 选项是对象，不是布尔值。PubChem `XLogP` 与 RDKit `MolLogP` 使用不同模型。
 
+`similarity-matrix` 的 `ranked_pairs` 每项是
+`{"a": <输入 id>, "b": <输入 id>, "similarity": <数值>}`。不要读取
+`i`、`j` 或 `score`。
+
 ## pymatgen
 
 Tool：`pymatgen`。
@@ -37,6 +45,10 @@ Tool：`pymatgen`。
 - 结构 operation：`structure-parse`、`structure-summary`、`structure-convert`、`structure-symmetry`
 
 结构调用必须发送完整结构文本，不能发送本地文件路径。支持 CIF、POSCAR、JSON、CSSR 和 XSF。不要把 LAMMPS data/dump 文件交给 pymatgen。
+
+对无机化学式/式量，只报告当前 native 的 `formula`、`reduced_formula`、
+`chemical_system`、`weight` 与元素组成。PubChem 未收录时保留 `not_found`，
+不要编造 CID 或用本地计算补值。
 
 ## GSAS-II
 
@@ -54,6 +66,9 @@ Tool：`lammps`。
 - 执行：`run`，参数必须是示例返回的精确 native `request`，或用户明确授权的 `input_script`/files
 
 绝不能把 CLI 外层信封传给 `run`，只能传 `native["request"]`。LAMMPS 不会自动推断力场。交互式运行必须保持有界。
+
+最小示例最终数值从当前 native `last_thermo` 读取；逐字保留 `Step`、`Temp`
+和 `TotEng`，不要除以原子数、换算单位或推测收敛性。
 
 ## Delta-BO
 
@@ -76,10 +91,22 @@ Tool：`synbo`；operation 为 `initialize` 和 `optimize`。
 
 二者都使用 `condition_dict`、`opt_metrics` 和 `batch_size`。`optimize` 还要求数值型 `previous_results`，且每条记录必须包含全部条件和指标。有界 CPU 测试使用 `accuracy:"tiny"` 和 `device:"cpu"`，并串行执行。
 
-常规回归可以测试 `initialize`。在已知后端数组维度问题修复前跳过 `optimize`，除非用户明确要求。
+有真实 `previous_results` 的优化请求使用一次 `optimize`；每行必须包含全部条件列和
+数值指标。失败、超时或空 recommendations 时如实报告，禁止本地替代优化。
 
 ## AntBO
 
 Tool：`antbo`。
 
-部署 catalog 中存在时，`health` 是只读调用。`run-default-job` 会改变远端状态，`log_name`、`append` 和 `timeout_seconds` 必须通过 `--params-json` 传递，不能作为 request data。没有用户明确授权时，不得启动、停止或重试作业；必须保留返回的 PID 和日志名称。
+当前 CLI catalog 暴露 `health`、`run-default-job`、`run`、`log`、`jobs` 和
+`stop`；准确参数见 `operation-contracts.md`。没有 `ldm/suggest`、
+`ldm/initialize`、`ldm/evaluate`。遇到 AntBO/CDRH3 的这些 LDM 请求时不要调用工具、
+不要改用小分子 LDM-BO、不要探测目录或直连 HTTP；明确回复“当前 Delta CLI catalog
+未暴露该 operation；未发送远端请求”。
+
+启动作业只能根据同一次 native 的 `started`、`pid` 和 `log_name`/`log_path`
+报告；任一字段缺失时标记为未验证，不要重复提交或编造作业信息。
+
+`health`、`log`、`jobs` 是只读调用。`run-default-job`、`run`、`stop` 会改变远端状态；
+`run-default-job` 的 `log_name`、`append`、`timeout_seconds` 使用 `--params-json`。
+没有用户明确授权时不得启动或停止；未知结果不得重试。
