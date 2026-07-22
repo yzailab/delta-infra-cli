@@ -14,6 +14,7 @@ const GH_MIRRORS = ["https://gh.ddlc.top", "https://ghproxy.net", "https://gh-pr
 const CONFIG_DIR = path.join(osHomedir(), ".delta-infra");
 const CONFIG_VERSION = 1;
 const DEFAULT_BASE_URL = "https://delta-infra-nacos-test.yangtzeailab.com/sandbox/api/v1";
+const DEFAULT_SCIENCE_BASE_URL = "http://8.141.101.94:8080/science_tool";
 const isWindows = process.platform === "win32";
 
 const PLATFORM_PATHS = {
@@ -67,6 +68,8 @@ const messages = {
     step2Skip:      "已安装，跳过",
     step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g",
     step3:          "正在初始化配置...",
+    step3BaseUrl:   "Sandbox API 地址",
+    step3ScienceUrl:"Science API 地址",
     step3Skip:      "跳过配置初始化",
     step3Done:      "配置已初始化",
     step3Fail:      "配置初始化失败。运行以下命令重试: delta-cli config init",
@@ -95,6 +98,8 @@ const messages = {
     step2Skip:      "Already installed. Skipped",
     step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g",
     step3:          "Initializing config...",
+    step3BaseUrl:   "Sandbox API URL",
+    step3ScienceUrl:"Science API URL",
     step3Skip:      "Skipped config initialization",
     step3Done:      "Config initialized",
     step3Fail:      "Failed to init config. Run manually: delta-cli config init",
@@ -236,17 +241,19 @@ function getExistingConfig() {
   } catch { return null; }
 }
 
-function writeDefaultConfig(existing = null) {
+function writeConfig({ baseUrl, scienceUrl, existing = null } = {}) {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   const config = {
     version: CONFIG_VERSION,
-    base_url: DEFAULT_BASE_URL,
+    base_url: baseUrl || DEFAULT_BASE_URL,
   };
+  if (scienceUrl) {
+    config.science_base_url = scienceUrl;
+  } else if (existing && existing.science_base_url) {
+    config.science_base_url = existing.science_base_url;
+  }
   if (existing && existing.token) {
     config.token = existing.token;
-  }
-  if (existing && existing.science_base_url) {
-    config.science_base_url = existing.science_base_url;
   }
   fs.writeFileSync(path.join(CONFIG_DIR, "config.json"), JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
 }
@@ -411,9 +418,9 @@ async function stepConfigInit(msg) {
   s.start(msg.step3);
 
   const existingConfig = getExistingConfig();
+  s.stop(msg.step3);
 
   if (existingConfig && existingConfig.base_url) {
-    s.stop(msg.step3);
     const reuse = await p.confirm({
       message: `发现已有配置 (Server: ${existingConfig.base_url})，继续使用？`,
     });
@@ -427,12 +434,26 @@ async function stepConfigInit(msg) {
     }
   }
 
+  const baseUrl = handleCancel(await p.text({
+    message: msg.step3BaseUrl,
+    initialValue: existingConfig && existingConfig.base_url
+      ? existingConfig.base_url
+      : DEFAULT_BASE_URL,
+  }), msg);
+
+  const scienceUrl = handleCancel(await p.text({
+    message: msg.step3ScienceUrl,
+    initialValue: existingConfig && existingConfig.science_base_url
+      ? existingConfig.science_base_url
+      : DEFAULT_SCIENCE_BASE_URL,
+  }), msg);
+
   try {
-    writeDefaultConfig(existingConfig);
-    s.stop(msg.step3Done);
+    writeConfig({ baseUrl, scienceUrl, existing: existingConfig });
+    p.log.success(msg.step3Done);
   } catch (e) {
-    s.stop(msg.step3Fail);
     p.log.error(e.message || String(e));
+    p.log.error(msg.step3Fail);
     process.exit(1);
   }
 }
