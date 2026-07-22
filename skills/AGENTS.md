@@ -5,10 +5,9 @@
 
 ## OVERVIEW
 
-Markdown skill definitions consumed by the host planner. Three skills:
-`delta-sandbox` (sandbox lifecycle and file I/O), `delta-shared` (auth, config,
-and error interpretation), and `delta-science` (CLI-only routing and
-orchestration for deployed Science tools).
+Markdown skill definitions consumed by the host planner. The package contains
+shared and sandbox skills, a `delta-science` router/wrapper, and named Science
+service skills for chemistry, materials, optimization, and AntBO operations.
 
 ## STRUCTURE
 
@@ -20,8 +19,16 @@ skills/
 │       ├── commands.md
 │       ├── lifecycle.md
 │       └── recipes.md
-└── delta-shared/
-    └── SKILL.md
+├── delta-shared/
+│   └── SKILL.md
+├── delta-science/
+│   ├── SKILL.md
+│   ├── scripts/invoke.py
+│   └── references/
+├── pubchem/  rdkit/  pymatgen/
+├── gsasii/  lammps/
+├── delta-bo/  ldm-bo/  synbo-service/
+└── antbo-service/  antbo-ldm-guard/
 ```
 
 ## WHERE TO LOOK
