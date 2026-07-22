@@ -1,6 +1,6 @@
 {
   "name": "@delta-infra/cli",
-  "version": "1.0.70",
+  "version": "1.0.71",
   "description": "Delta Infra CLI for sandbox compute and science tools.",
   "bin": {
     "delta-cli": "scripts/run.js"
@@ -15,6 +15,7 @@
     "scripts/run.js",
     "skills/delta-sandbox/SKILL.md",
     "skills/delta-sandbox/references/",
+    "skills/delta-science/",
     "skills/delta-shared/SKILL.md",
     "skills/delta-shared/references/"
   ],
