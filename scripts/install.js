@@ -276,10 +276,10 @@ function getExpectedChecksum(archiveName, checksumsDir) {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const idx = trimmed.indexOf("  ");
-    if (idx === -1) continue;
-    const hash = trimmed.slice(0, idx);
-    const name = trimmed.slice(idx + 2);
+    const match = trimmed.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
+    if (!match) continue;
+    const hash = match[1];
+    const name = match[2];
     if (name === archiveName) return hash;
   }
   throw new Error(`Checksum entry not found for ${archiveName}`);
