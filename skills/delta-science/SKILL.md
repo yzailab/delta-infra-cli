@@ -1,6 +1,6 @@
 ---
 name: delta-science
-description: "用于所有涉及化合物、材料、衍射、分子动力学、贝叶斯优化、反应条件或抗体优化的 Science 任务，包括简短、模糊的人类请求。所有在线操作必须通过 Delta CLI。对于多个已命名分子的性质与结构比较，规划三个 Memento 步骤：PubChem 用一次批量调用写入 @ROOT/compounds_basic.json；RDKit 用一次 similarity-matrix 调用写入 @ROOT/science_comparison_result.json；主代理随后直接用 read_file 读取并回答。RDKit 返回产物后立即完成该步骤。主代理不得再次运行 python_repl、探测路径、查找可执行文件、重复调用 Science、分派 filesystem Skill，或补充交接结果中没有的阈值结论、结构原因和来源链接。"
+description: "用于所有涉及化合物、材料、衍射、分子动力学、贝叶斯优化、反应条件或抗体优化的 Science 任务，包括简短、模糊的人类请求。每个实时操作必须选择具名 Science service Skill，并由 python_repl 执行本 Skill 的 invoke.py 走 Delta CLI；禁止通用子代理、Bash、目录探测、直接 HTTP、字面 CLI 命令和 native.data。AntBO/CDRH3 LDM 请求先判断 catalog，不得先问数据或派发 filesystem。"
 ---
 
 # Delta Science
@@ -9,7 +9,16 @@ description: "用于所有涉及化合物、材料、衍射、分子动力学、
 
 ## 强制调用链
 
-- 每个在线 Science 操作都必须通过 `delta-cli science invoke` 执行。
+- 每个在线 Science 操作都必须由所选的具名 service Skill 直接执行本 Skill 的
+  `scripts/invoke.py`，最终通过 Delta CLI。禁止把 Science 步骤派发给
+  `task[general-purpose]`、通用 subagent 或自由文本子任务。
+- 第一个且唯一的实时执行工具是 `python_repl`。禁止 Bash、`list_dir`、
+  `read_file`、`which`、`where`、`ls` 和路径探测；禁止执行字面命令
+  `CLI science invoke`、`CLI`、`cli` 或 `delta-cli`。
+- `python_repl` 的工具参数对象只能包含 `code`；禁止传入 `deps`、
+  `dependencies`、`packages` 或任何其他参数。
+- `SKILLS_ROOT` 只在 Python 中通过 `os.environ["SKILLS_ROOT"]` 读取，不能把
+  `@SKILLS_ROOT` 当作文件路径。
 - 禁止使用 `httpx`、`requests`、`curl`、PowerShell Web 命令或浏览器直接访问公司网关、PubChem 或业务服务。
 - CLI 调用失败时，禁止改用本地 RDKit、pymatgen 或直接 HTTP；如实报告 CLI 或服务端错误。
 - 每次调用都使用 `scripts/invoke.py`。它负责解析 CLI 路径、安全传递 JSON、校验响应信封并记录调用链证据。
@@ -30,15 +39,36 @@ p = subprocess.run(
 result = json.loads(p.stdout)
 ```
 
-每次调用只替换 tool、endpoint 和 payload。只有 references 明确说明是查询参数时才使用 `--params-json`，否则使用 `--data-json`。必须满足 `result["ok"] is True` 且 `result["transport"] == "delta-cli"`，之后只使用 `result["native"]`。
+每次调用只替换 tool、endpoint 和 payload。只有 references 明确说明是查询参数时才使用 `--params-json`，否则使用 `--data-json`。必须满足 `result["ok"] is True` 且 `result["transport"] == "delta-cli"`，之后业务结果直接使用 `result["native"]`；wrapper 已完成信封解包，禁止再读取 `result["native"]["data"]`。
 
-第一次在线调用前读取 [references/cli-contract.md](references/cli-contract.md)。构造参数前，只读取 [references/services.md](references/services.md) 中被选服务的部分。多服务任务还要读取 [references/workflows.md](references/workflows.md)。
+传给 wrapper 的 tool 和 endpoint 始终使用 references 中的规范名称，例如
+`pymatgen/health`、`pymatgen/composition-parse`、`synbo/optimize`。不得自行改写为
+`chem_pymatgen_health` 等旧数据库名称；wrapper 会根据 `science_base_url` 自动选择
+canonical 或 legacy catalog，并在结果中返回 `resolved_tool`、`resolved_endpoint` 和
+`catalog_profile` 作为调用证据。
+
+根据已加载的内容选择服务。执行任何 operation 前，读取
+[references/operation-contracts.md](references/operation-contracts.md) 中该 tool 的
+对应行；这里只读取已知资源，不进行目录探测。每行给出人类情景、最小代码和 native
+投影。更复杂字段才读取其他 reference。
+
+一次成功调用并显式打印有界 JSON 后，立即调用
+`step_finish(status="done", summary=<以“【最终答案，必须逐字转发】”开头的有界纯文本>)`
+恰好一次；纯文本中的值必须来自同一 JSON，不得加单位、链接、解释或改写字符串。
+Skill final_response 与外层 Memento 必须逐字复制该 summary，不能重新排版或补充。
+失败时调用
+`step_finish(status="failed", summary=<原始错误短摘要>)`。`step_finish` 后禁止输出
+自由文本或调用任何工具。具名 service Skill 成功返回后，外层代理必须直接使用其
+summary 完成当前计划步骤；如果存在 `output_ref`，最多对该精确路径做一次原子
+`read_file`。禁止 `python_repl`、`list_dir`、寻找 CLI 或重复 Science。
 
 ## 执行流程
 
 1. 在内部重述科学目标；不要向用户追问本 Skill 已经定义的实现细节。
 2. 选择能完成任务的最窄服务，并严格保持用户请求范围。推断 operation 或参数不代表可以增加用户没有要求的图片、文件、健康检查、描述符探测、分析或交付物。
 3. 如果 Memento 仅为跨步骤传递已验证数据而要求文件，可以在完成在线调用的同一个 `python_repl` 中写一个有界的内部 JSON。不得为生成或检查交接文件而重复业务调用，也不要把内部交接文件描述成用户要求的产物。
+   交接文件必须位于当前 `WORKSPACE_ROOT`（即 `@ROOT`）内；忽略任何其他
+   workspace、runner 文件或历史结果文件，绝不能用它们补全当前会话。
 4. 已知标识符直接使用。普通分子名称先由 PubChem 解析，再把返回的 SMILES 交给 RDKit。
 5. 构造最小合法参数。对于模糊探索任务使用有界默认值，并在最终答案中说明会显著影响科学结论的假设。
 6. 通过 wrapper 调用，并保留 `transport` 与 native 结果。只有进程退出码和所有响应信封均成功时，才算调用成功。
@@ -67,11 +97,32 @@ result = json.loads(p.stdout)
    }
    ```
 
+   `similarity-matrix` 的 `native["ranked_pairs"]` 每项固定为
+   `{"a": <输入 id>, "b": <输入 id>, "similarity": <数值>}`，不是矩阵下标。
+   禁止读取 `i`、`j` 或 `score`。找某个目标分子的最近邻时，只筛选 `a` 或
+   `b` 等于该目标的记录，取最大 `similarity` 并返回另一侧 id。
+
 9. 下游调用只能使用上一步已验证的 native 输出。禁止伪造 CIF、SMILES、粉末衍射数据、历史实验或优化观测。
+   对无机材料化学式、组成或式量，首选 pymatgen `composition-parse`；不要把
+   PubChem 的 `not_found`/404 改写为 CID、名称或式量，也不要用本地元素周期表补算。
 10. 跨服务比较时保留数据来源。例如 PubChem `XLogP` 与 RDKit `MolLogP` 使用不同模型，不得相互覆盖。
 11. 大型或二进制产物只能从文档明确的 native 字段解码。PNG 必须验证文件头为 PNG magic bytes，不能把以 `{` 开头的 JSON 保存成图片。
 12. 先报告科学结果，再列出使用的服务与 CLI 调用链证据。失败和被阻塞的后续步骤必须明确说明。
 13. 当前调用的 `native` 响应是 Skill 和 Memento 最终答案的完整证据边界。禁止补充当前结果未返回的记忆知识、机制推测、临床结论、单位、引用或链接。若规划要求了服务不支持的字段，写明“当前 Science 工具未返回该字段”，然后停止补充。
+
+14. 反应优化必须由 SynBO 或 Delta-BO 的当前 CLI `recommendations` 支持。若
+    `optimize` 返回数组维度错误、超时、空 recommendations 或失败，写入有界错误
+    交接并报告“未产生推荐”；禁止改用本地 GP、UCB、响应面、随机采样或人工排序。
+15. AntBO 启动属于远端变更。只有当前 native 同时返回 `started=true`、`pid` 与
+    `log_name` 或 `log_path` 时，才能声称作业已启动；将这些字段写入
+    `@ROOT/antbo_submission.json` 后由主代理读取。字段缺失时不得编造或重复提交。
+16. LAMMPS 最终答复只读取本次 `@ROOT/lammps_result.json`。逐字保留
+    `final_step`、`final_temperature`、`final_total_energy` 和 `last_thermo`；
+    禁止将总能量除以原子数、替换步数、换算单位或推测物理收敛性。
+17. 如果请求的 operation 不在当前 CLI catalog 中，不调用工具、不探测路径、不直连
+    HTTP，直接说明该 operation 尚未暴露且“未发送远端请求”。AntBO 当前支持
+    `health/run-default-job/run/log/jobs/stop`；`ldm/suggest` 不可由 Skill 补齐，
+    也不得改用小分子 LDM-BO。
 
 每次 Skill 回答结尾都保留以下中文交接信息：
 
