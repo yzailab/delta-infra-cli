@@ -5,7 +5,10 @@
 
 ## OVERVIEW
 
-Markdown skill definitions consumed by the host planner. Two skills: `delta-sandbox` (sandbox lifecycle, command execution, file I/O) and `delta-shared` (auth, config, error interpretation).
+Markdown skill definitions consumed by the host planner. Three skills:
+`delta-sandbox` (sandbox lifecycle and file I/O), `delta-shared` (auth, config,
+and error interpretation), and `delta-science` (CLI-only routing and
+orchestration for deployed Science tools).
 
 ## STRUCTURE
 
@@ -30,6 +33,9 @@ skills/
 | `delta-sandbox/references/lifecycle.md` | Full create-to-kill lifecycle |
 | `delta-sandbox/references/recipes.md` | Common task recipes |
 | `delta-shared/SKILL.md` | Auth status, config init, exit-code/error mapping |
+| `delta-science/SKILL.md` | Science request routing, CLI-only execution, and cross-service handoffs |
+| `delta-science/references/` | CLI contract, service payloads, and multi-tool workflows |
+| `delta-science/scripts/invoke.py` | Deterministic wrapper for `delta-cli science invoke` |
 
 ## CONVENTIONS
 
