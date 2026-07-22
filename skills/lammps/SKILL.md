@@ -1,6 +1,11 @@
 ---
 name: lammps
 description: 当用户要求检查 LAMMPS 服务、运行部署自带的有界 LJ melt 示例，或使用明确的 LAMMPS input/data/force-field 配置执行分子动力学、最小化并读取 thermo/log/dump/data 输出时使用。所有实时调用只走 Delta CLI；成功执行不代表物理收敛或生产可用。
+metadata:
+  allowed-tools:
+    - read_file
+    - python_repl
+    - step_finish
 ---
 
 # LAMMPS 服务
