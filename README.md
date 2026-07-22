@@ -283,11 +283,15 @@ npx skills add delta-infra/delta-infra-cli -s delta-shared
 
 # 安装 sandbox 操作技能
 npx skills add delta-infra/delta-infra-cli -s delta-sandbox
+
+# 安装 science 工具操作技能
+npx skills add delta-infra/delta-infra-cli -s delta-science
 ```
 
 Skill 文件位于 `skills/` 目录：
 - `delta-shared/` — 全局通用规则（认证、配置、错误处理）
 - `delta-sandbox/` — Sandbox 操作指南（生命周期、命令路由）
+- `delta-science/` — Science 工具调用指南（secondary API、invoke、endpoints）
 
 ## 开发
 
@@ -375,7 +379,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.0.71
+./release.sh v1.0.72
 ```
 
 脚本执行步骤：
