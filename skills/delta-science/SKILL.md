@@ -1,6 +1,11 @@
 ---
 name: delta-science
-description: "用于所有涉及化合物、材料、衍射、分子动力学、贝叶斯优化、反应条件或抗体优化的 Science 任务，包括简短、模糊的人类请求。每个实时操作必须选择具名 Science service Skill，并由 python_repl 执行本 Skill 的 invoke.py 走 Delta CLI；禁止通用子代理、Bash、目录探测、直接 HTTP、字面 CLI 命令和 native.data。AntBO/CDRH3 LDM 请求先判断 catalog，不得先问数据或派发 filesystem。"
+description: "Delta Science 的内部共享运行时与跨服务编排参考。不要把普通用户步骤直接路由到本 Skill；规划器必须按科学目标选择 pubchem、rdkit、pymatgen、gsasii、lammps、delta-bo、ldm-bo、synbo-service、antbo-service 或 antbo-ldm-guard，并把跨服务任务拆成具名 Skill 步骤。"
+metadata:
+  allowed-tools:
+    - read_file
+    - python_repl
+    - step_finish
 ---
 
 # Delta Science
