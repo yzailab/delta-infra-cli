@@ -1,6 +1,11 @@
 ---
 name: antbo-service
 description: 当用户明确要求检查 AntBO 服务健康状态、启动默认或自定义 AntBO 作业、读取 AntBO 日志、列出活动作业或停止指定作业时使用。当前 Delta CLI operation 为 health、run-default-job、run、log、jobs、stop。
+metadata:
+  allowed-tools:
+    - read_file
+    - python_repl
+    - step_finish
 ---
 
 # AntBO 服务
