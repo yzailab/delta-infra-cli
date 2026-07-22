@@ -1,6 +1,11 @@
 ---
 name: ldm-bo
 description: 当用户要求对小分子 SMILES 使用 LDM-BO/PDF2Dock、Vina+NN、ReaSyn，生成下一条小分子候选或运行分子 BO trajectory 时使用。不得用于抗体、CDRH3、AntBO 或 /biology/antbo 场景；这些场景必须路由 antbo-service。
+metadata:
+  allowed-tools:
+    - read_file
+    - python_repl
+    - step_finish
 ---
 
 # 小分子 LDM-BO 服务
