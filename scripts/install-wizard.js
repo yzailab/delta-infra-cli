@@ -41,7 +41,7 @@ const PLATFORM_LABELS = {
   },
 };
 
-const SKILL_NAMES = ["delta-sandbox", "delta-shared"];
+const SKILL_NAMES = ["delta-sandbox", "delta-shared", "delta-science"];
 const LANG = "zh";
 
 function platformSkillDir(platform) {
