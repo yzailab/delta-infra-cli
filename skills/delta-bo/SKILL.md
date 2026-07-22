@@ -1,6 +1,11 @@
 ---
 name: delta-bo
 description: 当用户需要列出当前 Delta-BO 命令，或针对数值、整数、分类实验变量生成随机搜索/贝叶斯优化建议时使用。当前 Delta CLI catalog 只暴露 commands 与 generate；不得通过 Skill 猜测或直连旧的 stateful command API。
+metadata:
+  allowed-tools:
+    - read_file
+    - python_repl
+    - step_finish
 ---
 
 # Delta-BO 服务
