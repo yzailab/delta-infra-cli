@@ -240,7 +240,9 @@ delta-cli sandbox kill <sandbox_id>
 
 ### Science 工具
 
-> 需要先在配置中设置 `science_base_url`（`delta-cli config set science_base_url <url>` 或环境变量 `DELTA_INFRA_SCIENCE_BASE_URL`）。
+> 默认 Science Server 为 `http://8.141.101.94:8080/science_tool`。可通过
+> `delta-cli config set science_base_url <url>` 或环境变量
+> `DELTA_INFRA_SCIENCE_BASE_URL` 覆盖。
 
 | 命令 | 说明 |
 |------|------|
@@ -248,6 +250,11 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli science get <tool_name>` | 查看指定工具的详情 |
 | `delta-cli science invoke --tool <tool_name> --endpoint <endpoint_name> [--data '{"key":"value"}'] [--params '{"key":"value"}']` | 调用工具端点 |
 | `delta-cli science endpoints list <tool_name>` | 列出指定工具的所有端点 |
+
+CLI 和内置 Science Skills 统一使用简洁 operation，例如 `health`、`composition-parse`、
+`similarity-matrix` 和 `optimize`。连接默认 `/science_tool` 旧服务时，CLI 会自动映射成
+`chem_pymatgen_health` 等旧 catalog 名称；连接新版 Science Server 时则自动适配其规范
+operation。`science endpoints list` 优先展示简洁名称，并在 `catalog_name` 中保留服务端原名。
 
 ## 输出格式
 
@@ -278,20 +285,24 @@ delta-cli sandbox kill <sandbox_id>
 delta-cli 内置 AI Agent 操作手册（Skills），帮助 Claude Code 等 AI 助手正确使用 CLI：
 
 ```bash
-# 安装共享技能（认证、配置、通用规则）
-npx skills add delta-infra/delta-infra-cli -s delta-shared
+# 安装仓库中的全部 Skills
+npx skills add delta-infra/delta-infra-cli -y -g
 
-# 安装 sandbox 操作技能
-npx skills add delta-infra/delta-infra-cli -s delta-sandbox
-
-# 安装 science 工具操作技能
+# 也可以只安装某个 Skill，例如 Science 总控
 npx skills add delta-infra/delta-infra-cli -s delta-science
 ```
 
 Skill 文件位于 `skills/` 目录：
 - `delta-shared/` — 全局通用规则（认证、配置、错误处理）
 - `delta-sandbox/` — Sandbox 操作指南（生命周期、命令路由）
-- `delta-science/` — Science 工具调用指南（secondary API、invoke、endpoints）
+- `delta-science/` — Science 总控、跨服务编排、统一 Delta CLI wrapper
+- `pubchem/`、`rdkit/`、`pymatgen/` — 化合物与材料基础计算
+- `gsasii/`、`lammps/` — 衍射和分子动力学
+- `delta-bo/`、`ldm-bo/`、`synbo-service/` — 科学优化流程
+- `antbo-service/`、`antbo-ldm-guard/` — AntBO 作业与未暴露 LDM 请求保护
+
+一键安装、升级和卸载会同步上述完整集合；具名服务 Skill 负责参数契约，
+`delta-science` 负责从简短的人类科研请求中选择服务并组织数据交接。
 
 ## 开发
 
@@ -328,11 +339,8 @@ go install github.com/delta-infra/delta-infra-cli/cmd/delta-cli@latest
 修改 `skills/` 或编译 `delta-cli` 后，需要同步到 Memento-S 项目才能生效：
 
 ```bash
-# 1. 复制 skill 文档到 Memento-S（让 LLM 读到最新的约束规则）
-cp skills/delta-sandbox/SKILL.md skills/delta-sandbox/references/*.md \
-   <memento-s>/builtin/skills/delta-sandbox/
-cp skills/delta-shared/SKILL.md \
-   <memento-s>/builtin/skills/delta-shared/
+# 1. 通过安装向导同步完整 Skill 集合
+node scripts/install-wizard.js
 
 # 2. 用 Docker 编译 Windows 版本（本地无 Go toolchain 时）
 docker run --rm -v "$(pwd):/src" -w /src \
@@ -350,7 +358,8 @@ cp bin/delta-cli-windows-amd64.exe \
 #   在 Electron 界面中重新加载，或手动重启 sidecar 进程
 ```
 
-> **注意**：`delta-cli` 替换后，如果 `~/.delta-infra/config.json` 中已配置 token，则 `delta-sandbox` 技能可直接使用；否则需要先用 `auth login` 配置。
+> **注意**：`delta-cli` 替换后，如果 `~/.delta-infra/config.json` 中已配置 token，则
+> Sandbox 和 Science Skills 可直接使用；否则需要先用 `auth login` 配置。
 
 ## 构建与发布
 
@@ -379,7 +388,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.0.73
+./release.sh v1.0.74
 ```
 
 脚本执行步骤：
