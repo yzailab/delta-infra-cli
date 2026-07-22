@@ -1,6 +1,11 @@
 ---
 name: pubchem
 description: 当用户给出化学品、分子、药物名称并询问 CID、同义词、分子式、分子量、SMILES、InChI、IUPAC 名、XLogP、TPSA 或供受体数量时使用；也用于在 RDKit 前批量把名称解析为 SMILES。所有实时请求只走 Delta CLI wrapper，并以当前 WORKSPACE_ROOT 下的有界 JSON 作为权威交接产物。
+metadata:
+  allowed-tools:
+    - read_file
+    - python_repl
+    - step_finish
 ---
 
 # PubChem 服务
