@@ -1,6 +1,10 @@
 ---
 name: antbo-ldm-guard
 description: 任何同时涉及 AntBO/抗体/CDRH3 与 LDM/suggest/下一条候选序列的请求都必须优先于所有其他 AntBO Skill 立即使用本 Skill，即使历史序列或评分尚未提供。当前 Delta CLI catalog 未暴露 AntBO LDM initialize/evaluate/suggest；唯一正确结果是说明未发送远端请求，禁止询问数据、建文件、调用 health/Science/filesystem 或改用小分子 LDM-BO。
+metadata:
+  allowed-tools:
+    - python_repl
+    - step_finish
 ---
 
 # AntBO LDM 能力边界
