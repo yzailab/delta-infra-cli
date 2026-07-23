@@ -362,11 +362,18 @@ function install() {
         }
       }
       fs.chmodSync(dest, 0o755);
+      ensureExecutable(path.join(__dirname, "run.js"));
       console.error("Installed to " + dest);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+}
+
+function ensureExecutable(filePath) {
+  try {
+    if (fs.existsSync(filePath)) fs.chmodSync(filePath, 0o755);
+  } catch {}
 }
 
 // ── Entry ──────────────────────────────────────────────────────────────────
