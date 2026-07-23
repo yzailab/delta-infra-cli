@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "base_skills": [
+    "delta-sandbox",
+    "delta-shared",
+    "delta-science"
+  ],
+  "tools": [
+    {
+      "name": "pubchem",
+      "skill": "pubchem",
+      "legacy_tool": "pubchem",
+      "category": "molecule-information",
+      "operations": {
+        "health": "chem_pubchem_health",
+        "compound-resolve-cids": "chem_pubchem_compound_resolve-cids",
+        "compound-properties": "chem_pubchem_compound_properties",
+        "compound-synonyms": "chem_pubchem_compound_synonyms",
+        "compound-summary": "chem_pubchem_compound_summary",
+        "compound-batch-summary": "chem_pubchem_compound_batch-summary"
+      }
+    },
+    {
+      "name": "rdkit",
+      "skill": "rdkit",
+      "legacy_tool": "rdkit",
+      "category": "cheminformatics",
+      "operations": {
+        "health": "chem_rdkit_health",
+        "parse": "chem_rdkit_parse",
+        "descriptors": "chem_rdkit_descriptors",
+        "batch-descriptors": "chem_rdkit_batch-descriptors",
+        "batch-parse-describe": "chem_rdkit_batch-parse-describe",
+        "render": "chem_rdkit_render",
+        "fingerprint": "chem_rdkit_fingerprint",
+        "similarity": "chem_rdkit_similarity",
+        "similarity-matrix": "chem_rdkit_similarity-matrix",
+        "substructure": "chem_rdkit_substructure"
+      }
+    },
+    {
+      "name": "pymatgen",
+      "skill": "pymatgen",
+      "legacy_tool": "pymatgen",
+      "category": "materials-informatics",
+      "operations": {
+        "health": "chem_pymatgen_health",
+        "composition-parse": "chem_pymatgen_composition_parse",
+        "structure-parse": "chem_pymatgen_structure_parse",
+        "structure-summary": "chem_pymatgen_structure_summary",
+        "structure-convert": "chem_pymatgen_structure_convert",
+        "structure-symmetry": "chem_pymatgen_structure_symmetry"
+      }
+    },
+    {
+      "name": "gsasii",
+      "skill": "gsasii",
+      "legacy_tool": "gsasii",
+      "category": "diffraction",
+      "operations": {
+        "health": "chem_gsasii_health",
+        "powder-simulate": "chem_gsasii_powder_simulate",
+        "powder-refine": "chem_gsasii_powder_refine"
+      }
+    },
+    {
+      "name": "lammps",
+      "skill": "lammps",
+      "legacy_tool": "lammps",
+      "category": "molecular-dynamics",
+      "operations": {
+        "health": "chem_lammps_health",
+        "lj-melt-example": "chem_lammps_examples_lj-melt",
+        "run": "chem_lammps_run"
+      }
+    },
+    {
+      "name": "delta-bo",
+      "skill": "delta-bo",
+      "legacy_tool": "delta-bo",
+      "category": "optimization",
+      "operations": {
+        "commands": "chem_delta-bo_commands",
+        "generate": "chem_delta-bo_generate"
+      }
+    },
+    {
+      "name": "ldm-bo",
+      "skill": "ldm-bo",
+      "legacy_tool": "ldm-bo",
+      "category": "molecule-optimization",
+      "operations": {
+        "health": "chem_ldm-bo_health",
+        "recommend": "chem_ldm-bo_recommend",
+        "trajectory": "chem_ldm-bo_trajectory"
+      }
+    },
+    {
+      "name": "synbo",
+      "skill": "synbo-service",
+      "legacy_tool": "synbo-service",
+      "category": "reaction-optimization",
+      "operations": {
+        "health": "chem_synbo_health",
+        "initialize": "chem_synbo_initialize",
+        "optimize": "chem_synbo_optimize"
+      }
+    },
+    {
+      "name": "antbo",
+      "skill": "antbo-service",
+      "legacy_tool": "antbo-service",
+      "category": "antibody-optimization",
+      "operations": {
+        "health": "biology_antbo_health",
+        "run-default-job": "biology_antbo_run_default_job",
+        "run": "biology_antbo_run",
+        "log": "biology_antbo_log",
+        "jobs": "biology_antbo_jobs",
+        "stop": "biology_antbo_stop"
+      }
+    }
+  ],
+  "extra_skills": [
+    "antbo-ldm-guard"
+  ]
+}
