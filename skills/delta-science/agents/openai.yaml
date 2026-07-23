@@ -1,4 +1,4 @@
 interface:
-  display_name: "Delta Science ????"
-  short_description: "?? Delta CLI ?????????? Science ????"
-  default_prompt: "?? $delta-science ?? Delta CLI ?????????"
+  display_name: "Delta Science 公共运行时"
+  short_description: "为具名 Science Skill 提供共享 CLI 调用和交接契约"
+  default_prompt: "使用 $delta-science 规划跨服务 Science 流程并拆分为具名 Skill 步骤。"
