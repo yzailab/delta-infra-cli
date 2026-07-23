@@ -165,6 +165,13 @@ function fmt(template, ...values) {
   return template.replace(/%s/g, () => values[i++] ?? "");
 }
 
+function formatExecErr(err) {
+  if (!err) return "";
+  if (err.stderr) return err.stderr.toString().trim();
+  if (err.stdout) return err.stdout.toString().trim();
+  return err.message ? err.message.trim() : String(err);
+}
+
 function osHomedir() {
   return process.env.HOME ||
     process.env.USERPROFILE ||
@@ -273,6 +280,7 @@ async function stepInstallGlobally(msg) {
   } else {
     s.start(fmt(msg.step1, PKG));
   }
+  let lastInstallErr = null;
   try {
     let installed = false;
     for (const registry of NPM_REGISTRIES) {
@@ -283,9 +291,13 @@ async function stepInstallGlobally(msg) {
         });
         installed = true;
         break;
-      } catch { }
+      } catch (e) {
+        lastInstallErr = e;
+        const reason = formatExecErr(e).slice(0, 400);
+        if (reason) p.log.error(`npm registry ${registry} 安装失败: ${reason}`);
+      }
     }
-    if (!installed) throw new Error("all npm registries failed");
+    if (!installed) throw lastInstallErr || new Error("all npm registries failed");
 
     if (targetVer) {
       for (const mirror of GH_MIRRORS) {
@@ -302,8 +314,10 @@ async function stepInstallGlobally(msg) {
     }
     s.stop(needsUpgrade ? fmt(msg.step1Upgraded, latestVer) : msg.step1Done);
     return needsUpgrade;
-  } catch {
+  } catch (e) {
     s.stop(fmt(msg.step1Fail, PKG));
+    const reason = formatExecErr(e).slice(0, 1200);
+    if (reason) p.log.error(`失败原因：\n${reason}`);
     process.exit(1);
   }
 }
