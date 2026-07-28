@@ -6,8 +6,9 @@
 ## OVERVIEW
 
 Markdown skill definitions consumed by the host planner. The package contains
-shared and sandbox skills, a `delta-science` router/wrapper, and named Science
-service skills for chemistry, materials, optimization, and AntBO operations.
+shared and sandbox skills plus one public `delta-science` skill. Science tool
+details are progressively loaded from references instead of exposed as
+separate planner-visible skills.
 
 ## STRUCTURE
 
@@ -21,14 +22,13 @@ skills/
 │       └── recipes.md
 ├── delta-shared/
 │   └── SKILL.md
-├── delta-science/
-│   ├── SKILL.md
-│   ├── scripts/invoke.py
-│   └── references/
-├── pubchem/  rdkit/  pymatgen/
-├── gsasii/  lammps/
-├── delta-bo/  ldm-bo/  synbo-service/
-└── antbo-service/  antbo-ldm-guard/
+└── delta-science/
+    ├── SKILL.md
+    ├── scripts/invoke.py
+    └── references/
+        ├── routing-index.md
+        ├── workflows.md
+        └── <science-tool>.md
 ```
 
 ## WHERE TO LOOK
@@ -40,10 +40,10 @@ skills/
 | `delta-sandbox/references/lifecycle.md` | Full create-to-kill lifecycle |
 | `delta-sandbox/references/recipes.md` | Common task recipes |
 | `delta-shared/SKILL.md` | Auth status, config init, exit-code/error mapping |
-| `delta-science/SKILL.md` | Science request routing, CLI-only execution, and cross-service handoffs |
-| `delta-science/references/` | CLI contract, service payloads, and multi-tool workflows |
+| `delta-science/SKILL.md` | Single Science entry point, routing, CLI-only execution, and cross-tool handoffs |
+| `delta-science/references/` | Per-tool operation contracts, stable routing rules, and multi-tool workflows |
 | `delta-science/scripts/invoke.py` | Deterministic wrapper for `delta-cli science invoke` |
-| `science-tools.json` | Single source for Science tools, operations, legacy aliases, and packaged Skill names |
+| `delta-science/scripts/catalog.py` | Read-only live catalog wrapper through `delta-cli` |
 
 ## CONVENTIONS
 
@@ -51,8 +51,9 @@ skills/
 - Markdown body with command tables and copy-paste examples; cross-link via relative paths
 - Each skill ships in the npm tarball through the `files` array in `package.json`
 - `references/` holds supplementary docs like lifecycle guides and cheat sheets
-- Named Science skills whitelist `read_file`, `python_repl`, and `step_finish`; do not restore the full host tool catalog
-- Run `node scripts/generate-science-catalog.js` after editing `science-tools.json`, then use `--check` in validation
+- `delta-science` is host-neutral: use the host's shell/Python to locate and run `scripts/invoke.py`; do not add host-specific tool or environment dependencies
+- Do not copy the server tool registry into the Skill; discover newly deployed tools through `catalog.py`
+- Treat database `tools.name` and `tool_endpoints.name` as exact contracts; never add aliases or compatibility maps
 
 ## ANTI-PATTERNS
 
