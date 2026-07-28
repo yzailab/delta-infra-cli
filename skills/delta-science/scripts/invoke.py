@@ -12,12 +12,17 @@ import subprocess
 import sys
 import time
 from typing import Any
-from urllib.parse import urlsplit
-
-from generated_catalog import LEGACY_ENDPOINTS, LEGACY_TOOL_ALIASES
-
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
+_CLI_ERROR_TYPES = {
+    2: "validation",
+    3: "auth",
+    4: "permission",
+    5: "not_found",
+    6: "network",
+    7: "api",
+    10: "internal",
+}
 
 
 def _json_object(raw: str | None, flag: str) -> dict[str, Any] | None:
@@ -30,6 +35,108 @@ def _json_object(raw: str | None, flag: str) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         raise ValueError(f"{flag} must decode to a JSON object")
     return value
+
+
+def _normalize_synbo_payload(
+    tool: str,
+    endpoint: str,
+    data: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Normalize SynBO's discrete condition contract before any remote request."""
+    canonical_tool = tool.removesuffix("-service")
+    if canonical_tool != "synbo" or endpoint not in {"initialize", "optimize"}:
+        return data, None
+    if data is None:
+        raise ValueError(f"synbo/{endpoint} requires --data-json")
+
+    condition_dict = data.get("condition_dict")
+    if not isinstance(condition_dict, dict) or not condition_dict:
+        raise ValueError("SynBO condition_dict must be a non-empty object")
+
+    normalized_conditions: dict[str, list[str]] = {}
+    for name, raw_values in condition_dict.items():
+        if not isinstance(raw_values, list) or not raw_values:
+            raise ValueError(
+                f"SynBO condition_dict.{name} must be a non-empty explicit list; "
+                "range objects are not supported"
+            )
+        values = [str(value) for value in raw_values]
+        if any(value == "" for value in values):
+            raise ValueError(f"SynBO condition_dict.{name} contains an empty value")
+        if len(set(values)) != len(values):
+            raise ValueError(
+                f"SynBO condition_dict.{name} contains duplicate values after "
+                "string normalization"
+            )
+        normalized_conditions[str(name)] = values
+
+    normalized = dict(data)
+    normalized["condition_dict"] = normalized_conditions
+    normalization = {
+        "condition_values": "strings",
+        "condition_space_size": _condition_space_size(normalized_conditions),
+    }
+
+    if endpoint == "initialize":
+        return normalized, normalization
+
+    metrics = normalized.get("opt_metrics")
+    if not isinstance(metrics, list) or not metrics:
+        raise ValueError("SynBO optimize requires a non-empty opt_metrics list")
+    metric_names = [str(metric) for metric in metrics]
+    normalized["opt_metrics"] = metric_names
+
+    previous_results = normalized.get("previous_results")
+    if not isinstance(previous_results, list) or not previous_results:
+        raise ValueError("SynBO optimize requires non-empty previous_results")
+
+    normalized_rows: list[dict[str, Any]] = []
+    for index, raw_row in enumerate(previous_results):
+        if not isinstance(raw_row, dict):
+            raise ValueError(f"SynBO previous_results[{index}] must be an object")
+        row = dict(raw_row)
+        for condition_name, allowed_values in normalized_conditions.items():
+            if condition_name not in row:
+                raise ValueError(
+                    f"SynBO previous_results[{index}] is missing condition "
+                    f"{condition_name!r}"
+                )
+            value = str(row[condition_name])
+            if value not in allowed_values:
+                raise ValueError(
+                    f"SynBO previous_results[{index}].{condition_name}={value!r} "
+                    "is not present in condition_dict"
+                )
+            row[condition_name] = value
+        for metric_name in metric_names:
+            metric_value = row.get(metric_name)
+            if (
+                metric_name not in row
+                or isinstance(metric_value, bool)
+                or not isinstance(metric_value, (int, float))
+            ):
+                raise ValueError(
+                    f"SynBO previous_results[{index}].{metric_name} must be numeric"
+                )
+        normalized_rows.append(row)
+
+    normalized["previous_results"] = normalized_rows
+    normalized.setdefault("accuracy", "tiny")
+    normalized.setdefault("device", "cpu")
+    normalized.setdefault("surrogate_model", "RF")
+    normalized.setdefault("acq_func", "UCB")
+    normalization["defaults"] = {
+        key: normalized[key]
+        for key in ("accuracy", "device", "surrogate_model", "acq_func")
+    }
+    return normalized, normalization
+
+
+def _condition_space_size(condition_dict: dict[str, list[str]]) -> int:
+    size = 1
+    for values in condition_dict.values():
+        size *= len(values)
+    return size
 
 
 def _runtime_config() -> dict[str, Any]:
@@ -61,55 +168,6 @@ def _resolve_cli(explicit: str | None, runtime: dict[str, Any]) -> str:
         "delta-cli not found; install @delta-infra/cli, set DELTA_CLI_PATH, "
         "or add cli_path to delta-science/runtime.local.json"
     )
-
-
-def _cli_science_base_url(cli: str, env: dict[str, str], timeout: float) -> str:
-    explicit = env.get("DELTA_INFRA_SCIENCE_BASE_URL", "").strip()
-    if explicit:
-        return explicit
-    completed = subprocess.run(
-        [cli, "config", "show"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-        timeout=min(timeout, 15.0),
-        check=False,
-    )
-    if completed.returncode != 0:
-        return ""
-    try:
-        root = json.loads(completed.stdout)
-        value = root.get("data", {}).get("science_base_url", "")
-    except (AttributeError, json.JSONDecodeError):
-        return ""
-    return str(value).strip()
-
-
-def _catalog_profile(base_url: str, requested: str) -> str:
-    if requested != "auto":
-        return requested
-    try:
-        path = urlsplit(base_url).path.rstrip("/").lower()
-    except ValueError:
-        path = ""
-    return "legacy" if path.endswith("/science_tool") else "canonical"
-
-
-def _resolve_catalog_names(tool: str, endpoint: str, profile: str) -> tuple[str, str]:
-    if profile == "canonical":
-        return tool, endpoint
-    canonical_tool = tool.removesuffix("-service") if tool in {"antbo-service", "synbo-service"} else tool
-    resolved_tool = LEGACY_TOOL_ALIASES.get(canonical_tool, canonical_tool)
-    if endpoint.startswith(("chem_", "biology_")):
-        return resolved_tool, endpoint
-    resolved_endpoint = LEGACY_ENDPOINTS.get(canonical_tool, {}).get(endpoint)
-    if not resolved_endpoint:
-        raise ValueError(
-            f"no legacy science_tool mapping for {canonical_tool}/{endpoint}"
-        )
-    return resolved_tool, resolved_endpoint
 
 
 def _unwrap(stdout: str) -> tuple[Any, int]:
@@ -155,6 +213,32 @@ def _unwrap(stdout: str) -> tuple[Any, int]:
     return value, depth
 
 
+def _validate_native(tool: str, endpoint: str, native: Any) -> None:
+    canonical_tool = tool.removesuffix("-service")
+    if canonical_tool == "synbo" and endpoint == "optimize":
+        if not isinstance(native, dict):
+            raise RuntimeError("SynBO optimize returned a non-object result")
+        recommendations = native.get("recommendations")
+        if not isinstance(recommendations, list) or not recommendations:
+            raise RuntimeError("SynBO optimize returned no recommendations")
+
+
+def _parse_cli_error(completed: subprocess.CompletedProcess[str]) -> tuple[str, str]:
+    detail = completed.stderr.strip() or completed.stdout.strip()
+    error_type = _CLI_ERROR_TYPES.get(completed.returncode, "cli")
+    try:
+        envelope = json.loads(detail)
+        error = envelope.get("error", {}) if isinstance(envelope, dict) else {}
+        if isinstance(error, dict):
+            error_type = str(error.get("type") or error_type)
+            message = error.get("message")
+            if message:
+                detail = str(message)
+    except (AttributeError, json.JSONDecodeError):
+        pass
+    return error_type, detail
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tool", required=True)
@@ -164,11 +248,6 @@ def _parser() -> argparse.ArgumentParser:
     body.add_argument("--params-json")
     parser.add_argument("--cli")
     parser.add_argument("--science-base-url")
-    parser.add_argument(
-        "--catalog-profile",
-        choices=("auto", "canonical", "legacy"),
-        default="auto",
-    )
     parser.add_argument("--timeout", type=float, default=120.0)
     return parser
 
@@ -177,12 +256,15 @@ def main() -> int:
     args = _parser().parse_args()
     started = time.perf_counter()
     stage = "arguments"
-    profile = "unknown"
-    resolved_tool = args.tool
-    resolved_endpoint = args.endpoint
+    cli_exit_code: int | None = None
+    error_type = "unknown"
+    normalization: dict[str, Any] | None = None
     try:
         data = _json_object(args.data_json, "--data-json")
         params = _json_object(args.params_json, "--params-json")
+        data, normalization = _normalize_synbo_payload(
+            args.tool, args.endpoint, data
+        )
         runtime = _runtime_config()
         stage = "cli-resolution"
         cli = _resolve_cli(args.cli, runtime)
@@ -191,19 +273,11 @@ def main() -> int:
         base_url = args.science_base_url or runtime.get("science_base_url")
         if base_url:
             env["DELTA_INFRA_SCIENCE_BASE_URL"] = str(base_url)
-        configured_base_url = _cli_science_base_url(cli, env, args.timeout)
-        requested_profile = str(runtime.get("catalog_profile", args.catalog_profile))
-        if requested_profile not in {"auto", "canonical", "legacy"}:
-            raise ValueError("catalog_profile must be auto, canonical, or legacy")
-        profile = _catalog_profile(configured_base_url, requested_profile)
-        resolved_tool, resolved_endpoint = _resolve_catalog_names(
-            args.tool, args.endpoint, profile
-        )
 
         command = [
             cli, "science", "invoke",
-            "--tool", resolved_tool,
-            "--endpoint", resolved_endpoint,
+            "--tool", args.tool,
+            "--endpoint", args.endpoint,
         ]
         if data is not None:
             command.extend(["--data", json.dumps(data, ensure_ascii=False, separators=(",", ":"))])
@@ -222,37 +296,46 @@ def main() -> int:
             check=False,
         )
         if completed.returncode != 0:
-            detail = completed.stderr.strip() or completed.stdout.strip()
+            cli_exit_code = completed.returncode
+            error_type, detail = _parse_cli_error(completed)
             raise RuntimeError(f"exit_code={completed.returncode}: {detail}")
         stage = "response-validation"
         native, depth = _unwrap(completed.stdout)
+        _validate_native(args.tool, args.endpoint, native)
         result = {
             "ok": True,
             "transport": "delta-cli",
             "tool": args.tool,
             "endpoint": args.endpoint,
-            "resolved_tool": resolved_tool,
-            "resolved_endpoint": resolved_endpoint,
-            "catalog_profile": profile,
             "elapsed_seconds": round(time.perf_counter() - started, 3),
             "envelope_depth": depth,
             "native": native,
         }
+        if normalization is not None:
+            result["request_normalization"] = normalization
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except subprocess.TimeoutExpired:
+        error_type = "timeout"
         error = f"timeout after {args.timeout}s"
-    except (OSError, ValueError, RuntimeError) as exc:
+    except ValueError as exc:
+        error_type = "validation"
+        error = str(exc)
+    except OSError as exc:
+        error_type = "cli_resolution"
+        error = str(exc)
+    except RuntimeError as exc:
+        if error_type == "unknown":
+            error_type = "response_validation"
         error = str(exc)
     print(json.dumps({
         "ok": False,
         "transport": "delta-cli",
         "tool": args.tool,
         "endpoint": args.endpoint,
-        "resolved_tool": resolved_tool,
-        "resolved_endpoint": resolved_endpoint,
-        "catalog_profile": profile,
         "stage": stage,
+        "error_type": error_type,
+        "cli_exit_code": cli_exit_code,
         "elapsed_seconds": round(time.perf_counter() - started, 3),
         "error": error[:2000],
     }, ensure_ascii=False))
