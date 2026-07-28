@@ -251,10 +251,9 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli science invoke --tool <tool_name> --endpoint <endpoint_name> [--data '{"key":"value"}'] [--params '{"key":"value"}']` | 调用工具端点 |
 | `delta-cli science endpoints list <tool_name>` | 列出指定工具的所有端点 |
 
-CLI 和内置 Science Skills 统一使用简洁 operation，例如 `health`、`composition-parse`、
-`similarity-matrix` 和 `optimize`。连接默认 `/science_tool` 旧服务时，CLI 会自动映射成
-`chem_pymatgen_health` 等旧 catalog 名称；连接新版 Science Server 时则自动适配其规范
-operation。`science endpoints list` 优先展示简洁名称，并在 `catalog_name` 中保留服务端原名。
+`tools.name` 和 `tool_endpoints.name` 是 Science 工具调用的唯一权威名称。
+`science list` 与 `science endpoints list` 原样展示服务端数据库中的启用项，
+`science invoke` 原样传递 `--tool` 和 `--endpoint`，不执行别名映射或旧名称兼容。
 
 ## 输出格式
 
@@ -288,37 +287,28 @@ delta-cli 内置 AI Agent 操作手册（Skills），帮助 Claude Code 等 AI �
 # 安装仓库中的全部 Skills
 npx skills add delta-infra/delta-infra-cli -y -g
 
-# 也可以只安装某个具名服务 Skill，例如 PubChem
-npx skills add delta-infra/delta-infra-cli -s pubchem
+# 只安装统一 Science Skill
+npx skills add delta-infra/delta-infra-cli -s delta-science
 ```
 
 Skill 文件位于 `skills/` 目录：
 - `delta-shared/` — 全局通用规则（认证、配置、错误处理）
 - `delta-sandbox/` — Sandbox 操作指南（生命周期、命令路由）
-- `delta-science/` — 具名 Science Skill 共用的编排参考与 Delta CLI wrapper
-- `pubchem/`、`rdkit/`、`pymatgen/` — 化合物与材料基础计算
-- `gsasii/`、`lammps/` — 衍射和分子动力学
-- `delta-bo/`、`ldm-bo/`、`synbo-service/` — 科学优化流程
-- `antbo-service/`、`antbo-ldm-guard/` — AntBO 作业与未暴露 LDM 请求保护
+- `delta-science/` — 唯一 Science 入口，包含统一 Delta CLI wrapper、跨工具工作流和
+  PubChem、RDKit、pymatgen、GSAS-II、LAMMPS、Delta-BO、LDM-BO、SynBO、AntBO
+  的按需 reference
 
-一键安装、升级和卸载会同步上述完整集合。Memento 等宿主在规划阶段直接选择具名
-服务 Skill；`delta-science` 只提供共享调用契约和跨步骤数据交接规则，不直接承接
-普通用户步骤。Science Skill 仅暴露 `read_file`、`python_repl` 和 `step_finish` 等
-完成任务所需的最小工具集合。
+Memento 等宿主只需要选择 `delta-science`。Skill 根据自然语言科研目标选择 tool 和
+operation，并且只加载当前工具对应的 reference，避免大量独立 Skill 给规划器增加
+负担。升级时会自动移除旧版独立 Science Skill。
 
 ### 添加 Science tool 或 operation
 
-`skills/science-tools.json` 是规范 tool、operation、legacy endpoint、Skill 清单和 npm
-打包目录的唯一配置源。修改后运行：
-
-```bash
-node scripts/generate-science-catalog.js
-node scripts/generate-science-catalog.js --check
-```
-
-生成器会同步 Go catalog、Python wrapper 映射、`skills/manifest.json`、npm `files`
-清单及 catalog 参考文档。给现有服务增加 operation 时不需要创建新 Skill；只有新增
-具有独立用户意图和参数契约的服务时，才新增一个服务级 Skill 目录。
+工具目录由 Science Server 数据库维护。新增工具时配置 `tools` 记录及对应的
+`tool_endpoints` 记录；停用时设置 `status=false`。CLI 无需同步任何静态表或重新增加
+命令。若需要让 AI 根据自然语言自动选择新工具并安全组装请求，再更新
+`skills/delta-science/references/<tool>.md` 和路由文档；数据库中的 name 与 reference
+必须完全一致。
 
 ## 开发
 
@@ -404,7 +394,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.0.79
+./release.sh v1.0.80
 ```
 
 脚本执行步骤：
