@@ -42,7 +42,9 @@ const PLATFORM_LABELS = {
   },
 };
 
-const { skills: SKILL_NAMES } = require("../skills/manifest.json");
+const skillManifest = require("../skills/manifest.json");
+const SKILL_NAMES = skillManifest.skills;
+const RETIRED_SKILL_NAMES = skillManifest.retired_skills || [];
 const LANG = "zh";
 
 function platformSkillDir(platform) {
@@ -346,6 +348,9 @@ function installSkillsFromLocalPackage(platforms) {
   for (const platform of platforms) {
     const targetDir = platformSkillDir(platform);
     fs.mkdirSync(targetDir, { recursive: true });
+    for (const skill of RETIRED_SKILL_NAMES) {
+      try { fs.rmSync(path.join(targetDir, skill), { recursive: true, force: true }); } catch {}
+    }
     for (const skill of SKILL_NAMES) {
       const src = path.join(pkgSkillsDir, skill);
       if (!fs.existsSync(src)) continue;
@@ -505,7 +510,7 @@ async function stepUninstallSkills(msg) {
   let removedLocally = false;
   for (const platform of Object.keys(PLATFORM_PATHS)) {
     const dir = platformSkillDir(platform);
-    for (const skill of SKILL_NAMES) {
+    for (const skill of [...SKILL_NAMES, ...RETIRED_SKILL_NAMES]) {
       try {
         fs.rmSync(path.join(dir, skill), { recursive: true, force: true });
         removedLocally = true;
@@ -519,13 +524,17 @@ async function stepUninstallSkills(msg) {
   }
 
   try {
-    await runSilentAsync("npx", ["-y", "skills", "remove", ...SKILL_NAMES, "-g"], {
+    await runSilentAsync(
+      "npx",
+      ["-y", "skills", "remove", ...SKILL_NAMES, ...RETIRED_SKILL_NAMES, "-g"],
+      {
       timeout: 60000,
-    });
+      },
+    );
     s.stop("AI skills removed");
   } catch {
     s.stop("Warning: skill removal failed. You can retry:");
-    p.log.info(`  npx skills remove ${SKILL_NAMES.join(" ")} -g`);
+    p.log.info(`  npx skills remove ${[...SKILL_NAMES, ...RETIRED_SKILL_NAMES].join(" ")} -g`);
   }
 }
 
