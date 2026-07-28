@@ -1,6 +1,6 @@
 {
   "name": "@delta-infra/cli",
-  "version": "1.0.79",
+  "version": "1.0.80",
   "description": "Delta Infra CLI for sandbox compute and science tools.",
   "bin": {
     "delta-cli": "scripts/run.js"
@@ -14,20 +14,9 @@
     "scripts/install-wizard.js",
     "scripts/run.js",
     "skills/manifest.json",
-    "skills/science-tools.json",
     "skills/delta-sandbox/",
     "skills/delta-shared/",
-    "skills/delta-science/",
-    "skills/pubchem/",
-    "skills/rdkit/",
-    "skills/pymatgen/",
-    "skills/gsasii/",
-    "skills/lammps/",
-    "skills/delta-bo/",
-    "skills/ldm-bo/",
-    "skills/synbo-service/",
-    "skills/antbo-service/",
-    "skills/antbo-ldm-guard/"
+    "skills/delta-science/"
   ],
   "os": [
     "darwin",
