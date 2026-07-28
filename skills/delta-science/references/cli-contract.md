@@ -2,18 +2,18 @@
 
 ## 只能通过内置 wrapper 调用
 
-实时 Science 调用的第一个且唯一执行工具必须是 `python_repl`。禁止 Bash、
-`list_dir`、`read_file`、`which`、`where`、`ls` 或任何路径探测；禁止让通用
-subagent 执行 Science 步骤，也禁止运行字面命令 `CLI`、`cli`、`delta-cli`。
-`SKILLS_ROOT` 只能通过 Python 的 `os.environ["SKILLS_ROOT"]` 读取，
-`@SKILLS_ROOT` 不是可供文件工具访问的路径。
+实时 Science 调用只能由宿主可用的 shell 或 Python 执行内置 wrapper。先定位当前
+`SKILL.md` 所在目录，再执行该目录下 `scripts/invoke.py` 的绝对路径；不得直接执行
+`delta-cli`，也不得改用直接 HTTP。Claude Code 可使用 `CLAUDE_SKILL_DIR` 定位当前
+Skill；Codex 应以当前已加载 Skill 的目录为工作目录，或在已安装的 Skills 目录中查找
+精确的 `delta-science/scripts/invoke.py`。不得依赖宿主私有环境变量。
 
-使用 Python 执行 wrapper。在 Memento 中从 `SKILLS_ROOT` 获取路径：
+使用 Python 执行 wrapper。下面的 `wrapper` 必须是上述方法定位到的绝对路径：
 
 ```python
-import json, os, subprocess, sys
+import json, subprocess, sys
 
-wrapper = os.path.join(os.environ["SKILLS_ROOT"], "delta-science", "scripts", "invoke.py")
+wrapper = "/absolute/path/to/delta-science/scripts/invoke.py"
 payload = {"input": "CCO", "format": "smiles"}
 completed = subprocess.run(
     [sys.executable, wrapper, "--tool", "rdkit", "--endpoint", "parse",
@@ -56,28 +56,27 @@ CLI 从 `~/.delta-infra/config.json` 读取 `science_base_url`。显式 `--scien
   "transport": "delta-cli",
   "tool": "rdkit",
   "endpoint": "parse",
-  "resolved_tool": "rdkit",
-  "resolved_endpoint": "chem_rdkit_parse",
-  "catalog_profile": "legacy",
   "elapsed_seconds": 1.23,
   "envelope_depth": 2,
   "native": {}
 }
 ```
 
-Skill 代码始终传规范 tool/operation。默认旧 `/science_tool` 服务会自动把
-`pymatgen/health` 映射为 `pymatgen/chem_pymatgen_health`，并把 `synbo`、`antbo`
-分别映射为旧 catalog 的 `synbo-service`、`antbo-service`；不要在 Skill 示例中硬编码
-这些旧名称。新版 Science Server 保持规范名称。测试时可用
-`--catalog-profile canonical|legacy` 或 `runtime.local.json` 的 `catalog_profile`
-显式覆盖自动判断。
+`tools.name` 和 `tool_endpoints.name` 是唯一权威名称。Skill 代码始终把 reference 中的
+tool/operation 原样传给 CLI，CLI 再原样提交给 Science Server；任何一层都不执行旧
+名称映射、前缀裁剪、profile 判断或失败后的改名重试。若 reference 与数据库名称不一致，
+本次调用按 `not_found` 失败结束，应修正数据库配置或 reference，而不是在客户端添加映射。
 
-wrapper 校验 CLI 的 `{ok,data}` 信封，只解包已知的 Infra 转发结果 `{status_code,headers,data}` 和业务服务信封 `{code,message,data}`。它不会在任意嵌套字段中搜索看似合理的结果。`ok=false` 会包含稳定的 `stage` 和错误文本。
+wrapper 校验 CLI 的 `{ok,data}` 信封，只解包已知的 Infra 转发结果
+`{status_code,headers,data}` 和业务服务信封 `{code,message,data}`。它不会在任意嵌套
+字段中搜索看似合理的结果。`ok=false` 会包含稳定的 `stage`、`error_type`、
+`cli_exit_code` 和错误文本。宿主 shell/Python 的进程成功状态不能覆盖这些字段。
 
 解包成功后，业务结果直接位于 `result["native"]` 顶层。禁止读取
 `result["native"]["data"]`，也禁止递归搜索字段。
 
-即使存在部分数据，`ok=false` 仍必须视为失败。禁止静默切换到其他调用链。
+即使存在部分数据，`ok=false` 仍必须视为失败。禁止静默切换到其他调用链，也不得在
+最终统计中写“无错误”。业务成功后立即结束，不得为比较模型而追加请求。
 
 ## 二进制产物
 
