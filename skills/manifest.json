@@ -2,7 +2,9 @@
   "skills": [
     "delta-sandbox",
     "delta-shared",
-    "delta-science",
+    "delta-science"
+  ],
+  "retired_skills": [
     "pubchem",
     "rdkit",
     "pymatgen",
