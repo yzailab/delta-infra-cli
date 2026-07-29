@@ -1,6 +1,6 @@
 # LDM-BO 详细规则
 
-所有调用只走统一 wrapper，不是本地 PDF2Dock runner。仅用于小分子 SMILES；
+所有调用直接使用 `delta-cli science invoke`，不是本地 PDF2Dock runner。仅用于小分子 SMILES；
 抗体、CDRH3 或 AntBO 场景必须使用 AntBO 能力边界。
 provider、模型路径、Vina/ReaSyn/GPU/LLM 配置由服务端注入，不放入请求 JSON。
 
@@ -33,7 +33,7 @@ Typical payload:
 }
 ```
 
-Typical native response inside gateway `data`:
+Typical business response inside the documented gateway `data`:
 
 ```json
 {
@@ -45,7 +45,7 @@ Typical native response inside gateway `data`:
 
 LDM methods may include an `llm` diagnostics object.
 
-`acquisition_values` 只能按 native 原值报告。除非当前 native 明确给出字段定义，否则
+`acquisition_values` 只能按业务响应原值报告。除非当前业务响应明确给出字段定义，否则
 不得把它描述为预测 Vina、预测 objective、不确定性、置信度、expected improvement，
 也不得自行判断“越大/越小越好”。服务未返回推荐理由时，明确写“服务未返回推荐
 理由”，不得根据分子骨架、杂原子或模型机制补写解释。
@@ -69,7 +69,7 @@ Small smoke payload:
 }
 ```
 
-Typical native response inside gateway `data`:
+Typical business response inside the documented gateway `data`:
 
 ```json
 {
@@ -83,7 +83,7 @@ LDM methods may include `llm_trajectory`.
 
 ## Error Handling
 
-The service maps native `bo_api` error JSON to an upstream failure. The gateway
+The service maps `bo_api` error JSON to an upstream failure. The gateway
 returns a standard error envelope:
 
 ```json
@@ -126,5 +126,4 @@ llm_base_url
 llm_api_key
 ```
 
-The wrapper intentionally preserves user payloads and lets `bo_api` own native
-defaults and schema behavior.
+The CLI forwards the user payload; `bo_api` owns business defaults and schema behavior.
