@@ -1,7 +1,7 @@
 # SynBO operation 参考
 
-所有在线调用都通过 `delta-science/scripts/invoke.py` 和 Delta CLI，服务地址来自当前
-CLI 的 `science_base_url` 配置。这里的路径只说明业务 operation，不得据此直连 HTTP。
+所有在线调用都通过 `delta-cli science invoke`，服务地址来自 CLI 的标准
+`science_base_url` 配置。这里的路径只说明业务 operation，不得据此直连 HTTP。
 
 用户说“优化反应条件”“推荐下一批实验”“偶联反应怎么继续做”，或给出溶剂、温度、
 催化剂、碱、配体和历史得率时，即使没有提到 SynBO、BO、CLI 或字段名也使用本节。
@@ -140,8 +140,9 @@ SynBO 的 `condition_dict` 只接受显式列表，不接受连续范围对象�
 - 每个条件值统一为字符串，objective metric 保持数值。
 - 每条 `previous_results` 中的条件值必须出现在对应 `condition_dict` 列表中。
 - 连续范围的离散网格必须包含用户上下界和全部历史观测值；最终答案必须说明实际网格。
-- wrapper 会在发送前完成字符串归一化、成员校验，并为未显式指定的小数据 CPU
-  `optimize` 补充 `tiny + RF + UCB + cpu` 默认值。
+- 将条件值显式序列化为字符串，并确保每条历史记录只使用 `condition_dict` 中列出的值。
+  如需小数据 CPU 设置，显式传递 `accuracy:"tiny"`、`surrogate_model:"RF"`、
+  `acq_func:"UCB"` 和 `device:"cpu"`；不得假定客户端会补充默认值。
 
 Useful optional fields:
 
