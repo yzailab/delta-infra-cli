@@ -64,16 +64,16 @@ STRBO 用于服务端固定 **KRAS G12D** 靶点的小分子生成式多目标�
 
 ## 异步作业
 
-提交异步 operation 后，从当前 native 读取非空 `job_id`，再轮询：
+提交异步 operation 后，从当前业务响应读取非空 `job_id`，再轮询：
 
-```python
-invoke("strbo", "job-status", params={"job_id": job_id})
+```text
+delta-cli science invoke --tool strbo --endpoint job-status --params JSON
 ```
 
 只有状态变为 `succeeded` 后才读取：
 
-```python
-invoke("strbo", "job-result", params={"job_id": job_id})
+```text
+delta-cli science invoke --tool strbo --endpoint job-result --params JSON
 ```
 
 `queued` 或 `running` 不是完成；`failed` 立即结束。状态查询可按 5 秒左右间隔重复，
@@ -83,5 +83,5 @@ invoke("strbo", "job-result", params={"job_id": job_id})
 ## 完整科研流程
 
 用户明确要求完整迭代时按 `初始化 → 评估 → 建议 → 评估` 串行执行。每一步只使用本次
-调用已验证的 native 作为下一步输入。用户只要求生成初始候选或评估给定 SMILES 时，
+调用已验证的业务响应作为下一步输入。用户只要求生成初始候选或评估给定 SMILES 时，
 不得擅自扩展为完整循环。
