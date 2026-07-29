@@ -48,7 +48,7 @@ skills/
 - Markdown body with command tables and copy-paste examples; cross-link via relative paths
 - Each skill ships in the npm tarball through the `files` array in `package.json`
 - `references/` holds supplementary docs like lifecycle guides and cheat sheets
-- `delta-science` is host-neutral: use the host's shell/Python to run `delta-cli`; do not add host-specific tool or environment dependencies
+- `delta-science` is host-neutral: `delta-cli` is the service boundary; do not add host-specific tool or environment dependencies
 - Do not copy the server tool registry into the Skill; discover newly deployed tools through `delta-cli science list` and `delta-cli science endpoints list <tool>`
 - Treat database `tools.name` and `tool_endpoints.name` as exact contracts; never add aliases or compatibility maps
 
