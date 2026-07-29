@@ -1,6 +1,6 @@
 # GSAS-II 详细规则
 
-所有调用只走统一 wrapper。模拟必须使用真实 CIF；精修必须使用真实 powder data、
+所有调用直接使用 `delta-cli science invoke`。模拟必须使用真实 CIF；精修必须使用真实 powder data、
 instrument parameters 和 phase CIF，任何失败不得用合成数据补齐。输入不是 CIF 时，
 先使用当前任务中成功的 pymatgen `structure-convert` 结果。
 
@@ -111,6 +111,6 @@ Notes:
 
 ## 跨工具交接
 
-结构转换、衍射模拟和精修必须在本 Skill 内通过 wrapper 逐步完成：
+结构转换、衍射模拟和精修必须在本 Skill 内通过 CLI 逐步完成：
 `pymatgen structure-convert -> gsasii powder-simulate/powder-refine`。下游只使用上一步
-成功 native 中的结构文本或 profile；不得执行本地脚本或直连服务。
+成功业务响应中的结构文本或 profile；不得执行本地脚本或直连服务。
