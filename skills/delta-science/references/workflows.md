@@ -1,10 +1,10 @@
 # 跨服务工作流
 
-整个流程由单一 `delta-science` Skill 编排。每一步都通过宿主可用的 shell/Python 调用
-当前 Skill 目录下的 `scripts/invoke.py`，禁止再派发到其他 Science Skill、通用 subagent
-或自由文本执行器；禁止直接 HTTP。wrapper 成功后每一步只消费 `result["native"]` 顶层。
-已知 reference 中没有目标 operation 时，不猜测相近
-endpoint；只有用户明确点名新工具时，才按 `SKILL.md` 的只读实时 catalog 流程确认。
+整个流程由单一 `delta-science` Skill 编排。线上调用通过宿主可用的 shell/Python 直接执行
+`delta-cli science invoke`，禁止直接 HTTP。可使用 subagent 协助整理输入、核对 reference 或
+展示结果，但主流程负责工具选择和所有线上调用。CLI 成功后每一步只消费对应 reference 定义的
+`data` 响应字段。已知 reference 中没有目标 operation 时，不猜测相近 endpoint；reference
+缺失、过期或与 CLI 返回不一致时，按 `SKILL.md` 的只读实时 catalog 流程确认。
 
 ## 单个已命名分子
 
@@ -17,7 +17,7 @@ endpoint；只有用户明确点名新工具时，才按 `SKILL.md` 的只读实
 ## 多分子比较
 
 1. 用 PubChem 批量解析全部名称，请求体只包含 `identifiers` 和 `namespace:"name"`。省略 `properties`。
-2. 从 `native.results[*]` 读取记录，并从每条记录的嵌套 `properties` 读取字段。
+2. 从业务响应的 `results[*]` 读取记录，并从每条记录的嵌套 `properties` 读取字段。
 3. 未解析成功的记录要排除，并明确说明原因。
 4. 使用 RDKit `similarity-matrix` 校验和排序两两相似度。它的 `sanitize` 已经校验输入，不要额外调用 parse。
 5. 用 PubChem 记录的原始 `input` 作为 molecule id，并按文档顺序从嵌套属性中提取 SMILES。
@@ -29,7 +29,7 @@ endpoint；只有用户明确点名新工具时，才按 `SKILL.md` 的只读实
 
 ## 材料工作流
 
-1. 使用 pymatgen 校验化学式/结构并转换 CIF；无机式量只能取当前 native `weight`。
+1. 使用 pymatgen 校验化学式/结构并转换 CIF；无机式量只能取当前业务响应 `weight`。
 2. GSAS-II 只能接收真实 CIF 文本后再做衍射计算。
 3. LAMMPS 只能在已有明确的力场、data 和脚本设置后运行；部署检查可以使用内置有界示例。
 4. 从 LAMMPS 返回 pymatgen 或 GSAS-II 前，需要从弛豫结果重新构造 CIF/POSCAR。不要直接传递 LAMMPS data/dump 文件。
@@ -55,7 +55,7 @@ SynBO 只接受离散条件列表。用户给连续范围时，在一次调用�
 2. 同一条件列在 `condition_dict` 与 `previous_results` 中统一为字符串。
 3. 得率等 objective metric 保持数值。
 4. 小数据 CPU 默认 `tiny + RF + UCB`，并在最终答案中报告实际离散网格。
-5. wrapper 返回失败或空 recommendations 时结束；不得连续尝试多种 payload 或模型。
+5. CLI 返回失败或业务响应为空 recommendations 时结束；不得连续尝试多种 payload 或模型。
 
 用户未要求文件时只返回 recommendations 文本，不创建输入 CSV。必须交接时，仅把本次
-成功 native 写入当前 `WORKSPACE_ROOT/synbo_result.json`。
+成功业务响应写入当前 `WORKSPACE_ROOT/synbo_result.json`。
