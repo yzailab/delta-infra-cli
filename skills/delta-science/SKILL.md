@@ -8,12 +8,12 @@ description: "公司在线 Science 能力的统一入口，所有调用都经 De
 把自然语言科研任务转换为最少数量、可验证的 Delta CLI Science 调用。只暴露本
 Skill；工具选择、operation、参数、跨工具交接和结果校验都在本 Skill 内完成。
 
-## 调用链
+## 服务调用边界
 
-- 所有在线 Science 操作必须走
-  `宿主 shell/Python -> delta-cli science invoke -> Science Server`。
-- 直接执行已安装的 `delta-cli`，使用 CLI 的标准认证与 `science_base_url` 配置。不得通过
-  环境变量、命令参数或业务 URL 改写服务路由。
+- 所有在线 Science 操作最终都经
+  `delta-cli science invoke -> Science Server`。
+- 使用 CLI 的标准认证与 `science_base_url` 配置。不得通过环境变量、命令参数或业务 URL
+  改写服务路由。
 - 禁止使用 `curl`、`requests`、`httpx`、浏览器和 PowerShell Web 命令直接访问公司网关或
   业务服务 URL。
 - 不得将本地 RDKit、pymatgen、LAMMPS、BO、回归或 sandbox 结果冒充为 Science 结果。
@@ -33,8 +33,8 @@ Skill；工具选择、operation、参数、跨工具交接和结果校验都在
 delta-cli science invoke --tool TOOL --endpoint ENDPOINT --data JSON
 ```
 
-仅当 reference 明确将字段定义为查询参数时使用 `--params JSON`。不要将 JSON 拼接为 shell
-代码；由宿主 shell 的安全参数传递机制传入单个 JSON 参数。
+仅当 reference 明确将字段定义为查询参数时使用 `--params JSON`。不要将 JSON 拼接为命令
+代码；使用调用环境的安全参数传递机制传入单个 JSON 参数。
 
 只调用完成目标所需的 operation。跨工具任务在同一个 Skill 执行中按依赖顺序调用，
 下游只能使用上一步已验证的业务字段。已知工具默认不要额外调用 health、schema、
@@ -113,7 +113,7 @@ catalog、render、descriptors 或文件操作；用户请求、诊断需要或 
 不得补充服务未返回的单位、机制、引用、链接、预测值或记忆知识。预测结果不得
 描述为实测结果。
 成功取得最后一个所需业务结果后，直接将其投影为最终答复。禁止为了排序、排版、生成
-表格或摘要再次执行 CLI，也禁止把结果手工复制成新的 Python/JSON 字面量；简单
+表格或摘要再次执行 CLI，也禁止把结果手工复制成新的数据字面量；简单
 筛选、比较和文本组织直接在最终答复中完成。
 
 成功时只返回由当前 CLI 业务结果生成的有界纯文本；失败时只返回 CLI 原始错误短摘要。
