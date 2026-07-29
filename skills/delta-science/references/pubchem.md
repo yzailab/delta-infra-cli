@@ -1,13 +1,12 @@
 # PubChem 详细规则
 
-只能通过当前 Skill 目录下的 `scripts/invoke.py` 调用。wrapper 已解包服务
-信封，因此以下文档所说的业务 `data` 在 wrapper 结果中就是 `result["native"]`
-顶层；禁止再读取 `result["native"]["data"]`。本文件中的 URL 只用于说明 endpoint
-schema，不授权直接 HTTP。普通名称基础查询只调用一次 `compound-summary`；多个名称
+只能通过 `delta-cli science invoke` 调用。本文件中的业务响应位于 CLI 顶层 `data`；
+只按本文件说明读取字段，不得递归搜索。本文件中的 URL 只用于说明 endpoint schema，
+不授权直接 HTTP。普通名称基础查询只调用一次 `compound-summary`；多个名称
 只调用一次 `compound-batch-summary`，默认 body 仅包含 `identifiers` 和
 `namespace:"name"`，不得先调用 health/schema。
 
-结果直接从 `native` 投影。批量记录位于 `native.results[*]`，原始标签在 `input`，
+结果直接从 `data` 投影。批量记录位于 `data.results[*]`，原始标签在 `input`，
 属性在嵌套 `properties`。SMILES 回退顺序固定为
 `CanonicalSMILES -> ConnectivitySMILES -> SMILES -> IsomericSMILES`。
 PubChem `XLogP` 与 RDKit `MolLogP` 不得互换；not_found 不得用本地计算补值。
