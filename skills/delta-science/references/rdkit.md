@@ -1,15 +1,14 @@
 # RDKit 详细规则
 
-只能通过当前 Skill 目录下的 `scripts/invoke.py` 调用。wrapper 已解包服务
-信封，因此以下业务响应在 wrapper 结果中位于 `result["native"]` 顶层；禁止读取
-`result["native"]["data"]`。这里只记录 operation schema，不授权直接 HTTP。
+只能通过 `delta-cli science invoke` 调用。以下业务响应位于 CLI 顶层 `data`；只按本文件
+说明读取字段，不得递归搜索。这里只记录 operation schema，不授权直接 HTTP。
 
 一个请求只执行完成目标所需的最少调用。同时校验、规范化并计算基础描述符时使用一次
 `batch-parse-describe`，payload 使用 `molecules:[{id,smiles}]`，不得拆成 parse 和
 descriptors。多个分子的全对相似度使用一次 `similarity-matrix`；排名字段固定为
 `a`、`b`、`similarity`，不是 `i`、`j`、`score`。
 
-只报告 native 实际存在的描述符。渲染 PNG 时只解码文档指定字段，并验证字节以
+只报告业务响应实际存在的描述符。渲染 PNG 时只解码文档指定字段，并验证字节以
 `89 50 4e 47 0d 0a 1a 0a` 开头；不得把 JSON envelope 保存成图片。
 
 ## Health
