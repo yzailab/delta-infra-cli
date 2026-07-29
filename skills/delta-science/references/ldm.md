@@ -1,7 +1,8 @@
 # LDM 科研工作流
 
 这里的 **LDM / 大发现模型** 是用户可见的科研工作流名称，不是可以直接访问网关的
-tool。在线计算必须先按任务语义选择 `ldm-bo`、`strbo` 或 `antbo`，再通过统一 wrapper
+tool。在线计算必须先按任务语义选择 `ldm-bo`、`strbo` 或 `antbo`，再通过
+`delta-cli science invoke`
 调用 Delta CLI；禁止运行旧 `large-discovery-model` Skill、`run_ldm_loop.py`、gateway
 backend、`stream_widget` 中的联网命令或任何 HTTP 客户端。
 
@@ -33,7 +34,7 @@ CDRH3”中的哪一种。
 
 1. 调用 `molecules-init` 或 `molecules-init-job`，取得初始 SMILES。
 2. 调用 `molecules-evaluate` 或对应异步 operation，取得 `[vina, activity]`。
-3. 使用当前成功 native 中的 SMILES 和 scores 构造 `history_xs/history_ys`。
+3. 使用当前成功业务响应中的 SMILES 和 scores 构造 `history_xs/history_ys`。
 4. 调用一次 `molecules-suggest-job`，按 STRBO reference 轮询至成功。
 5. 只评估新建议，并把结果与当前任务内历史合并后返回。
 
@@ -45,7 +46,7 @@ gateway、离线 mock、本地 RDKit/Vina 或模型猜测补全。
 1. 用户必须提供抗原；未提供时不得替用户选择。
 2. 必要时调用一次 `ldm-health`，确认抗原与 CDRH3 长度约束。
 3. 调用 `ldm-init` 取得初始 CDRH3，再调用 `evaluate` 取得结合能。
-4. 使用当前成功 native 构造一维 `history_ys`，调用一次 `ldm-suggest`。
+4. 使用当前成功业务响应构造一维 `history_ys`，调用一次 `ldm-suggest`。
 5. 只评估新建议，并返回当前任务内的候选与结合能。
 
 不得把 AntBO 的一维 score 改成 STRBO 的二维 score，也不得把 CDRH3 交给小分子
@@ -61,10 +62,10 @@ LDM-BO。
 
 ## 结果与展示
 
-只报告当前 Delta CLI native 中真实存在的候选、目标值、warnings、job_id、状态和
+只报告当前 Delta CLI 业务响应中真实存在的候选、目标值、warnings、job_id、状态和
 服务端 provenance。不得自行添加相似度阈值、机制解释、湿实验结论或“最优”断言；
 只有在方向明确且比较集合完整时，才能按实际目标值指出当前集合中的最好候选。
-推荐结果中的 acquisition value 不是预测目标值、置信度或推荐理由；除非 native
+推荐结果中的 acquisition value 不是预测目标值、置信度或推荐理由；除非业务响应
 明确给出语义和方向，否则只作为原始采集函数值报告。
 
 LDM 的仪表盘是展示层，不是计算入口。用户明确要求图表时，先完成一次 CLI 计算，
