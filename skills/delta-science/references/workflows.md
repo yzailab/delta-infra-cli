@@ -1,9 +1,9 @@
 # 跨服务工作流
 
-整个流程由单一 `delta-science` Skill 编排。线上调用通过宿主可用的 shell/Python 直接执行
-`delta-cli science invoke`，禁止直接 HTTP。可使用 subagent 协助整理输入、核对 reference 或
-展示结果，但主流程负责工具选择和所有线上调用。CLI 成功后每一步只消费对应 reference 定义的
-`data` 响应字段。已知 reference 中没有目标 operation 时，不猜测相近 endpoint；reference
+整个流程由单一 `delta-science` Skill 编排。线上调用最终执行
+`delta-cli science invoke`，禁止直接 HTTP。可使用 subagent 协助整理输入、核对 reference
+或展示结果，但主流程负责工具选择和所有线上调用。CLI 成功后每一步只消费对应 reference
+定义的 `data` 响应字段。已知 reference 中没有目标 operation 时，不猜测相近 endpoint；reference
 缺失、过期或与 CLI 返回不一致时，按 `SKILL.md` 的只读实时 catalog 流程确认。
 
 ## 单个已命名分子
