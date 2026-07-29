@@ -24,7 +24,6 @@ skills/
 │   └── SKILL.md
 └── delta-science/
     ├── SKILL.md
-    ├── scripts/invoke.py
     └── references/
         ├── routing-index.md
         ├── workflows.md
@@ -42,8 +41,6 @@ skills/
 | `delta-shared/SKILL.md` | Auth status, config init, exit-code/error mapping |
 | `delta-science/SKILL.md` | Single Science entry point, routing, CLI-only execution, and cross-tool handoffs |
 | `delta-science/references/` | Per-tool operation contracts, stable routing rules, and multi-tool workflows |
-| `delta-science/scripts/invoke.py` | Deterministic wrapper for `delta-cli science invoke` |
-| `delta-science/scripts/catalog.py` | Read-only live catalog wrapper through `delta-cli` |
 
 ## CONVENTIONS
 
@@ -51,8 +48,8 @@ skills/
 - Markdown body with command tables and copy-paste examples; cross-link via relative paths
 - Each skill ships in the npm tarball through the `files` array in `package.json`
 - `references/` holds supplementary docs like lifecycle guides and cheat sheets
-- `delta-science` is host-neutral: use the host's shell/Python to locate and run `scripts/invoke.py`; do not add host-specific tool or environment dependencies
-- Do not copy the server tool registry into the Skill; discover newly deployed tools through `catalog.py`
+- `delta-science` is host-neutral: use the host's shell/Python to run `delta-cli`; do not add host-specific tool or environment dependencies
+- Do not copy the server tool registry into the Skill; discover newly deployed tools through `delta-cli science list` and `delta-cli science endpoints list <tool>`
 - Treat database `tools.name` and `tool_endpoints.name` as exact contracts; never add aliases or compatibility maps
 
 ## ANTI-PATTERNS
