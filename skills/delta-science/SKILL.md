@@ -8,54 +8,38 @@ description: "公司在线 Science 能力的统一入口，所有调用都经 De
 把自然语言科研任务转换为最少数量、可验证的 Delta CLI Science 调用。只暴露本
 Skill；工具选择、operation、参数、跨工具交接和结果校验都在本 Skill 内完成。
 
-## 强制调用链
+## 调用链
 
 - 所有在线 Science 操作必须走
-  `宿主 shell/Python -> delta-science/scripts/invoke.py -> delta-cli science invoke -> Science Server`。
-- 用宿主可用的 shell 或 Python 定位当前 Skill 的 `SKILL.md` 所在目录，再以该目录下的
-  `scripts/invoke.py` 的绝对路径执行 wrapper。Claude Code 可使用
-  `CLAUDE_SKILL_DIR`；Codex 应以当前已加载 Skill 的目录为工作目录，或在已安装的 Skills
-  目录中查找精确的 `delta-science/scripts/invoke.py`。不得依赖宿主私有环境变量。
-- 禁止直接执行 `delta-cli`、`curl`、`requests`、`httpx`、浏览器和 PowerShell Web 命令；
-  禁止直接访问公司网关或业务服务 URL。
-- 禁止使用本地 RDKit、pymatgen、LAMMPS、BO、回归或 sandbox 冒充 Science 结果。
-- 执行前读取对应 reference，并从中逐字选择 operation 和请求字段；禁止凭记忆创造字段或
-  枚举值。不得读取或修改 wrapper 源码、runtime 或配置文件。
-- `tools.name` 和 `tool_endpoints.name` 是唯一权威调用名称。传给 wrapper 的 tool 和
-  endpoint 必须与当前数据库目录完全一致；CLI 和 wrapper 都不做别名映射、前缀裁剪、
+  `宿主 shell/Python -> delta-cli science invoke -> Science Server`。
+- 直接执行已安装的 `delta-cli`，使用 CLI 的标准认证与 `science_base_url` 配置。不得通过
+  环境变量、命令参数或业务 URL 改写服务路由。
+- 禁止使用 `curl`、`requests`、`httpx`、浏览器和 PowerShell Web 命令直接访问公司网关或
+  业务服务 URL。
+- 不得将本地 RDKit、pymatgen、LAMMPS、BO、回归或 sandbox 结果冒充为 Science 结果。
+  本地工具可用于格式转换、文件解析或展示，但必须明确其来源，并与 CLI 结果分开。
+- 执行前读取对应 reference，并按其选择 operation 和请求字段；reference 缺失、过期或与
+  当前目录不一致时，可查询实时目录。禁止凭记忆创造字段或枚举值。
+- `tools.name` 和 `tool_endpoints.name` 是唯一权威调用名称。传给 CLI 的 tool 和
+  endpoint 必须与当前数据库目录完全一致；CLI 不做别名映射、前缀裁剪、
   profile 判断或 `not_found` 后改名重试。reference 与目录不一致时终止并报告配置问题。
-- 业务结果直接位于 `result["native"]`。禁止读取 `native.data` 或递归搜索结果。
-- 只有子进程退出码为 0、`result["ok"] is True` 且
-  `result["transport"] == "delta-cli"` 时，才能报告业务成功。
+- 只有 CLI 子进程退出码为 0 且输出 JSON 顶层 `ok` 为 `true` 时，才能报告调用成功。
+  CLI 顶层 `data` 保存服务响应；仅按对应 reference 说明的信封和业务结构读取字段，
+  不得递归搜索看似合理的值，也不得把 `valid:false` 等业务结果误报为传输失败。
 
-固定 Python 模板（将 `wrapper` 替换为已定位的绝对路径）：
+调用模板：
 
-```python
-import json, subprocess, sys
-
-wrapper = "/absolute/path/to/delta-science/scripts/invoke.py"
-
-def invoke(tool, endpoint, data=None, params=None, timeout=150):
-    argv = [sys.executable, wrapper, "--tool", tool, "--endpoint", endpoint]
-    if data is not None:
-        argv += ["--data-json", json.dumps(data, ensure_ascii=False)]
-    if params is not None:
-        argv += ["--params-json", json.dumps(params, ensure_ascii=False)]
-    p = subprocess.run(
-        argv, capture_output=True, text=True, encoding="utf-8",
-        errors="replace", shell=False, timeout=timeout
-    )
-    if p.returncode != 0:
-        raise RuntimeError(p.stderr or p.stdout)
-    result = json.loads(p.stdout)
-    if result.get("ok") is not True or result.get("transport") != "delta-cli":
-        raise RuntimeError(result)
-    return result
+```text
+delta-cli science invoke --tool TOOL --endpoint ENDPOINT --data JSON
 ```
 
+仅当 reference 明确将字段定义为查询参数时使用 `--params JSON`。不要将 JSON 拼接为 shell
+代码；由宿主 shell 的安全参数传递机制传入单个 JSON 参数。
+
 只调用完成目标所需的 operation。跨工具任务在同一个 Skill 执行中按依赖顺序调用，
-下游只能使用上一步已验证的 `native`。已知工具不要额外调用 health、schema、
-catalog、render、descriptors 或文件操作，除非用户确实要求对应结果。
+下游只能使用上一步已验证的业务字段。已知工具默认不要额外调用 health、schema、
+catalog、render、descriptors 或文件操作；用户请求、诊断需要或 reference 与实时目录不一致时，
+可执行最少的只读调用。
 
 ## 选择工具
 
@@ -81,11 +65,11 @@ catalog、render、descriptors 或文件操作，除非用户确实要求对应�
 [routing-index.md](references/routing-index.md)。跨工具任务再读
 [workflows.md](references/workflows.md)。
 
-本表是经过验证的科研路由，不是服务端工具清单。若用户明确点名本表之外的新工具，
-允许通过宿主 shell/Python 运行同目录的 `scripts/catalog.py --tools`，再使用目录返回
-的精确 tool name 运行一次 `catalog.py --endpoints <tool>`；两次读取都必须满足
-`transport="delta-cli"`。不得用空 body、错误参数、health、help、源码、wrapper 或
-直接 HTTP 探测。实时 endpoint 元数据若没有足够的请求字段契约，应说明“目录已发现，
+本表是经过验证的科研路由，不是服务端工具清单。若用户点名本表之外的新工具，或 reference
+缺失、过期或与 CLI 返回不一致，允许运行 `delta-cli science list`，再使用目录返回的精确 tool name 运行一次
+`delta-cli science endpoints list <tool>`；两次输出都必须满足退出码为 0 且顶层
+`ok:true`。不得用空 body、错误参数、源码或直接 HTTP 探测。实时 endpoint
+元数据若没有足够的请求字段契约，应说明“目录已发现，
 但服务端未提供可安全构造请求的 schema”，不得猜 body、模糊匹配或转换名称。新增工具
 因此无需修改 CLI；只有需要自然语言自动选路或自动组装参数时，才补充对应 reference。
 
@@ -106,12 +90,12 @@ catalog、render、descriptors 或文件操作，除非用户确实要求对应�
 
 - `run-default-job`、`run`、`stop` 等远程变更必须由用户明确授权。结果未知、超时或
   断连时不得重试，因为远端操作可能已经发生。
-- 参数校验、502、504、timeout、空 recommendations 和后端失败均按本次失败结束。
+- 参数校验、空 recommendations 和业务后端失败均按本次失败结束。对 `health`、目录和其他
+  明确只读、幂等的 operation，网络类 502、504 或 timeout 可按相同参数最多重试一次。
   SynBO 每个用户任务最多一次业务调用；不得换模型、换 acquisition 或改用本地算法。
-- wrapper 第一次返回失败后立即向用户返回原始错误的短摘要（包含 `stage` 和
-  `error_type`）。不得读取 wrapper/runtime/config、不得运行 `delta-cli config/auth/help`、
-  不得修改环境变量、
-  不得伪造 UID、令牌或 API Key，也不得改 operation、参数或调用链重试。
+- CLI 首次返回失败后应返回原始错误短摘要。用户明确要求排障时，可运行只读的
+  `delta-cli auth status`、`delta-cli config show` 或 `delta-cli ... --help`；不得自行登录、
+  修改配置或环境变量、伪造 UID、令牌或 API Key，也不得改变 operation、参数或调用链重试。
 - `X-User-Uid`、登录、quota 或 permission 错误属于终止性认证错误；只转发原始错误和
   登录提示。Skill 绝不自行登录、检查凭据、猜测用户标识或尝试绕过 quota。
 - 重型调用串行执行。客户端超时不代表远端计算已取消。
@@ -120,31 +104,33 @@ catalog、render、descriptors 或文件操作，除非用户确实要求对应�
 - 外层规划器自动附加的路径、JSON、图表或报告不等同于用户明确要求。若任务本质只是
   查询、比较或校验，直接返回最小文本结果；不得为了满足附加产物而重复 Science 调用。
 - 二进制产物只解码文档明确的字段；PNG 必须验证 magic bytes。
+- 用户明确要求公开背景资料或文献时，可进行网页检索，但不得将其作为 Science 服务调用或
+  用其替代 CLI 结果；分别标明来源。
 
 ## 输出
 
-将当前 `native` 投影为用户要求的最小结果；逐字保留字符串、数值、警告和来源。
-不得补充 native 未返回的单位、机制、引用、链接、预测值或记忆知识。预测结果不得
+将当前 CLI `data` 中、由对应 reference 定义的业务响应投影为用户要求的最小结果；逐字保留字符串、数值、警告和来源。
+不得补充服务未返回的单位、机制、引用、链接、预测值或记忆知识。预测结果不得
 描述为实测结果。
-成功取得最后一个所需 native 后，直接将其投影为最终答复。禁止为了排序、排版、生成
-表格或摘要再次执行 wrapper，也禁止把 native 手工复制成新的 Python/JSON 字面量；简单
+成功取得最后一个所需业务结果后，直接将其投影为最终答复。禁止为了排序、排版、生成
+表格或摘要再次执行 CLI，也禁止把结果手工复制成新的 Python/JSON 字面量；简单
 筛选、比较和文本组织直接在最终答复中完成。
 
-成功时只返回由当前 native 生成的有界纯文本；失败时只返回包含 `stage`、`error_type` 的
-原始错误短摘要。完成后不得重新计算、改写或用手工建议替代成功/失败的 Science 结果。
+成功时只返回由当前 CLI 业务结果生成的有界纯文本；失败时只返回 CLI 原始错误短摘要。
+完成后不得重新计算、改写或用手工建议替代成功/失败的 Science 结果。
 
 每次成功结果保留：
 
 ```text
-证据边界：仅限当前 Delta CLI native 结果
+证据边界：仅限当前 Delta CLI `data` 中的业务结果
 调用链：delta-cli
 禁止补充未返回内容：是
 ```
 
 ## 完成标准
 
-- 每个在线操作都有 `transport="delta-cli"` 证据；
-- 每个科学数值来自当前调用的 native；
+- 每个在线操作都有 CLI 退出码为 0 且顶层 `ok:true` 的证据；
+- 每个科学数值来自当前调用 `data` 中、由 reference 定义的业务字段；
 - 下游输入来自当前任务中已验证的上游结果；
 - 失败准确归类为配置、CLI、参数、Science Server、业务服务或超时；
 - 没有直接 HTTP、本地科学库、跨会话文件或人工结果替代。
