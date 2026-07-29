@@ -1,7 +1,7 @@
 # AntBO 详细规则
 
-在 `SKILL.md` 的 wrapper 模板中设置 `endpoint`、`data`、`params`。业务结果直接位于
-`r["native"]`。标为“变更”的 operation 只有用户明确授权时才能执行，且不得重试。
+直接用 `delta-cli science invoke` 设置 `endpoint`、`data`、`params`。按本文件定义的
+CLI 服务响应字段读取业务结果。标为“变更”的 operation 只有用户明确授权时才能执行，且不得重试。
 
 抗体/CDRH3 场景即使出现 “LDM” 也不得改用小分子 LDM-BO 或 STRBO。当前 catalog
 同时暴露 CDRH3 生成/建议/评估接口和传统 AntBO 作业管理接口。
@@ -18,7 +18,7 @@
 - 代码：`endpoint="run-default-job"; data=None; params={"log_name":"antbo_<唯一时间戳>.log","append":False,"timeout_seconds":86400}`
 - 投影：started、pid、log_name/log_path、timeout_seconds；未知结果禁止重试。
 
-只有同一次 native 同时包含 `started=true`、非空 `pid` 以及 `log_name` 或
+只有同一次业务响应同时包含 `started=true`、非空 `pid` 以及 `log_name` 或
 `log_path` 时，才能声称作业已启动；字段缺失时标记为未验证，不得重复提交。
 
 ## run（重型变更）
