@@ -1,8 +1,8 @@
 # Delta CLI 执行约定
 
-## 直接调用 CLI
+## 使用 CLI
 
-所有实时 Science 调用都直接执行已安装的 Delta CLI：
+所有实时 Science 调用最终都使用已安装的 Delta CLI；CLI 是服务调用边界。标准命令为：
 
 ```text
 delta-cli science invoke --tool TOOL --endpoint ENDPOINT --data JSON
