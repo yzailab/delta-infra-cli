@@ -1,18 +1,17 @@
 # Delta-BO 详细规则
 
-所有在线调用只走统一 wrapper，tool 固定为 `delta-bo`。当前 CLI catalog 只暴露
+所有在线调用直接使用 `delta-cli science invoke`，tool 固定为 `delta-bo`。当前 CLI catalog 只暴露
 `commands` 和 `generate`；禁止根据旧 HTTP 文档猜测或直连 stateful command API。
 
 ## commands
 
 情景：用户要求查看当前部署支持的 Delta-BO 命令。
 
-```python
-result = invoke("delta-bo", "commands")
-native = result["native"]
+```text
+delta-cli science invoke --tool delta-bo --endpoint commands
 ```
 
-无 body。只报告当前 native 命令列表，不从历史文档补全。
+无 body。只报告当前业务响应中的命令列表，不从历史文档补全。
 
 ## generate
 
@@ -78,7 +77,7 @@ native = result["native"]
 }
 ```
 
-只报告 native 的 `suggestions`、`suggestion_metadata`、`warnings`、
+只报告业务响应的 `suggestions`、`suggestion_metadata`、`warnings`、
 `generated_candidate_count` 和 `diversity` 中实际存在的字段。空 suggestions 或失败
 不得用本地 GP、UCB 或随机数替代。
 
