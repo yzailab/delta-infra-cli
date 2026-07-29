@@ -1,6 +1,6 @@
 # pymatgen 详细规则
 
-所有调用只走统一 wrapper。无机化学式、组成和式量优先使用 pymatgen，不用 PubChem
+所有调用直接使用 `delta-cli science invoke`。无机化学式、组成和式量优先使用 pymatgen，不用 PubChem
 或本地元素表替代。结构 operation 必须发送完整结构文本，不能发送本地文件路径；
 支持 `cif`、`poscar`、`json`、`cssr`、`xsf`，不接收 LAMMPS data/dump。
 
