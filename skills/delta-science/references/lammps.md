@@ -1,6 +1,6 @@
 # LAMMPS 详细规则
 
-所有调用只走统一 wrapper。LAMMPS 不从化学式、CIF 或 POSCAR 自动推断 data、原子
+所有调用直接使用 `delta-cli science invoke`。LAMMPS 不从化学式、CIF 或 POSCAR 自动推断 data、原子
 类型、势函数与边界条件。成功执行不表示物理收敛或生产可用。
 
 ## Health
@@ -60,7 +60,7 @@ Notes:
 - Force-field choice is caller responsibility. The service executes explicit
   LAMMPS input and does not infer potentials from formulas or structures.
 
-最终只复制当前 native 的 `last_thermo`、final step/temperature/total energy、
+最终只复制当前业务响应的 `last_thermo`、final step/temperature/total energy、
 warnings 和用户要求的输出文件摘要。禁止把总能量除以原子数、替换步数、换算单位或
 推测收敛性、稳定性。最小示例必须先调用 `lj-melt-example`，再把其
-`native["request"]` 原样交给 `run`；不得传 wrapper 外层 envelope。
+当前业务响应的 `request` 原样交给 `run`；不得传 CLI 外层 envelope。
