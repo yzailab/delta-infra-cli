@@ -15,7 +15,7 @@
 
 | 命令 | 说明 |
 |------|------|
-| `sandbox create --image <img> [--cpu N --memory XGi --gpu N --gpu-mem N --max-life M --provider P]` | 创建 sandbox 容器 |
+| `sandbox create --image <img> [--cpu N --memory XGi --gpu N --gpu-mem N --max-life M --no-auto-cleanup --provider P]` | 创建 sandbox 容器（`--no-auto-cleanup` 不被自动清理，仅显式 kill/finish 可销毁） |
 | `sandbox connect <id>` | 连接已有 sandbox |
 | `sandbox status <id>` | 查看 sandbox 状态（running / done） |
 | `sandbox finish <id> [--results '{...}']` | 保存结果后自动销毁 |
@@ -25,9 +25,9 @@
 
 | 命令 | 说明 |
 |------|------|
-| `sandbox run <id> --command "..." [--timeout N] [--summary/--no-summary] [--artifacts]` | 同步运行命令；默认 `--summary` 开启，返回 JSON 中 `summary` 字段已含 stdout 末尾 JSON 提取结果；`--artifacts` 附带 workspace 产物清单 |
-| `sandbox run-bg <id> --command "..." [--timeout N] [--wait] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`；加 `--wait` 等待完成返回含 `summary` 的完整结果 |
-| `sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N]` | 获取后台命令日志；**默认返回 `stdout_tail`（末尾 800 字节）+ `stderr_tail`（末尾 200 字节）+ `stderr_size` + `cursor`**，总计约 1KB，避免上下文爆炸；`--tail N` 同时作用于 stdout 和 stderr（各取尾 N 行）；`--grep <pattern>` 同时过滤 stdout 和 stderr（正则）；`--context N` 提供 grep 匹配行前后 N 行上下文（同时用于 stdout 和 stderr）；**`cursor` 字段无 `omitempty`，0 也常驻响应**。 |
+| `sandbox run <id> --command "..." [--timeout N] [--summary/--no-summary] [--artifacts]` | 同步运行命令（SSE 实时流，原始 `data:` 帧逐帧透传到 stdout，**无末尾信封**；`exit_code`/`log_file`/`execution_id` 从 `complete` 帧读取）；`--summary`/`--artifacts` 仅在旧服务器回退路径（无 SSE 端点时输出 `CommandResult` 信封）生效 |
+| `sandbox run-bg <id> --command "..." [--timeout N] [--wait] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`；加 `--wait` 通过 SSE 实时流跟随到 `complete`（原始 `data:` 帧透传到 stdout，无末尾信封；超时则追加 `finished=false` 快照信封）；`--summary`/`--artifacts` 仅在旧服务器回退路径生效 |
+| `sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N] [--stream]` | 获取后台命令日志；**默认返回 `stdout_tail`（末尾 800 字节）+ `stderr_tail`（末尾 200 字节）+ `stderr_size` + `cursor`**，总计约 1KB，避免上下文爆炸；`--stream` 走 `/logs/stream` SSE 实时跟随，原始 `data:` 帧透传到 stdout 直到 `complete`（无末尾信封）；`--tail N` 同时作用于 stdout 和 stderr（各取尾 N 行）；`--grep <pattern>` 同时过滤 stdout 和 stderr（正则）；`--context N` 提供 grep 匹配行前后 N 行上下文（同时用于 stdout 和 stderr）；**`cursor` 字段无 `omitempty`，0 也常驻响应**。 |
 | `sandbox cancel <id> --execution-id <eid>` | 中断正在运行的后台命令 |
 
 ## 文件操作
