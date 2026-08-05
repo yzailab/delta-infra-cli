@@ -6,10 +6,10 @@
 
 1. **查看可用镜像** `delta-cli sandbox images` — 查询服务端支持的镜像列表。镜像决定了容器内的语言运行时（Python / Node.js / Go / Java / Rust 等），根据用户的技术栈和 GPU/CPU 需求匹配。
 2. **列出现有 sandbox（可选）** `delta-cli sandbox list` — 查看当前用户已创建的活跃 sandbox，避免重复创建
-3. **创建** `delta-cli sandbox create --image <image> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`（创建后立即可用，无需连接；--max-life 指定 sandbox 最大存活时间（分钟），默认 30；这些是 `create` 全部资源参数，不要发明其它 flag。`--provider autodl` 可指定使用 AutoDL 后端。）
+3. **创建** `delta-cli sandbox create --image <image> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`（创建后立即可用，无需连接；--max-life 指定 sandbox 最大存活时间（分钟），默认 30。`--no-auto-cleanup` 可让 sandbox 不被自动清理，仅显式 kill/finish 可销毁。`--provider autodl` 可指定使用 AutoDL 后端。）
 4. **写入代码/数据** `delta-cli sandbox write <id> --path /workspace/<filename> --source <文件名>` — 将本地文件直接写入 sandbox。**必须**使用相对路径（如 `--source infer.py`），禁止使用 `"$WORKSPACE_ROOT/<filename>"`。也可用 `--data "..."` 写入少量内联内容，`--mode 755` 可设置文件权限。写入后返回的 `size` 字段是 stat 验证后的实际磁盘字节数，可确认写入完整。批量写入用 `write-multiple`。文件路径和扩展名由镜像中的运行时决定。
 5. **运行命令** — 根据镜像中的运行时构造命令，常见示例：`python /workspace/train.py`（Python）、`node /workspace/app.js`（Node.js）、`go run /workspace/main.go`（Go）、`bash /workspace/run.sh`（Shell）
-   - **短任务 ≤60s**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，返回 `stdout`/`stderr`/`exit_code` (默认带 --summary，返回 JSON data.result_summary 已含 stdout 末尾 JSON 提取结果)
+   - **短任务 ≤60s**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，SSE 原始 `data:` 帧透传到 stdout（无末尾信封），`exit_code`/`log_file` 从 `complete` 帧读取，完整 stdout 写入 log_file
    - **长任务 >60s**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait` 后台执行（推荐），或 `run-bg` + `logs` 手动轮询 (run-bg --wait 默认带 --summary；不加 --wait 立即返回 {execution_id, sandbox_id})
 6. **读取结果** `delta-cli sandbox read <id> --path /workspace/result.json` — 返回 `content`（内容）、`size`（磁盘字节，来自 stat）、`content_length`（字符数）。读不存在的文件返回 error 而非空内容。
 7. **销毁** `delta-cli sandbox kill <id>`（如需保存结果用 finish，finish 会自动销毁）
@@ -25,11 +25,11 @@
 ```bash
 delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200 --wait
 ```
-CLI 内部每 5 秒轮询一次，`finished=true` 时返回，结果中包含 `execution_id`。只消耗 **1 次 tool call**，适合不关心中间进度的场景。
+CLI 通过 SSE 实时流（`/logs/stream`）跟随输出，把原始 SSE 帧（`data: {...}`）**逐帧透传到 stdout**，收到 `complete` 帧（含 `exit_code`/`log_file`/`execution_id`）即命令结束，CLI 直接退出、不追加末尾信封。只消耗 **1 次 tool call**，适合不关心中间进度的场景。
 
-> `--wait` 默认带 `--summary`，返回的 JSON `data.result_summary` 字段已包含 stdout 末尾结构化 JSON 的提取结果。常用场景无需再调 `sandbox read` 二次解析 log_file。
+> `--wait` 的 SSE 路径不返回 `result_summary` 信封（`--summary` 仅在旧服务器回退路径生效）。需要摘要时，用 `sandbox read <id> --path <log_file>` 读取 log_file，反向扫描 stdout 末尾 JSON 提取 `result_summary`。
 
-> **结果信封统一为 `CommandResult`**：`run-bg --wait` 始终返回同一 `CommandResult` 信封：`{execution_id, sandbox_id, finished, exit_code, stderr_tail, stderr_size, log_file, result_summary, hints, error}`，`finished` 键**始终存在**。`finished=true` 表示执行结束并带富化摘要（`result_summary`/`hints`）；`finished=false` 表示命令仍在运行（`exit_code` 与富化字段可能缺失），需用 `sandbox logs` 继续轮询或 `sandbox status` 查看。
+> **输出契约（SSE 路径）**：`run-bg --wait` 成功时 stdout 只有原始 SSE 帧，**没有末尾信封**；`--timeout` 内未结束则追加一个 `finished=false` 的 `CommandLogsResult` 快照信封；旧服务器（无 `/logs/stream` 端点）回退到 5s 轮询并输出 `CommandResult` 信封（`finished` 键始终存在，`finished=true` 时带 `result_summary`/`hints` 富化）。
 
 ### 方式二：手动轮询（需要看实时输出时）
 
@@ -38,7 +38,11 @@ CLI 内部每 5 秒轮询一次，`finished=true` 时返回，结果中包含 `e
 delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200
 # ↑ 返回 execution_id
 
-# 2. 手动轮询进度（可用 --tail N / --grep <pattern> 过滤大输出）
+# 2a. 实时跟随（SSE，推荐）：
+delta-cli sandbox logs <id> --execution-id <exec_id> --stream
+# ↑ 原始 data: 帧逐帧透传到 stdout，直到 complete 事件，无末尾信封
+
+# 2b. 手动轮询快照（可用 --tail N / --grep <pattern> 过滤大输出）
 delta-cli sandbox logs <id> --execution-id <exec_id>
 # ↑ 返回 {sandbox_id, execution_id, stderr_tail, stderr_size, cursor, running, finished, exit_code, log_file?}
 
@@ -51,7 +55,7 @@ delta-cli sandbox kill <id>
 `sandbox logs` 返回的数据结构为：
 
 ```json
-{"ok":true,"data":{"sandbox_id":"...","execution_id":"...","stdout_tail":"...","stderr_tail":"...","stdout_size":1234,"stderr_size":1234,"cursor":5,"running":false,"finished":true,"exit_code":0,"log_file":"/tmp/delta-result-...json"}}
+{"ok":true,"data":{"sandbox_id":"...","execution_id":"...","stdout_tail":"...","stderr_tail":"...","stdout_size":1234,"stderr_size":1234,"cursor":5,"running":false,"finished":true,"exit_code":0,"log_file":"/workspace/{user_id}/{sandbox_id}/{execution_id}/delta-result-{execution_id}.json"}}
 ```
 
 字段说明：
@@ -66,7 +70,7 @@ delta-cli sandbox kill <id>
 - `exit_code` — 退出码（完成后才有值，运行中字段省略）
 - `log_file` — 仅 `finished=true` 时出现，是 run envelope 日志文件路径（含完整 stdout + stderr + exit_code + finished + command + error），需读它用 `delta-cli sandbox read <id> --path <log_file>`
 
-**stdout 路径说明**：`sandbox logs` 默认返回 stdout 末尾 800 字节（`stdout_tail`）提供实时中间进度预览，完整 stdout 仍在命令结束时被写入沙箱内的 `log_file`，需全文时用 `sandbox read` 读。CLI `run-bg --wait` 完成后默认开启 `--summary`，会自动 reverse-scan stdout 末尾 JSON 填入 `data.result_summary`，常用场景无需手动读 `log_file`。
+**stdout 路径说明**：`sandbox logs` 默认返回 stdout 末尾 800 字节（`stdout_tail`）提供实时中间进度预览，完整 stdout 仍在命令结束时被写入沙箱内的 `log_file`，需全文时用 `sandbox read` 读。CLI 的 `--summary` 富化仅在旧服务器回退路径生效（SSE 路径不透传 `result_summary`），SSE 路径下需手动 `sandbox read` log_file 反向扫描 stdout 末尾 JSON 提取摘要。
 
 要用 `--tail/--grep/--context` 自定义切片：传任意一个 flag 时，CLI 会把过滤后的 stdout 和 stderr 分别写回 `stdout`/`stderr` 字段并更新 `stdout_size`/`stderr_size`；不传则保持 `stdout=""` + `stdout_tail` 末尾 800 字节预览 + `stderr=""` + `stderr_tail` 末尾 200 字节预览（总计约 1KB）。
 
@@ -88,5 +92,5 @@ delta-cli sandbox logs <id> --execution-id <eid> --grep "ERROR|warning" --contex
 **注意**：
 - `sandbox logs` 只应配合 `sandbox run-bg` 使用；同步 `sandbox run` 的结果直接返回，不能也不应该调用 `logs`。
 - `sandbox run-bg` 不加 `--wait` 时，HTTP 请求本身会快速返回 `{execution_id, sandbox_id}`；命令若超时会以非零退出码结束，需后续通过 `logs` 拿 `exit_code`。
-- `sandbox run-bg --wait` 模式下，`--timeout` **同时**充当服务端命令执行超时和客户端轮询 deadline（默认 300s）；轮询间隔固定 5 秒；初始 `/run-background` POST 有独立的 60s HTTP timeout。
+- `sandbox run-bg --wait` 模式下，`--timeout` **同时**充当服务端命令执行超时和客户端等待 deadline（默认 300s）；CLI 通过 SSE 实时流（`/logs/stream`）跟随，原始 `data:` 帧透传到 stdout，收到 `complete` 即结束（无末尾信封），超时则追加 `finished=false` 快照信封；初始 `/run-background` POST 有独立的 60s HTTP timeout。
 - 后台命令可跨 tool call 轮次查询：保存 `sandbox_id` 和 `execution_id`，后续轮次通过 `sandbox status` / `sandbox logs` 获取结果。
