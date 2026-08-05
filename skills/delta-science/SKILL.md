@@ -1,6 +1,10 @@
 ---
 name: delta-science
 description: "公司在线 Science 能力的统一入口，所有调用都经 Delta CLI。凡是查询具体化合物/CID/SMILES/分子性质、计算分子描述符或相似度、解析晶体/CIF/空间群、模拟或精修 XRD、执行 LAMMPS、根据实验数据做贝叶斯优化、反应条件优化，以及任何 LDM/大发现模型、KRAS G12D 小分子生成优化、固定候选池/PDF2Dock 轨迹或抗体 CDRH3 优化任务，都必须使用本 Skill；不得调用旧 large-discovery-model Skill、旧 gateway 脚本、网页搜索或本地科学库绕过 Delta CLI。普通查询、比较或校验默认直接返回文本，不要主动增加 JSON/CSV、报告、图片或图表步骤；只有用户明确要求保存、导出、绘图或生成文件时才创建产物。"
+metadata:
+  requires:
+    bins: ["delta-cli"]
+  cliHelp: "delta-cli science --help"
 ---
 
 # Delta Science
