@@ -29,7 +29,7 @@ CLI 内部每 5 秒轮询一次，`finished=true` 时返回，结果中包含 `e
 
 > `--wait` 默认带 `--summary`，返回的 JSON `data.result_summary` 字段已包含 stdout 末尾结构化 JSON 的提取结果。常用场景无需再调 `sandbox read` 二次解析 log_file。
 
-> ⚠️ **返回类型不对称**：`finished=true` 时返回 `CommandResult` 信封（含 `execution_id, sandbox_id, finished, exit_code, stderr_tail, stderr_size, log_file, result_summary, hints, error`）；若轮询 deadline 到了仍未 `finished=true`（即 `--timeout` 超时），CLI 会返回 `CommandLogsResult` 信封（**字段集合不同**：含 `cursor, running, finished, exit_code, stderr_tail, stderr_size, log_file?` 但**没有 `result_summary` / `hints` / `sandbox_id`**）。调用方解析 `run-bg --wait` 返回时应兼容两种 schema。从 `execution_id` 是否存在可粗略区分，更准确的信号是 `result_summary` 字段是否存在。
+> **结果信封统一为 `CommandResult`**：`run-bg --wait` 始终返回同一 `CommandResult` 信封：`{execution_id, sandbox_id, finished, exit_code, stderr_tail, stderr_size, log_file, result_summary, hints, error}`，`finished` 键**始终存在**。`finished=true` 表示执行结束并带富化摘要（`result_summary`/`hints`）；`finished=false` 表示命令仍在运行（`exit_code` 与富化字段可能缺失），需用 `sandbox logs` 继续轮询或 `sandbox status` 查看。
 
 ### 方式二：手动轮询（需要看实时输出时）
 
