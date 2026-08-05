@@ -45,7 +45,67 @@ const PLATFORM_LABELS = {
 const skillManifest = require("../skills/manifest.json");
 const SKILL_NAMES = skillManifest.skills;
 const RETIRED_SKILL_NAMES = skillManifest.retired_skills || [];
-const LANG = "zh";
+
+// Language for interactive prompts and log text. Detection precedence:
+//   DELTA_CLI_LANG (explicit override) > OS locale env (LANG/LC_ALL/LANGUAGE/
+//   LC_MESSAGES) > platform probe (Windows UI culture via PowerShell) >
+//   Intl default locale. Only zh and en are supported; anything not Chinese
+//   falls back to English. Neutral locales (C / POSIX / und) carry no language
+//   signal and resolve to English instead of leaking the runtime's default.
+//
+// Windows does not set the POSIX LANG/LC_ALL vars and Node's Intl defaults to
+// en-US there, so a Chinese Windows user would otherwise see English. We probe
+// the real UI culture on that platform instead.
+function detectLang() {
+  if (process.env.DELTA_CLI_LANG) {
+    return process.env.DELTA_CLI_LANG.toLowerCase().startsWith("zh") ? "zh" : "en";
+  }
+  const neutral = /^(c|posix|und)(\b|$)/i;
+  const candidates = [
+    process.env.LC_ALL,
+    process.env.LC_MESSAGES,
+    process.env.LANG,
+    process.env.LANGUAGE,
+  ];
+  let sawLocale = false;
+  for (const value of candidates) {
+    if (!value) continue;
+    sawLocale = true;
+    const lower = value.toLowerCase();
+    if (neutral.test(value)) return "en";
+    if (lower.startsWith("zh")) return "zh";
+    return "en";
+  }
+  if (sawLocale) return "en";
+  if (isWindows) {
+    const win = windowsUiLanguage();
+    if (win) return win;
+  }
+  try {
+    if (String(Intl.DateTimeFormat().resolvedOptions().locale).toLowerCase().startsWith("zh")) {
+      return "zh";
+    }
+  } catch {}
+  return "en";
+}
+
+// Returns "zh" or "en" from the Windows UI culture, or "" when it cannot be read.
+function windowsUiLanguage() {
+  try {
+    const out = execFileSync(
+      "powershell.exe",
+      ["-NoProfile", "-Command",
+        "[System.Globalization.CultureInfo]::CurrentUICulture.Name"],
+      { stdio: ["ignore", "pipe", "ignore"], encoding: "utf8", timeout: 8000 }
+    );
+    const name = (out || "").trim().toLowerCase();
+    if (name.startsWith("zh")) return "zh";
+    if (name) return "en";
+  } catch {}
+  return "";
+}
+
+const LANG = detectLang();
 
 function platformSkillDir(platform) {
   return path.join(osHomedir(), ...PLATFORM_PATHS[platform]);
@@ -83,6 +143,10 @@ const messages = {
     done:           "安装完成！\n现在可以让你的 AI 工具使用 delta-cli 管理 Delta Sandbox 资源或调用 Science 工具。",
     cancelled:      "安装已取消",
     nonTtyHint:     "要完成配置，请在终端中运行：\n  delta-cli config init\n  delta-cli auth login",
+    uninstallConfirm: "将移除全局包、AI Skills 和配置文件。是否继续？",
+    uninstallCancelled: "卸载已取消",
+    uninstallDone:  "卸载完成",
+    uninstallComplete: "卸载完成。",
   },
   en: {
     setup:          "Setting up Delta Infra CLI...",
@@ -113,6 +177,10 @@ const messages = {
     done:           "You are all set!\nYour AI tool can now use delta-cli to manage Delta Sandbox resources or invoke Science tools.",
     cancelled:      "Installation cancelled",
     nonTtyHint:     "To complete setup, run interactively:\n  delta-cli config init\n  delta-cli auth login",
+    uninstallConfirm: "This will remove the global package, AI Skills and config. Continue?",
+    uninstallCancelled: "Uninstall cancelled",
+    uninstallDone:  "Uninstall complete",
+    uninstallComplete: "Uninstall complete.",
   },
 };
 
@@ -565,33 +633,35 @@ async function stepUninstallPackage(msg) {
 
 async function doInstall() {
   const isInteractive = isInteractiveEnv();
+  const msg = messages[LANG];
 
   if (isInteractive) {
-    p.intro(messages.zh.setup);
-    await stepInstallGlobally(messages.zh);
-    const platforms = await stepSelectPlatforms(messages.zh);
-    await stepInstallSkills(messages.zh, platforms);
-    await stepConfigInit(messages.zh);
-    await stepAuthLogin(messages.zh);
-    p.outro(messages.zh.done);
+    p.intro(msg.setup);
+    await stepInstallGlobally(msg);
+    const platforms = await stepSelectPlatforms(msg);
+    await stepInstallSkills(msg, platforms);
+    await stepConfigInit(msg);
+    await stepAuthLogin(msg);
+    p.outro(msg.done);
   } else {
-    console.log(messages.zh.setup);
-    await stepInstallGlobally(messages.zh);
+    console.log(msg.setup);
+    await stepInstallGlobally(msg);
     const platforms = ["agents"];
-    await stepInstallSkills(messages.zh, platforms);
-    console.log(messages.zh.nonTtyHint);
+    await stepInstallSkills(msg, platforms);
+    console.log(msg.nonTtyHint);
   }
 }
 
 async function doUninstall() {
   const isInteractive = isInteractiveEnv();
+  const msg = messages[LANG];
 
   if (isInteractive) {
     const ok = await p.confirm({
-      message: "将移除全局包、AI Skills 和配置文件。是否继续？",
+      message: msg.uninstallConfirm,
     });
     if (p.isCancel(ok) || !ok) {
-      p.cancel("卸载已取消");
+      p.cancel(msg.uninstallCancelled);
       process.exit(0);
     }
   }
@@ -601,9 +671,9 @@ async function doUninstall() {
   await stepUninstallPackage();
 
   if (isInteractive) {
-    p.outro("卸载完成");
+    p.outro(msg.uninstallDone);
   } else {
-    console.log("\nUninstall complete.");
+    console.log("\n" + msg.uninstallComplete);
   }
 }
 
