@@ -170,13 +170,19 @@ delta-cli sandbox create \
   --cpu 4 --memory 16Gi --gpu 1 \
   --max-life 120
 
+# 需要长期存活、不被自动清理的 sandbox：加 --no-auto-cleanup（仅显式 kill/finish 可销毁）
+delta-cli sandbox create \
+  --image image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
+  --cpu 4 --memory 16Gi --gpu 1 \
+  --no-auto-cleanup
+
 # 运行命令（短任务同步执行，长任务用 run-bg 替代 run）
 delta-cli sandbox run <sandbox_id> \
   --command "<命令>" \
   --timeout 3600
 
-# v1.0.55+ 默认带 --summary，返回 JSON 中 data.result_summary 字段已含 stdout 末尾 JSON 提取结果
-# 无需再手动读取 log_file 做二次解析（除非使用了 --no-summary）
+# v1.0.85+ sandbox run 走 SSE 实时流：stdout 为原始 data: 帧（无末尾信封），exit_code/log_file 在 complete 帧中
+# 需要 stdout 末尾 JSON 摘要时：读取 log_file 解析（sandbox read <id> --path <log_file>）
 delta-cli sandbox run <sandbox_id> --command "echo '{\"status\":\"ok\",\"result\":\"done\"}'" --timeout 60
 
 # 读取结果文件
@@ -214,13 +220,13 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox providers` | 查看可用计算后端 |
 | `delta-cli sandbox images` | 查看可用镜像列表 |
 | `delta-cli sandbox recommend --cpu N --memory XGi` | 获取资源配置推荐 |
-| `delta-cli sandbox create --image <img>` | 创建 sandbox 容器 |
+| `delta-cli sandbox create --image <img> [--no-auto-cleanup]` | 创建 sandbox 容器（`--no-auto-cleanup` 不被自动清理） |
 | `delta-cli sandbox connect <id>` | 连接 sandbox |
 | `delta-cli sandbox status <id>` | 查看 sandbox 状态 |
 | `delta-cli sandbox finish <id>` | 保存结果并销毁 |
 | `delta-cli sandbox kill <id>` | 销毁 sandbox |
-| `delta-cli sandbox run <id> --command "..." [--timeout <秒>] [--summary/--no-summary] [--artifacts]` | 同步运行命令；默认带 `--summary`，返回 JSON 中 `summary` 字段已含 stdout 末尾 JSON 提取结果；`--artifacts` 附带 workspace 产物清单 |
-| `delta-cli sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`；加 `--wait` 等待完成返回含 `summary` 的完整结果 |
+| `delta-cli sandbox run <id> --command "..." [--timeout <秒>] [--summary/--no-summary] [--artifacts]` | 同步运行命令（SSE 原始 `data:` 帧透传到 stdout，无末尾信封，`exit_code`/`log_file` 在 `complete` 帧）；`--summary`/`--artifacts` 仅旧服务器回退路径生效 |
+| `delta-cli sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`；加 `--wait` 通过 SSE 实时流跟随（原始 `data:` 帧透传到 stdout，无末尾信封） |
 | `delta-cli sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N --max-bytes N]` | 查看后台日志；默认返回 `stderr_size + stderr_tail`（避免上下文爆炸）；可用 `--tail/--grep` 过滤 |
 | `delta-cli sandbox cancel <id> --execution-id <eid>` | 中断后台命令 |
 | `delta-cli sandbox read <id> --path <path> [--output <本地路径>] [--tail N] [--grep <pattern>] [--offset N] [--limit N] [--context N] [--max-bytes N] [--parse-json]` | 读取容器内文件；`--output <path>` 保存到本地；`--tail/--grep` 过滤；非 UTF-8 文件 CLI 自动走 base64 fallback |
