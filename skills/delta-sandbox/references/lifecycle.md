@@ -25,11 +25,11 @@
 ```bash
 delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200 --wait
 ```
-CLI 通过 SSE 实时流（`/logs/stream`）跟随输出，把原始 SSE 帧（`data: {...}`）**逐帧透传到 stdout**，收到 `complete` 帧（含 `exit_code`/`log_file`/`execution_id`）即命令结束，CLI 直接退出、不追加末尾信封。只消耗 **1 次 tool call**，适合不关心中间进度的场景。
+CLI 通过 SSE 实时流（`/logs/stream`）跟随输出，把原始 SSE 帧（`data: {...}`）**逐帧透传到 stdout**，收到 `complete` 帧即命令结束。**CLI 会在 complete 帧里补全字段**：除服务端给的 `exit_code`/`execution_id`/`error` 外，还注入流内累计的 `stdout`/`stderr`、兜底恢复的 `log_file`，以及检测到的末尾 JSON `result_summary`（stdout 末尾 50 行内若有合法 JSON 对象）。命令非零退出或报错时，CLI **追加一个 `error.type: command_failed` 信封并以非零码退出**（进程退出码 8），便于 `&&` 链和 agent 分支；成功则不追加信封。只消耗 **1 次 tool call**，适合不关心中间进度的场景。
 
-> `--wait` 的 SSE 路径不返回 `result_summary` 信封（`--summary` 仅在旧服务器回退路径生效）。需要摘要时，用 `sandbox read <id> --path <log_file>` 读取 log_file，反向扫描 stdout 末尾 JSON 提取 `result_summary`。
+> `--wait` 的 SSE 路径 **complete 帧直接带 `result_summary`**（末尾 JSON 检测到即附上），无需再 `sandbox read <id> --path <log_file>` 反向扫描。仅当末尾没有合法 JSON 时才需手动读 log_file。`--summary`/`--artifacts` 富化（含 hints）仍仅旧服务器回退路径生效。
 
-> **输出契约（SSE 路径）**：`run-bg --wait` 成功时 stdout 只有原始 SSE 帧，**没有末尾信封**；`--timeout` 内未结束则追加一个 `finished=false` 的 `CommandLogsResult` 快照信封；旧服务器（无 `/logs/stream` 端点）回退到 5s 轮询并输出 `CommandResult` 信封（`finished` 键始终存在，`finished=true` 时带 `result_summary`/`hints` 富化）。
+> **输出契约（SSE 路径）**：`run-bg --wait` 命令成功时 stdout 只有原始 SSE 帧，**没有末尾信封**；命令失败时在 complete 帧后追加 `{"ok":false,"error":{"type":"command_failed",...}}` 信封；`--timeout` 内未结束则追加一个 `finished=false` 的 `CommandLogsResult` 快照信封；旧服务器（无 `/logs/stream` 端点）回退到 5s 轮询并输出 `CommandResult` 信封（`finished` 键始终存在，`finished=true` 时带 `result_summary`/`hints` 富化）。
 
 ### 方式二：手动轮询（需要看实时输出时）
 
@@ -64,13 +64,14 @@ delta-cli sandbox kill <id>
 - `stderr_tail` — CLI 默认保留的 **最后 200 字节** stderr 片段（CLI 硬编码 `tailString(s, n)` 按字节截取；ASCII 等同 n 字符，多字节 UTF-8 可能被截断），避免上下文爆炸。不传任何 range flag 时，CLI 会把原始 `stdout`/`stderr` 字段清空，只暴露 `stdout_tail`/`stderr_tail` 和 `stdout_size`/`stderr_size`
 - `stdout_size` — 原始 stdout 字节数（CLI 端计算）
 - `stderr_size` — 原始 stderr 字节数（CLI 端计算）
-- `cursor` — 服务端 stderr 行计数器；**该字段无 `omitempty`，永远出现在响应中**（即使为 0）。`cursor=0` 通常意味着服务端从 provider 还没读到任何 stderr 行
+- `cursor` — 服务端 stderr 行计数器；**该字段无 `omitempty`，永远出现在响应中**（即使为 0）。`cursor=0` 通常意味着服务端从 provider 还没读到任何 stderr 行；**仅凭 cursor 判断停滞不可靠**（纯 stdout 或静默任务 cursor 恒为 0），停滞检测应以 `last_updated` 为主
+- `last_updated` — 最近活动时间（RFC3339）。SSE 流式路径由 CLI 填最后 data 帧到达时间；快照轮询路径由服务端填（当前服务端可能缺省），缺失时判断停滞退化用 `cursor`/`stdout_tail` 变化
 - `running` — 命令是否仍在运行
 - `finished` — 命令是否已完成（`finished = not running`）
 - `exit_code` — 退出码（完成后才有值，运行中字段省略）
-- `log_file` — 仅 `finished=true` 时出现，是 run envelope 日志文件路径（含完整 stdout + stderr + exit_code + finished + command + error），需读它用 `delta-cli sandbox read <id> --path <log_file>`
+- `log_file` — 仅 `finished=true` 时出现，是 run envelope 日志文件路径（含完整 stdout + stderr + exit_code + finished + command + error），需读它用 `delta-cli sandbox read <id> --path <log_file>`；SSE 路径下 CLI 已在 complete 帧里兜底补全该字段
 
-**stdout 路径说明**：`sandbox logs` 默认返回 stdout 末尾 800 字节（`stdout_tail`）提供实时中间进度预览，完整 stdout 仍在命令结束时被写入沙箱内的 `log_file`，需全文时用 `sandbox read` 读。CLI 的 `--summary` 富化仅在旧服务器回退路径生效（SSE 路径不透传 `result_summary`），SSE 路径下需手动 `sandbox read` log_file 反向扫描 stdout 末尾 JSON 提取摘要。
+**stdout 路径说明**：`sandbox logs` 默认返回 stdout 末尾 800 字节（`stdout_tail`）提供实时中间进度预览，完整 stdout 仍在命令结束时被写入沙箱内的 `log_file`，需全文时用 `sandbox read` 读。SSE 路径下 CLI 已在 complete 帧里带 `stdout`（全文）与 `result_summary`（末尾 JSON 检测到即附上），`--summary` 富化（含 hints）仅旧服务器回退路径生效。
 
 要用 `--tail/--grep/--context` 自定义切片：传任意一个 flag 时，CLI 会把过滤后的 stdout 和 stderr 分别写回 `stdout`/`stderr` 字段并更新 `stdout_size`/`stderr_size`；不传则保持 `stdout=""` + `stdout_tail` 末尾 800 字节预览 + `stderr=""` + `stderr_tail` 末尾 200 字节预览（总计约 1KB）。
 
@@ -86,7 +87,7 @@ delta-cli sandbox logs <id> --execution-id <eid> --grep "ERROR|warning" --contex
 1. **`finished=true` + `exit_code=0`** → 正常完成，可以读取结果并销毁 sandbox
 2. **`finished=true` + `exit_code≠0`** → 命令执行失败，查看 stderr/error 信息
 3. **`running=true`** → 任务仍在运行，继续等待（建议每 15-30 秒查询一次）
-4. **连续 3 次 `running=true` 且 `stderr_tail`/`cursor` 无变化且距离提交超过 60 秒** → 任务可能挂起或无输出，用 `sandbox status <id>` 检查 sandbox 是否存活
+4. **连续 3 次 `running=true` 且输出无变化且距离提交超过 60 秒** → 任务可能挂起或无输出，用 `sandbox status <id>` 检查 sandbox 是否存活。判断「输出无变化」：快照里有 `last_updated` 时，直接比较它与当前时间是否持续滞后；缺 `last_updated` 时才退化为 `stderr_tail`/`cursor` 无变化（注意 `cursor` 只反映 stderr 行数，纯 stdout 任务会恒为 0，勿据此误判挂起）
 5. **`sandbox status` 返回正常但 logs 仍然无变化** → 用 `sandbox run <id> --command "ps aux | grep <进程名>" --timeout 15` 在容器内检查命令是否还在运行
 
 **注意**：
