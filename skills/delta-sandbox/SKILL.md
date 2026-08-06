@@ -1,6 +1,6 @@
 ---
 name: delta-sandbox
-description: "在 Delta Sandbox Linux 容器中运行任意命令或脚本。适用于训练、推理、编译、数据处理等任意需要 sandbox 的计算任务，支持 Python / Node.js / Go / Java / Rust 等语言。所有任务通用同一套输出约定：命令在 stdout 末尾输出结构化 JSON，skill 从 log_file 反向扫描提取为 `result_summary`（旧服务器回退路径由 CLI `--summary` 自动提取为 `data.result_summary`）。Planner 调用本 skill 时，请在 plan step 的 required_outputs 中声明 [{kind: 'file', extensions: ['.json']}]。请求中用中性动词（运行/执行）描述命令，只有真的会落盘文件时，才使用创建/写入/保存等动词并带上扩展名。认证/配置/权限错误转 delta-shared。"
+description: "在 Delta Sandbox Linux 容器中运行任意命令或脚本。适用于训练、推理、编译、数据处理等任意需要 sandbox 的计算任务，支持 Python / Node.js / Go / Java / Rust 等语言。所有任务通用同一套输出约定：命令在 stdout 末尾输出结构化 JSON；SSE 路径下 CLI 检测 stdout 末尾 JSON 并直接在 complete 帧带出 `result_summary`，缺失时才需 skill 从 log_file 反向扫描提取（旧服务器回退路径由 CLI `--summary` 自动提取为 `data.result_summary`）。Planner 调用本 skill 时，请在 plan step 的 required_outputs 中声明 [{kind: 'file', extensions: ['.json']}]。请求中用中性动词（运行/执行）描述命令，只有真的会落盘文件时，才使用创建/写入/保存等动词并带上扩展名。认证/配置/权限错误转 delta-shared。"
 metadata:
   requires:
     bins: ["delta-cli"]
@@ -40,7 +40,7 @@ metadata:
    ```bash
    delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait
    ```
-   CLI 通过 SSE 实时流（`/logs/stream`）跟随输出，把原始 SSE 帧（`data: {...}`）**逐帧透传到 stdout**（curl -N 风格），帧类型见 JSON 的 `type` 字段：`init`（含 `execution_id`）/ `stdout` / `stderr` / `error` / `complete`（含 `exit_code`、`log_file`）。收到 `complete` 即命令结束，CLI 直接退出，**不追加末尾信封**——命令成败看 `complete` 帧里的 `exit_code`，`execution_id` 从 `init`/`complete` 帧读取。若在 `--timeout`（默认 300s，同时充当服务端命令超时和客户端等待 deadline）内未收到 `complete`，CLI 会在已透传的帧后**追加一个 `finished=false` 的快照信封**（`CommandLogsResult`），表示命令仍运行。完整 stdout 在 `finished` 后被写入沙箱内的 `log_file`（默认 `/workspace/{user_id}/{sandbox_id}/{execution_id}/delta-result-{execution_id}.json`，以服务端返回的 `log_file` 字段为准），需要读全文或提取末尾 JSON 时用 `sandbox read <id> --path <log_file>`。**`--summary`/`--artifacts` 富化仅在旧服务器回退路径生效**（服务端无 `/logs/stream` 端点时 CLI 自动回退到 5s 轮询并输出 `CommandResult` 信封，此时才返回 `result_summary`/`hints`）。`execution_id` 可用于后续 `sandbox logs` / `cancel`。
+   CLI 通过 SSE 实时流（`/logs/stream`）跟随输出，把原始 SSE 帧（`data: {...}`）**逐帧透传到 stdout**（curl -N 风格），帧类型见 JSON 的 `type` 字段：`init`（含 `execution_id`）/ `stdout` / `stderr` / `error` / `complete`。收到 `complete` 即命令结束。**CLI 会在 complete 帧里补全字段**：服务端给 `exit_code`/`execution_id`/`error`，CLI 注入流内累计的 `stdout`/`stderr`、兜底恢复的 `log_file`、以及检测到的末尾 JSON `result_summary`（stdout 末尾 50 行内有合法 JSON 对象时）。命令成败看 `complete` 帧里的 `exit_code`；**命令非零退出或报错时，CLI 追加一个 `error.type: command_failed` 信封并以非零码退出（进程退出码 8）**，信封 `message` 已附 stderr 尾部，便于 `&&` 链与按 `error.type` 分支、快速扫读失败原因；`type:"error"` 帧的 `message` 也会 best-effort 附上已流出的 stderr 尾部；成功则不追加信封。若在 `--timeout`（默认 300s，同时充当服务端命令超时和客户端等待 deadline）内未收到 `complete`，CLI 会在已透传的帧后**追加一个 `finished=false` 的快照信封**（`CommandLogsResult`），表示命令仍运行。完整 stdout 在 `finished` 后被写入沙箱内的 `log_file`（默认 `/workspace/{user_id}/{sandbox_id}/{execution_id}/delta-result-{execution_id}.json`，以服务端返回的 `log_file` 字段为准），需要读全文时用 `sandbox read <id> --path <log_file>`（末尾 JSON 摘要已在 complete 帧里，通常无需再读）。**`--summary`/`--artifacts` 富化（含 hints）仅在旧服务器回退路径生效**（服务端无 `/logs/stream` 端点时 CLI 自动回退到 5s 轮询并输出 `CommandResult` 信封）。`execution_id` 可用于后续 `sandbox logs` / `cancel`。
 
    **实时跟随 / 手动轮询（需要查看中间进度时）**：
    `sandbox logs <id> --execution-id <exec_id> --stream` 实时跟随（SSE）：原始 `data:` 帧逐帧透传到 stdout，直到 `complete` 事件，无末尾信封。`sandbox logs <id> --execution-id <exec_id>`（不加 `--stream`）返回快照信封：
@@ -79,7 +79,7 @@ metadata:
 13. **`result.json` 是完成前的必要条件**
     - 在调用 `step_finish` 之前，必须确认：
       1. `delta-cli sandbox run` / `run-bg --wait` 已返回且 `finished=true`；
-      2. （默认）直接复用 `sandbox run` / `run-bg --wait` 返回的 `summary` 字段写入 `result.json`；或（fallback）从 `log_file` 用 `sandbox read` + Python 解析
+      2. （默认）直接复用 `sandbox run` / `run-bg --wait` 的 SSE `complete` 帧里的 `result_summary` 写入 `result.json`；缺失时（fallback）从 `log_file` 用 `sandbox read` + Python 解析
       3. 已执行 `sandbox kill <id>` 销毁 sandbox；
       4. `final_response` 只有一行 `RESULT: <result_summary>`。
 
@@ -131,7 +131,7 @@ required_outputs:
 | 查看可用镜像 | `sandbox images` |
 | 查看可用 provider | `sandbox providers` |
 | 获取资源推荐 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]` |
-| 列出当前用户的 sandbox | `sandbox list` |
+| 列出当前用户的 sandbox | `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--provider <opensandbox/autodl>] [--sandbox-id <id>] [--days N]` |
 | **生命周期** | |
 | 创建 sandbox | `sandbox create --image <image> [--cpu N --memory XGi --gpu N --gpu-mem N --max-life M]`；不希望被自动清理时加 `--no-auto-cleanup`（仅显式 kill/finish 可销毁）|
 | 连接 sandbox | `sandbox connect <id>` |
@@ -168,7 +168,7 @@ required_outputs:
      - `delta-cli sandbox providers` — 可用的计算后端
      - `delta-cli sandbox images` — 服务端支持的镜像列表
      - `delta-cli sandbox recommend --cpu N --memory XGi [--gpu N]` — 资源配置推荐
-2. **创建**：`delta-cli sandbox create --image <img> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`。**返回的 JSON 信封中是 `data.sandbox_id`，不是 `data.id`；后续所有命令必须使用这个真实的 `sandbox_id`。**（创建后 sandbox 立即可用，无需额外连接）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
+2. **创建**：`delta-cli sandbox create --image <img> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`。**返回的 JSON 信封中是 `data.sandbox_id`，不是 `data.id`；后续所有命令必须使用这个真实的 `sandbox_id`。**（创建后 sandbox 立即可用，无需额外连接）。**响应会回显请求的 `image`/`provider`/`resource`（服务端未返回的字段由 CLI 用请求值补齐，服务端返回值优先），可直接核对一遍资源配置，无需额外调 status。**（`provider` 请求值为 `auto` 时不回显，避免冒充实际 provider）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
     - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
     - `--no-auto-cleanup`：加此 flag 后该 sandbox **不会被自动清理**（服务端超时回收 + 本地周期 cleanup_stale 均跳过），只能通过显式 `sandbox kill`/`finish` 销毁。仅当任务确实需要跨越周期清理长期存活时才使用，任务结束后必须主动销毁，避免资源泄漏。
     - **禁止在 create 成功后反复调用 `sandbox status` 轮询**。`sandbox create` 返回时 sandbox 已经就绪，直接用它返回的 `data.sandbox_id` 执行 `write`/`run` 即可。多余的轮询会增加工具调用次数且没有任何收益。
@@ -190,9 +190,9 @@ required_outputs:
        - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 快照信封，返回 `stdout_tail`（末尾 800 字节）、`stderr_tail`（末尾 200 字节）、`stdout_size`、`stderr_size`、`cursor`、`running`、`finished`、`exit_code`、`log_file`（完成后）。当 `finished=true` 时认为完成，完整输出需读取 `log_file`。
            禁止对长任务使用同步 `sandbox run`
 
-   **推荐实践**：让 sandbox 脚本在 `stdout` 末尾打印一个独立的结构化 JSON 对象（例如 `{"status":"ok", ...}`）。SSE 路径下 CLI 不自动提取 `result_summary`（`--summary` 仅在旧服务器回退路径生效），因此任务结束后用 `sandbox read <id> --path <log_file>` 读取 log_file，再按步骤 5 反向扫描 stdout 末尾 JSON 提取摘要，避免让大模型“读整段日志再摘要”。
-5. **生成 result.json**（从 `log_file` 读取解析：SSE 路径下 `run`/`run-bg --wait` 不透传 `result_summary` 信封，`--summary` 仅在旧服务器回退路径生效）：
-    - **获取 `log_file` 路径**：`run` / `run-bg --wait` 的 SSE `complete` 帧中含 `log_file` 字段；`sandbox logs <id> --execution-id <eid>` 快照在 `finished=true` 后同样返回 `log_file`。然后从 log_file 读取解析：
+   **推荐实践**：让 sandbox 脚本在 `stdout` 末尾打印一个独立的结构化 JSON 对象（例如 `{"status":"ok", ...}`）。SSE 路径下 CLI 会检测该末尾 JSON 并直接在 `complete` 帧里带出 `result_summary`，**任务结束后直接复用 complete 帧的 `result_summary` 写入 result.json**，无需再 `sandbox read` log_file 反向扫描。仅当 complete 帧缺失 `result_summary`（末尾无合法 JSON）时，才用 `sandbox read <id> --path <log_file>` 读取并按步骤 5 反向扫描提取，避免让大模型“读整段日志再摘要”。
+5. **生成 result.json**（SSE 首选：直接复用 complete 帧的 `result_summary`；缺失时才从 `log_file` 读取解析）：
+    - **获取 `log_file` 路径**：`run` / `run-bg --wait` 的 SSE `complete` 帧含 `log_file` 字段（CLI 已兜底补全）；`sandbox logs <id> --execution-id <eid>` 快照在 `finished=true` 后同样返回 `log_file`。需要 read 时再按下面方式解析：
       - `sandbox read` 返回的是 CLI 信封 `{"ok":true,"data":{"content":"..."}}`，真实结果 JSON 在 `data.content` 字段里。
       - **不要把 CLI 信封或完整长 `stdout` 原样写入本地 `result.json`**；应该解析后生成一份精简的结构化摘要。
       - **推荐做法（避免 heredoc 引号失败）**：先用 `bash` 把信封写入临时文件，再用 `python3`（或 `python_repl`）读取该文件并生成 `result.json`。**不要**把 `delta-cli sandbox read` 的输出通过管道直接喂给内联 heredoc，管道+heredoc 的组合极易因 Shell 转义/引号问题失败。
@@ -284,8 +284,8 @@ required_outputs:
 
 ## 输出阅读与最终回答格式
 
-1. **SSE 路径下 `sandbox run` / `run-bg --wait` 不透传 `result_summary` 信封**（`--summary` 富化仅在旧服务器回退路径生效）。`exit_code` / `log_file` / `execution_id` 从 SSE `complete` 帧读取；`log_file` 路径也可从 `sandbox logs <id> --execution-id <eid>` 快照（`finished=true` 后）获得。
-2. **统一从 `log_file` 提取摘要**：用 `sandbox read <id> --path <log_file>` 读取 run envelope 日志文件并解析，反向扫描 stdout 末尾 JSON 生成 `result_summary`（见“完整生命周期”步骤 5）。
+1. **SSE 路径下 `sandbox run` / `run-bg --wait` 的 complete 帧直接带 `result_summary`**（CLI 检测 stdout 末尾 JSON 注入）以及 `stdout` / `stderr` / `log_file`（CLI 兜底补全）。`exit_code` / `log_file` / `execution_id` 从 complete 帧读取；命令失败时 complete 帧后追加 `error.type: command_failed` 信封（进程退出码 8）。`log_file` 路径也可从 `sandbox logs <id> --execution-id <eid>` 快照（`finished=true` 后）获得。
+2. **提取摘要**：首选直接复用 complete 帧的 `result_summary`；缺失时用 `sandbox read <id> --path <log_file>` 读取 run envelope 日志文件并解析，反向扫描 stdout 末尾 JSON 生成 `result_summary`（见“完整生命周期”步骤 5）。
    - run envelope 日志文件包含完整 `stdout`、`stderr`、`exit_code`、`finished`、`command`、`error`。
 3. **生成本地精简 `result.json`**（见“完整生命周期”步骤 5 和“通用结构化输出约定”）。本地副本只应包含关键字段和摘要，**不应包含完整长 `stdout`**。
 4. **最终回答必须且只能是 `RESULT:` 开头的一行。**
