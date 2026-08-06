@@ -6,7 +6,7 @@
 
 | 命令 | 说明 |
 |------|------|
-| `sandbox list` | 列出当前用户创建的活跃 sandbox（与 `ls` 不同：这是列 **沙箱实例**） |
+| `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--provider <opensandbox/autodl>] [--sandbox-id <id>] [--days N]` | 列出当前用户的 sandbox（与 `ls` 不同：这是列 **沙箱实例**）；支持按状态/时间/Provider/sandbox_id 过滤；时间范围优先级 start_time/end_time > days > 默认 7 天 |
 | `sandbox providers` | 查看可用的计算后端（opensandbox / autodl） |
 | `sandbox images` | 查看可用镜像列表 |
 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]` | 获取资源配置推荐 |
@@ -15,7 +15,7 @@
 
 | 命令 | 说明 |
 |------|------|
-| `sandbox create --image <img> [--cpu N --memory XGi --gpu N --gpu-mem N --max-life M --no-auto-cleanup --provider P]` | 创建 sandbox 容器（`--no-auto-cleanup` 不被自动清理，仅显式 kill/finish 可销毁） |
+| `sandbox create --image <img> [--cpu N --memory XGi --gpu N --gpu-mem N --max-life M --no-auto-cleanup --provider P]` | 创建 sandbox 容器（`--no-auto-cleanup` 不被自动清理，仅显式 kill/finish 可销毁）；**响应回显请求的 `image`/`provider`/`resource`**（服务端未返回字段用请求值补齐，服务端值优先；`provider=auto` 不回显） |
 | `sandbox connect <id>` | 连接已有 sandbox |
 | `sandbox status <id>` | 查看 sandbox 状态（running / done） |
 | `sandbox finish <id> [--results '{...}']` | 保存结果后自动销毁 |
@@ -25,9 +25,9 @@
 
 | 命令 | 说明 |
 |------|------|
-| `sandbox run <id> --command "..." [--timeout N] [--summary/--no-summary] [--artifacts]` | 同步运行命令（SSE 实时流，原始 `data:` 帧逐帧透传到 stdout，**无末尾信封**；`exit_code`/`log_file`/`execution_id` 从 `complete` 帧读取）；`--summary`/`--artifacts` 仅在旧服务器回退路径（无 SSE 端点时输出 `CommandResult` 信封）生效 |
-| `sandbox run-bg <id> --command "..." [--timeout N] [--wait] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`；加 `--wait` 通过 SSE 实时流跟随到 `complete`（原始 `data:` 帧透传到 stdout，无末尾信封；超时则追加 `finished=false` 快照信封）；`--summary`/`--artifacts` 仅在旧服务器回退路径生效 |
-| `sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N] [--stream]` | 获取后台命令日志；**默认返回 `stdout_tail`（末尾 800 字节）+ `stderr_tail`（末尾 200 字节）+ `stderr_size` + `cursor`**，总计约 1KB，避免上下文爆炸；`--stream` 走 `/logs/stream` SSE 实时跟随，原始 `data:` 帧透传到 stdout 直到 `complete`（无末尾信封）；`--tail N` 同时作用于 stdout 和 stderr（各取尾 N 行）；`--grep <pattern>` 同时过滤 stdout 和 stderr（正则）；`--context N` 提供 grep 匹配行前后 N 行上下文（同时用于 stdout 和 stderr）；**`cursor` 字段无 `omitempty`，0 也常驻响应**。 |
+| `sandbox run <id> --command "..." [--timeout N] [--summary/--no-summary] [--artifacts]` | 同步运行命令（SSE 实时流，原始 `data:` 帧逐帧透传到 stdout；**成功无末尾信封**；`complete` 帧由 CLI 补全 `exit_code`/`execution_id`/`log_file`/`stdout`/`stderr`/`result_summary`；**命令非零退出或报错时追加 `error.type: command_failed` 信封并以非零码退出**，信封 `message` 附 stderr 尾部，`type:"error"` 帧 message 亦附 best-effort stderr 尾部）；`--summary`/`--artifacts` 仅在旧服务器回退路径（无 SSE 端点时输出 `CommandResult` 信封）生效 |
+| `sandbox run-bg <id> --command "..." [--timeout N] [--wait] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`；加 `--wait` 通过 SSE 实时流跟随到 `complete`（原始 `data:` 帧透传到 stdout；`complete` 帧由 CLI 补全 `log_file`/`stdout`/`stderr`/`result_summary`；**命令失败时追加 `command_failed` 信封并非零退出**，信封 `message` 附 stderr 尾部；超时则追加 `finished=false` 快照信封）；`--summary`/`--artifacts` 仅在旧服务器回退路径生效 |
+| `sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N] [--stream]` | 获取后台命令日志；**默认返回 `stdout_tail`（末尾 800 字节）+ `stderr_tail`（末尾 200 字节）+ `stderr_size` + `cursor`**，总计约 1KB，避免上下文爆炸；`--stream` 走 `/logs/stream` SSE 实时跟随，原始 `data:` 帧透传到 stdout 直到 `complete`（complete 帧由 CLI 补全 `stdout`/`stderr`/`log_file`/`result_summary`，无末尾信封）；`--tail N` 同时作用于 stdout 和 stderr（各取尾 N 行）；`--grep <pattern>` 同时过滤 stdout 和 stderr（正则）；`--context N` 提供 grep 匹配行前后 N 行上下文（同时用于 stdout 和 stderr）；**`cursor` 字段无 `omitempty`，0 也常驻响应**；快照含 `last_updated`（SSE 路径由 CLI 填，服务端快照路径待服务端补齐）。 |
 | `sandbox cancel <id> --execution-id <eid>` | 中断正在运行的后台命令 |
 
 ## 文件操作
