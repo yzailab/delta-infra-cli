@@ -22,7 +22,7 @@ required_outputs:
 {"status":"ok","key_metric_1":"value_1","key_metric_2":123}
 ```
 
-> SSE 路径下 `sandbox run` / `run-bg --wait` 不透传 `data.result_summary`（`--summary` 富化仅在旧服务器回退路径生效）。脚本作者保证 stdout 最后一行是合法 JSON 即可，skill 端用 `sandbox read` 读取 `log_file` 后反向扫描提取。
+> SSE 路径下 `sandbox run` / `run-bg --wait` 的 **complete 帧已带 `result_summary`**（CLI 检测 stdout 末尾 50 行内的合法 JSON 对象并注入，无需手动 read+parse）。脚本作者保证 stdout 最后一行是合法 JSON 即可，skill 端直接从 complete 帧取 `result_summary`；仅当 complete 帧缺失该字段（末尾无合法 JSON）时才退化为 `sandbox read` 读取 `log_file` 反向扫描提取。`--summary` 富化（含 hints）仍仅旧服务器回退路径生效。
 
 SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary` 与最终 `RESULT:` 行。
 
@@ -124,7 +124,8 @@ SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary
 
 ## 本地 `result.json` 的内容约定
 
-- **默认路径（SSE 下唯一可靠路径）**：`delta-cli sandbox read <id> --path <log_file>` 读取 run envelope 日志文件 + Python 反向扫描 stdout 末尾 JSON 提取 `result_summary`，再写入本地 `result.json`。`log_file` 路径来自 SSE `complete` 帧或 `sandbox logs` 快照（`finished=true` 后）。
+- **SSE 首选路径（推荐，一步到位）**：`sandbox run` / `run-bg --wait` 的 **complete 帧直接带 `result_summary`**（CLI 检测 stdout 末尾 JSON 注入），skill 从 complete 帧提取即可，无需 read+parse。
+- **SSE 回退路径**：complete 帧缺失 `result_summary`（stdout 末尾无合法 JSON）时，`delta-cli sandbox read <id> --path <log_file>` 读取 run envelope 日志文件 + 反向扫描 stdout 末尾 JSON 提取。`log_file` 路径来自 SSE `complete` 帧（CLI 已兜底补全）或 `sandbox logs` 快照（`finished=true` 后）。
 - **旧服务器回退路径**：`run` / `run-bg --wait` 走轮询回退时返回 `CommandResult` 信封，可直接复用 `data.result_summary` 字段。
 - 本地 `result.json` 是一份**精简摘要**，用于 host deliverable 校验，不是完整日志存档。
 - 必须包含 `result_summary` 字段，内容与最终 `RESULT:` 行一致，方便 Runner 直接读取结论。
