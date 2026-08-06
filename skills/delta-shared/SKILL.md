@@ -60,7 +60,7 @@ CLI 使用 `token` 发送请求头 `Authorization: Bearer <token>`，并自动�
 
 AI Agent 解析规则：
 - 始终检查 `ok`，不要只看 exit code。
-- `error.type` 是稳定分支字段：`auth`, `permission`, `not_found`, `validation`, `network`, `api`, `internal`。
+- `error.type` 是稳定分支字段：`auth`, `permission`, `not_found`, `validation`, `network`, `api`, `command_failed`, `internal`。
 - `error.hint` 可展示给用户。
 
 ## 退出码约定
@@ -73,6 +73,7 @@ AI Agent 解析规则：
 | not_found | 5 | sandbox/file 不存在 |
 | network | 6 | DNS、超时、连接失败 |
 | api | 7 | 服务端非 2xx |
+| command_failed | 8 | sandbox 内命令执行失败（非零 exit_code 或报错）；SSE 路径在 complete 帧后追加该 error 信封，**message 附 stderr 尾部**便于快速扫读 |
 | internal | 10 | 客户端内部错误 |
 
 ## 升级检查
@@ -92,4 +93,5 @@ delta-cli upgrade
 | `error.type: not_found` | 检查 `sandbox_id` / path |
 | `error.type: network` | 检查 `base_url` 和网络连通性 |
 | `error.type: validation` | 检查必填 flag 和参数格式 |
+| `error.type: command_failed` | sandbox 内命令失败：信封 `message` 已带 stderr 尾部，可快速定位；完整 `stderr`/`result_summary` 在 complete 帧里，重试或修正命令 |
 | 配置文件解析失败 | 检查 `~/.delta-infra/config.json` 是否为有效 JSON |
