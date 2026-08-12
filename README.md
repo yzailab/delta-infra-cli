@@ -218,6 +218,7 @@ delta-cli sandbox kill <sandbox_id>
 |------|------|
 | `delta-cli sandbox list` | 列出当前用户的 sandbox 实例 |
 | `delta-cli sandbox providers` | 查看可用计算后端 |
+| `delta-cli sandbox resources [--provider opensandbox\|autodl]` | 查看各后端当前剩余可申请资源（GPU/显存/核心） |
 | `delta-cli sandbox images` | 查看可用镜像列表 |
 | `delta-cli sandbox recommend --cpu N --memory XGi` | 获取资源配置推荐 |
 | `delta-cli sandbox create --image <img> [--no-auto-cleanup]` | 创建 sandbox 容器（`--no-auto-cleanup` 不被自动清理） |
@@ -420,6 +421,27 @@ export NPM_TOKEN=<your-npm-token>
 ```bash
 DELTA_CLI_MIRROR="https://gh-proxy.com/https://github.com" npm install -g @delta-infra/cli
 ```
+
+## 沙箱内镜像源自动配置
+
+创建沙箱时，服务端会**自动检测部署所在网络区域**（中国大陆 / 海外），并在区域为中国大陆时把镜像配置注入到容器里。用户无需任何手动配置，进去即可用。
+
+- **中国大陆（domestic）**：服务端自动注入镜像配置，`pip install` / `npm install` / `git clone` / HuggingFace 下载会走国内镜像。
+- **海外（overseas）**：不注入镜像，使用各包管理器官方源。
+- 服务端通过探测 `pypi.org` / `npmjs.org` 的连通性来判断区域（带缓存、探测失败时按海外兜底，即 fail-open）。
+
+覆盖的 4 类配置：
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| pip index-url | Python 包索引 | `https://pypi.tuna.tsinghua.edu.cn/simple` |
+| npm registry | Node 包源 | `https://registry.npmmirror.com` |
+| HF_ENDPOINT | HuggingFace 下载域名 | `https://hf-mirror.com` |
+| git insteadOf | GitHub 克隆代理 | `https://gh-proxy.com/https://github.com` |
+
+AutoDL 计算后端默认关闭镜像注入（海外平台），仅当运维明确配置开启后才生效。
+
+> **注意区分两套镜像机制**：本沙箱镜像配置针对的是**沙箱里的包管理器**（pip / npm / git / HF）。它与 CLI 自身的下载镜像 `DELTA_CLI_MIRROR` 是两回事——`DELTA_CLI_MIRROR` 只用于**安装 delta-cli 二进制**，不作用于沙箱内。
 
 ## 技术栈
 
