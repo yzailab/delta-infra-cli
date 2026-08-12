@@ -8,6 +8,7 @@
 |------|------|
 | `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--provider <opensandbox/autodl>] [--sandbox-id <id>] [--days N]` | 列出当前用户的 sandbox（与 `ls` 不同：这是列 **沙箱实例**）；支持按状态/时间/Provider/sandbox_id 过滤；时间范围优先级 start_time/end_time > days > 默认 7 天 |
 | `sandbox providers` | 查看可用的计算后端（opensandbox / autodl） |
+| `sandbox resources [--provider <opensandbox/autodl>]` | 查看各后端当前**剩余可申请**资源（GPU/显存/核心）；`gpu_types` 按后端原样透传，结构随 provider 不同——opensandbox 含 `vgpu`/`core`/`memory_mib` 的 `total/used/available`，autodl 含 `total_gpu_num`/`idle_gpu_num` |
 | `sandbox images` | 查看可用镜像列表 |
 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]` | 获取资源配置推荐 |
 
