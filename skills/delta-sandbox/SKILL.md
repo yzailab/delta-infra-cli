@@ -23,6 +23,13 @@ metadata:
 - delta-cli 不内嵌默认凭证，运行前必须按 `delta-shared` 完成认证配置。
 - sandbox_id 必须来自真实返回，不要凭用户口述猜测。
 
+## 沙箱环境（镜像源）
+
+- **国内部署（domestic）**：沙箱创建时服务端已自动注入国内镜像配置。`pip install` / `npm install` / `git clone` / HuggingFace 下载**无需额外配置**，直接可用。覆盖：pip index-url（pypi.tuna.tsinghua.edu.cn）、npm registry（npmmirror）、HF_ENDPOINT（hf-mirror.com）、git insteadOf（github 代理）。
+- **海外部署（overseas）**：不注入镜像，使用官方源。
+- **AutoDL 沙箱**：默认不注入镜像（默认关闭），按官方源使用。
+- 若镜像源异常，优先检查沙箱所在区域的网络，而不是假设沙箱未配置。
+
 ## 强制规则（违规则任务视为失败）
 
 1. **必须使用 delta-cli**：所有 sandbox 操作必须通过 `delta-cli sandbox <subcommand>` 执行。**禁止**用 Python（urllib/httpx/requests）或任何 SDK 直接调用 HTTP API。delta-cli 提供类型化错误输出（`error.type`），是 AI agent 正确解析错误的唯一途径。
@@ -130,6 +137,7 @@ required_outputs:
 | **发现** | |
 | 查看可用镜像 | `sandbox images` |
 | 查看可用 provider | `sandbox providers` |
+| 查看剩余可申请资源 | `sandbox resources [--provider <opensandbox/autodl>]` — 各后端 GPU/显存/核心可用量，`gpu_types` 结构随 provider 不同（opensandbox 有 `vgpu`/`core`/`memory_mib`，autodl 有 `idle_gpu_num`） |
 | 获取资源推荐 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]` |
 | 列出当前用户的 sandbox | `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--provider <opensandbox/autodl>] [--sandbox-id <id>] [--days N]` |
 | **生命周期** | |
