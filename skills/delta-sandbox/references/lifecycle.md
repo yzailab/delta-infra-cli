@@ -7,11 +7,11 @@
 1. **查看可用镜像** `delta-cli sandbox images` — 查询服务端支持的镜像列表。镜像决定了容器内的语言运行时（Python / Node.js / Go / Java / Rust 等），根据用户的技术栈和 GPU/CPU 需求匹配。
 2. **列出现有 sandbox（可选）** `delta-cli sandbox list` — 查看当前用户已创建的活跃 sandbox，避免重复创建
 3. **创建** `delta-cli sandbox create --image <image> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`（创建后立即可用，无需连接；--max-life 指定 sandbox 最大存活时间（分钟），默认 30。`--no-auto-cleanup` 可让 sandbox 不被自动清理，仅显式 kill/finish 可销毁。`--provider autodl` 可指定使用 AutoDL 后端。）
-4. **写入代码/数据** `delta-cli sandbox write <id> --path /workspace/<filename> --source <文件名>` — 将本地文件直接写入 sandbox。**必须**使用相对路径（如 `--source infer.py`），禁止使用 `"$WORKSPACE_ROOT/<filename>"`。也可用 `--data "..."` 写入少量内联内容，`--mode 755` 可设置文件权限。写入后返回的 `size` 字段是 stat 验证后的实际磁盘字节数，可确认写入完整。批量写入用 `write-multiple`。文件路径和扩展名由镜像中的运行时决定。
-5. **运行命令** — 根据镜像中的运行时构造命令，常见示例：`python /workspace/train.py`（Python）、`node /workspace/app.js`（Node.js）、`go run /workspace/main.go`（Go）、`bash /workspace/run.sh`（Shell）
+4. **写入代码/数据** `delta-cli sandbox write <id> --source <文件名>` — 将本地文件直接写入 sandbox，**不传 `--path` 默认写到该 sandbox 的 working-directory**（`/workspace/{user_id}/{sandbox_id}/<文件名>`，在 OSS 同步范围内，kill 后文件不会丢）。写前可用 `delta-cli sandbox working-directory <id>` 确认路径。**必须**使用相对源路径（如 `--source infer.py`），禁止使用 `"$WORKSPACE_ROOT/<filename>"` 或 `$(pwd)/...`。相对 `--path` 也会拼到 working-directory 下；仅绝对 `--path` 原样使用（`/workspace/<filename>` 根路径不在 OSS 同步范围，不推荐）。也可用 `--data "..."` 写入少量内联内容（需显式 `--path`），`--mode 755` 可设置文件权限。写入后返回的 `size` 字段是 stat 验证后的实际磁盘字节数，可确认写入完整。批量写入用 `write-multiple`。文件路径和扩展名由镜像中的运行时决定。
+5. **运行命令** — 先 `delta-cli sandbox working-directory <id>` 查询 `<wd>`，再根据镜像中的运行时构造命令，常见示例：`python <wd>/train.py`（Python）、`node <wd>/app.js`（Node.js）、`go run <wd>/main.go`（Go）、`bash <wd>/run.sh`（Shell）
    - **短任务 ≤60s**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，SSE 原始 `data:` 帧透传到 stdout（无末尾信封），`exit_code`/`log_file` 从 `complete` 帧读取，完整 stdout 写入 log_file
    - **长任务 >60s**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait` 后台执行（推荐），或 `run-bg` + `logs` 手动轮询 (run-bg --wait 默认带 --summary；不加 --wait 立即返回 {execution_id, sandbox_id})
-6. **读取结果** `delta-cli sandbox read <id> --path /workspace/result.json` — 返回 `content`（内容）、`size`（磁盘字节，来自 stat）、`content_length`（字符数）。读不存在的文件返回 error 而非空内容。
+6. **读取结果** `delta-cli sandbox read <id> --path <wd>/result.json`（`<wd>` 为 working-directory，可用 `delta-cli sandbox working-directory <id>` 查询） — 返回 `content`（内容）、`size`（磁盘字节，来自 stat）、`content_length`（字符数）。读不存在的文件返回 error 而非空内容。
 7. **销毁** `delta-cli sandbox kill <id>`（如需保存结果用 finish，finish 会自动销毁）
 
 > **注意**：server 端没有 sandbox 的自动过期或 TTL 机制，不 kill 会永久占用 GPU 资源。请务必在任务结束后销毁。
