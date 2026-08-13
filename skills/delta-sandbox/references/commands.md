@@ -36,9 +36,10 @@
 | 命令 | 说明 |
 |------|------|
 | `sandbox read <id> --path <path> [--output <本地路径>] [--tail N] [--grep <pattern>] [--offset N] [--limit N] [--context N] [--max-bytes N] [--parse-json]` | 读取文件；返回 `content` + `size` + `content_length`；`--output <path>` 保存到本地；`--tail/--grep` 用于过滤；非 UTF-8 文件 CLI 自动走 base64 fallback |
-| `sandbox write <id> --path <path> --source <文件名>` | 写入文件（推荐，相对路径） |
-| `sandbox write <id> --path <path> --data "..."` | 写入少量内联内容 |
-| `sandbox write-multiple <id> --entry <src=path> [--entry ...]` | 批量写入多个文件 |
+| `sandbox working-directory <id>` | 查询 sandbox 当前工作目录（绝对路径 `/workspace/{user_id}/{sandbox_id}`） |
+| `sandbox write <id> [--path <路径>] --source <文件名>` | 写入文件（推荐）。不传 `--path` 默认写到 working-directory（`<working-directory>/<文件名>`）；相对 `--path` 也会拼到 working-directory 下；仅绝对 `--path` 原样使用（但 `/workspace/<文件名>` 根路径不在 OSS 同步范围内，不推荐） |
+| `sandbox write <id> --path <绝对路径> --data "..."` | 写入少量内联内容（`--data` 无源文件名，必须显式传 `--path`） |
+| `sandbox write-multiple <id> --entry <src=path> [--entry ...]` | 批量写入多个文件（目标 `path` 相对则同样拼到 working-directory） |
 | `sandbox pull <id> --source <沙箱路径> --target <本地路径> [--recursive] [--pattern <glob>]` | 拉取文件/目录到本地（mirror of `upload`，flag 方向相反：`--source`=远程沙箱路径，`--target`=本地路径）；单文件自动识别；目录默认递归；CLI 端 + 服务端双向 sha1 完整性校验 |
 | `sandbox ls <id> --path <path>` | 列出目录内容（默认 `.`） |
 | `sandbox stat <id> --path <path>` | 获取文件元数据（size / mode / owner / group） |
