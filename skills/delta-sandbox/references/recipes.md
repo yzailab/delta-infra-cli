@@ -60,15 +60,17 @@ SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary
 ## 2. 运行用户已有的脚本
 
 ```text
-在 sandbox <sandbox_id> 中运行 /workspace/train.py，参数为 --epochs 10 --batch-size 32。
+在 sandbox <sandbox_id> 中运行 <wd>/train.py，参数为 --epochs 10 --batch-size 32。
 ```
+
+> `<wd>` 为该 sandbox 的 working-directory（`/workspace/{user_id}/{sandbox_id}`，先 `delta-cli sandbox working-directory <id>` 查询）。
 
 说明：文件已存在，用中性动词 `运行`，不使用 `创建` 等承诺动词。
 
 ## 3. 安装依赖并执行命令
 
 ```text
-在 sandbox 中运行 pip install -r /workspace/requirements.txt，然后运行 python /workspace/app.py。
+在 sandbox 中运行 pip install -r <wd>/requirements.txt，然后运行 python <wd>/app.py。
 ```
 
 说明：依赖安装和命令执行都没有落盘新文件，使用中性动词描述。
@@ -82,20 +84,20 @@ SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary
 说明：
 
 - 训练日志可能很长，不要让 skill 去读整段日志再摘要；让脚本自己输出关键指标。
-- 推荐脚本最终打印：`{"status":"ok","epochs":10,"final_loss":0.023,"final_accuracy":0.992,"model_file":"/workspace/model.pt"}`
+- 推荐脚本最终打印：`{"status":"ok","epochs":10,"final_loss":0.023,"final_accuracy":0.992,"model_file":"<wd>/model.pt"}`
 - skill 会把它提取为 `result.json` 的 `summary`，最终输出 `RESULT: exit_code=0, status=ok, epochs=10, ...`。
 - 如需保存完整模型文件，可再用 `sandbox read` 或 `sandbox upload` 处理，不属于 `result.json` 的摘要范围。
 
 ## 5. 通用数据处理
 
 ```text
-在 sandbox 中运行数据处理命令，读取 /workspace/input.csv，输出 /workspace/output.csv，并在 stdout 末尾打印包含 input_rows、output_rows、output_file 的结构化 JSON。
+在 sandbox 中运行数据处理命令，读取 <wd>/input.csv，输出 <wd>/output.csv，并在 stdout 末尾打印包含 input_rows、output_rows、output_file 的结构化 JSON。
 ```
 
 说明：
 
-- 推荐脚本最终打印：`{"status":"ok","input_rows":10000,"output_rows":9876,"output_file":"/workspace/output.csv"}`
-- skill 会把它提取为 `result.json` 的 `summary`，最终输出 `RESULT: exit_code=0, status=ok, input_rows=10000, output_rows=9876, output_file=/workspace/output.csv`。
+- 推荐脚本最终打印：`{"status":"ok","input_rows":10000,"output_rows":9876,"output_file":"<wd>/output.csv"}`
+- skill 会把它提取为 `result.json` 的 `summary`，最终输出 `RESULT: exit_code=0, status=ok, input_rows=10000, output_rows=9876, output_file=<wd>/output.csv`。
 
 ## 6. 模型推理（Qwen / LLM / 视觉等）
 
@@ -120,7 +122,7 @@ SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary
 - 只有在 skill 会真实创建文件时，才在请求中显式写出 `*.py` / `*.json` / `*.csv` 等扩展名。
 - 不要使用 `脚本需输出...` 这类把代码片段直接跟在承诺动词后的句式。
 - **任务完成的标准是执行结果，不是脚本文件存在**。Planner 和 skill 都要以本地 `result.json` 的生成作为完成标志；`required_outputs` 必须声明 `.json`，不要只声明 `{"kind": "file"}`。
-- **`skill_request` 里不要出现完整代码块或宿主文件路径概念**（如 `@ROOT/...`、`/Users/...`）。脚本应通过 `delta-cli sandbox write` 进入 sandbox 内部路径 `/workspace/...`。
+- **`skill_request` 里不要出现完整代码块或宿主文件路径概念**（如 `@ROOT/...`、`/Users/...`）。脚本应通过 `delta-cli sandbox write <id> --source <文件名>` 写入 sandbox 的 working-directory（`/workspace/{user_id}/{sandbox_id}/...`）。
 
 ## 本地 `result.json` 的内容约定
 
