@@ -59,11 +59,14 @@ metadata:
 
    - 后台任务成功后仍需按规则 2/3 销毁 sandbox。
 
-8. **写入文件禁止使用路径或 Shell 变量，仅允许文件名**：
+8. **写入文件默认落到 sandbox 的 working-directory，禁止使用 Shell 变量路径**：
+   - ✅ **推荐**：`delta-cli sandbox write <id> --source train.py`（不传 `--path`，默认写到 `<working-directory>/train.py`）
+   - ✅ **显式指定**：`delta-cli sandbox write <id> --path <working-directory>/train.py --source train.py`（`--path` 传相对路径也会自动以 working-directory 为前缀）
    - ❌ **禁止**：`--source "$WORKSPACE_ROOT/train.py"`、`--source "$(pwd)/train.py"`（Shell 展开路径 → 空文件或失败）
    - ❌ **禁止**：`--data "大量代码..."`（Shell 转义问题）
-   - ✅ **正确**：`delta-cli sandbox write <id> --path /workspace/train.py --source train.py`（仅文件名）
-   - 少量配置（< 20 行）可用 `--data "..."`。`--mode 755` 可设置文件权限。
+   - ❌ **不建议**：`--path /workspace/train.py` 这类直接写工作目录根、落在 `{user_id}` 之外的路径——kill 后 `rclone sync` 不会写回 OSS，文件不持久化。
+   - 查询 sandbox 的 working-directory：`delta-cli sandbox working-directory <id>`（返回 `data.path`）。`run`/`run-bg` 引用脚本时用 `python <working-directory>/train.py` 的完整路径。
+   - 少量配置（< 20 行）可用 `--data "..."`，此时必须带 `--path`（无法从文件名推断）。`--mode 755` 可设置文件权限。
 
 9. **每个 `run-bg` 生成独立 `execution_id`**：每次调用 `sandbox run-bg` 都会返回一个唯一的 `execution_id`，多个后台任务之间通过它区分。务必保存每次返回的 `execution_id` 并与任务对应，后续通过 `sandbox logs <id> --execution-id <exec_id>` 分别查询各任务的结果。同步 `sandbox run` 无需 `execution_id`，结果直接返回。
 
@@ -74,7 +77,7 @@ metadata:
     - 只有在**解析 JSON**（例如从 `sandbox read` 的信封中提取 `summary` 并写入 `result.json`）时，才使用 `python3`/`python_repl`。
 
 11. **代码/数据必须经由 `delta-cli sandbox write` 进入 sandbox**
-    - 所有要送进 sandbox 执行的脚本、配置、数据文件，**必须**通过 `delta-cli sandbox write <id> --path /workspace/<文件名> --source <本地文件名>` 写入。
+    - 所有要送进 sandbox 执行的脚本、配置、数据文件，**必须**通过 `delta-cli sandbox write <id> --source <本地文件名>` 写入，默认落到该 sandbox 的 working-directory（`/workspace/{user_id}/{sandbox_id}/`，可用 `delta-cli sandbox working-directory <id>` 查询），位于 OSS 同步范围内、kill 后可持久化。
     - 不要把脚本先写到宿主 workspace 再依赖同步；宿主 workspace 的文件对 sandbox 内部不可见。
     - 本规则关注的是“入口统一为 `sandbox write`”，不针对任何特定宿主工具。无论宿主提供何种文件操作接口，最终都要把内容送到 sandbox 内部。
 
@@ -154,7 +157,8 @@ required_outputs:
 | **文件操作** | |
 | 读取文件 | `sandbox read <id> --path <path> [--output <本地路径> --tail N --grep <pattern> --offset N --limit N --context N --max-bytes N --parse-json]` |
 | 拉取文件/目录 | `sandbox pull <id> --source <沙箱路径> --target <本地路径> [--recursive] [--pattern <glob>]` — 单文件或目录递归，含 sha1 校验（mirror of upload，flag 方向与 upload 相反：source=远程，target=本地） |
-| 写入文件 | `sandbox write <id> --path <path> --source <文件名>`（推荐）|
+| 查询工作目录 | `sandbox working-directory <id>`（返回 `data.path`，形如 `/workspace/{user_id}/{sandbox_id}`）|
+| 写入文件 | `sandbox write <id> --source <文件名>`（不传 `--path` 默认写到 working-directory）；`--path <路径>` 传相对路径自动加 working-directory 前缀，绝对路径原样使用 |
 | 批量写入 | `sandbox write-multiple <id> --entry <远程路径>=<本地路径> [--entry ...]` |
 | 上传目录 | `sandbox upload <id> --source <本地目录> --target <沙箱路径>` |
 | 列出目录 | `sandbox ls <id> --path <路径>`（默认 `.`）|
@@ -181,18 +185,18 @@ required_outputs:
     - `--no-auto-cleanup`：加此 flag 后该 sandbox **不会被自动清理**（服务端超时回收 + 本地周期 cleanup_stale 均跳过），只能通过显式 `sandbox kill`/`finish` 销毁。仅当任务确实需要跨越周期清理长期存活时才使用，任务结束后必须主动销毁，避免资源泄漏。
     - **禁止在 create 成功后反复调用 `sandbox status` 轮询**。`sandbox create` 返回时 sandbox 已经就绪，直接用它返回的 `data.sandbox_id` 执行 `write`/`run` 即可。多余的轮询会增加工具调用次数且没有任何收益。
 3. **写入代码/数据**：
-   - **单个文件**：`delta-cli sandbox write <id> --path /workspace/<filename> --source <文件名>` — **必须**使用相对路径（如 `--source train.py`），**禁止**使用 `"$WORKSPACE_ROOT/train.py"` 或 `$(pwd)/train.py` 等 Shell 变量路径。`--source` 让 CLI 自行读取本地文件，不会经过 Shell 展开，是最安全的方式。写入后返回的 `size` 字段是实际磁盘字节数（来自 stat 验证），可对比确认写入完整性。少量配置（<20 行）可用 `--data "..."`。文件路径和扩展名由镜像中的运行时决定。
+   - **单个文件**：`delta-cli sandbox write <id> --source <文件名>` — 不传 `--path`，默认写到该 sandbox 的 working-directory（`/workspace/{user_id}/{sandbox_id}/`，可用 `delta-cli sandbox working-directory <id>` 查询）。`--source` 只传本地文件名（如 `--source train.py`），**禁止**使用 `"$WORKSPACE_ROOT/train.py"` 或 `$(pwd)/train.py` 等 Shell 变量路径。`--source` 让 CLI 自行读取本地文件，不会经过 Shell 展开，是最安全的方式。若需指定路径，`--path <相对路径>` 会自动加 working-directory 前缀，绝对路径原样使用（**不建议**写 `/workspace/<filename>` 这种落在 `{user_id}` 之外的位置，kill 后不持久化）。写入后返回的 `size` 字段是实际磁盘字节数（来自 stat 验证），可对比确认写入完整性。少量配置（<20 行）可用 `--data "..."`，但此时必须带 `--path`。文件路径和扩展名由镜像中的运行时决定。
    - **批量写入**：`sandbox write-multiple <id> --entry <远程路径>=<本地路径> [--entry ...]`（远程路径在 `=` 左边，本地路径在右边，`--data` 批量写入不可用）
    - **上传目录**：`sandbox upload <id> --source <本地目录> --target <沙箱路径>` — CLI 将本地目录打包为 tar.gz，通过 multipart/form-data 上传，服务端自动解压到 target 目录。返回每个文件的路径、大小、模式。上传后 CLI 自动对比本地和远程文件清单做完整性校验（大小不匹配、多余文件等会告警）。
      - **注意**：`--source` 是**本地目录路径**，`--target` 是**沙箱内的目标目录**，target 目录不存在会自动创建。
      - 支持嵌套目录，空目录也会被创建。
      - **写后验证（可选）**：`sandbox stat <id> --path <path>` 确认文件存在且 size 符合预期即可。**不要**用 `sandbox ls` + `sandbox read` 把刚写入的文件读回宿主再逐字对比；无异常时不需要读回。
 4. **运行命令**：
-    - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，命令的 stdout/stderr 通过 SSE **以原始 `data:` 帧逐帧透传到 stdout**（无末尾信封），`exit_code` / `log_file` / `execution_id` 从 `complete` 帧读取。完整 `stdout` 在完成后写入 run envelope 日志文件（`log_file` 字段），需要读全文或提取末尾 JSON 时用 `sandbox read`，**不要**再调用 `sandbox logs`。可通过 `--log-file <路径>` 自定义 run envelope 日志文件路径；默认值为 `/workspace/{user_id}/{sandbox_id}/{execution_id}/delta-result-{execution_id}.json`（以服务端返回的 `log_file` 字段为准）。根据镜像中的运行时构造命令，常见示例：
-     - Python：`python /workspace/train.py`
-     - Node.js：`node /workspace/app.js`
-     - Go：`go run /workspace/main.go`
-     - Shell：`bash /workspace/run.sh`
+    - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，命令的 stdout/stderr 通过 SSE **以原始 `data:` 帧逐帧透传到 stdout**（无末尾信封），`exit_code` / `log_file` / `execution_id` 从 `complete` 帧读取。完整 `stdout` 在完成后写入 run envelope 日志文件（`log_file` 字段），需要读全文或提取末尾 JSON 时用 `sandbox read`，**不要**再调用 `sandbox logs`。可通过 `--log-file <路径>` 自定义 run envelope 日志文件路径；默认值为 `/workspace/{user_id}/{sandbox_id}/{execution_id}/delta-result-{execution_id}.json`（以服务端返回的 `log_file` 字段为准）。脚本经 `sandbox write` 落盘后位于 working-directory，运行命令需用完整路径 `<working-directory>/<文件名>`（先 `sandbox working-directory <id>` 查询）。根据镜像中的运行时构造命令，常见示例（`<wd>` 为 working-directory）：
+     - Python：`python <wd>/train.py`
+     - Node.js：`node <wd>/app.js`
+     - Go：`go run <wd>/main.go`
+     - Shell：`bash <wd>/run.sh`
    - **长任务（预计 > 60 秒，如下载模型、训练、编译、大规模数据处理）**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> [--log-file <路径>]` 提交后台任务，获得 `execution_id` 后通过以下命令查询：
        - `delta-cli sandbox logs <id> --execution-id <execution_id> --stream` — SSE 实时跟随，原始 `data:` 帧逐帧透传到 stdout，直到 `complete` 事件（含 `exit_code`/`log_file`），无末尾信封。
        - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 快照信封，返回 `stdout_tail`（末尾 800 字节）、`stderr_tail`（末尾 200 字节）、`stdout_size`、`stderr_size`、`cursor`、`running`、`finished`、`exit_code`、`log_file`（完成后）。当 `finished=true` 时认为完成，完整输出需读取 `log_file`。
@@ -264,8 +268,8 @@ required_outputs:
 命令执行完毕后，推荐在 `stdout` 末尾打印一行**独立的结构化 JSON**。例如：
 
 - CUDA 检查：`{"status":"ok","torch_version":"2.5.1+cu121","cuda_available":true,"device_name":"NVIDIA H100 80GB HBM3"}`
-- 训练任务：`{"status":"ok","epochs":10,"final_loss":0.12,"final_accuracy":0.94,"model_file":"/workspace/model.pt"}`
-- 数据处理：`{"status":"ok","input_rows":10000,"output_rows":9876,"output_file":"/workspace/output.csv"}`
+- 训练任务：`{"status":"ok","epochs":10,"final_loss":0.12,"final_accuracy":0.94,"model_file":"<wd>/model.pt"}`
+- 数据处理：`{"status":"ok","input_rows":10000,"output_rows":9876,"output_file":"<wd>/output.csv"}`
 
 这样 SKILL 可以用同一套代码把它提取到 `result.json` 的 `summary` 字段，再生成 `RESULT:` 行。
 
