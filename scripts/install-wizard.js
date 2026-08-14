@@ -15,6 +15,7 @@ const CONFIG_DIR = path.join(osHomedir(), ".delta-infra");
 const CONFIG_VERSION = 1;
 const DEFAULT_BASE_URL = "https://delta-infra-nacos-test.yangtzeailab.com/sandbox/api/v1";
 const DEFAULT_SCIENCE_BASE_URL = "http://8.141.101.94:8080/science_tool";
+const DASHBOARD_API_KEYS_URL = "https://delta-infra-dashboard-test.yangtzeailab.com/dashboard/api-keys";
 const isWindows = process.platform === "win32";
 
 const PLATFORM_PATHS = {
@@ -137,12 +138,14 @@ const messages = {
     step3Fail:      "配置初始化失败。运行以下命令重试: delta-cli config init",
     step4:          "身份认证",
     step4Confirm:   "是否进行身份认证？",
+    step4GuideTitle:"还未配置 API Key",
+    step4Guide:     "请先在网页端生成一个 API Key：\n  %s\n打开后复制生成的 Key，粘贴到下方提示处。",
     step4Skip:      "跳过身份认证。后续运行 delta-cli auth login 完成",
     step4Done:      "认证完成",
     step4Fail:      "认证失败。运行以下命令重试: delta-cli auth login",
     done:           "安装完成！\n现在可以让你的 AI 工具使用 delta-cli 管理 Delta Sandbox 资源或调用 Science 工具。",
     cancelled:      "安装已取消",
-    nonTtyHint:     "要完成配置，请在终端中运行：\n  delta-cli config init\n  delta-cli auth login",
+    nonTtyHint:     "要完成配置，请在终端中运行：\n  delta-cli config init\n  delta-cli auth login\n若还没有 API Key，请先在网页端生成：\n  " + "https://delta-infra-dashboard-test.yangtzeailab.com/dashboard/api-keys",
     uninstallConfirm: "将移除全局包、AI Skills 和配置文件。是否继续？",
     uninstallCancelled: "卸载已取消",
     uninstallDone:  "卸载完成",
@@ -171,12 +174,14 @@ const messages = {
     step3Fail:      "Failed to init config. Run manually: delta-cli config init",
     step4:          "Authorization",
     step4Confirm:   "Would you like to authenticate now?",
+    step4GuideTitle:"No API key configured yet",
+    step4Guide:     "Please generate an API key on the web dashboard first:\n  %s\nCopy the key and paste it when prompted.",
     step4Skip:      "Skipped. Run delta-cli auth login to authorize later",
     step4Done:      "Authorization complete",
     step4Fail:      "Failed to authorize. Run delta-cli auth login to retry",
     done:           "You are all set!\nYour AI tool can now use delta-cli to manage Delta Sandbox resources or invoke Science tools.",
     cancelled:      "Installation cancelled",
-    nonTtyHint:     "To complete setup, run interactively:\n  delta-cli config init\n  delta-cli auth login",
+    nonTtyHint:     "To complete setup, run interactively:\n  delta-cli config init\n  delta-cli auth login\nIf you don't have an API key yet, generate one first:\n  " + "https://delta-infra-dashboard-test.yangtzeailab.com/dashboard/api-keys",
     uninstallConfirm: "This will remove the global package, AI Skills and config. Continue?",
     uninstallCancelled: "Uninstall cancelled",
     uninstallDone:  "Uninstall complete",
@@ -561,6 +566,11 @@ async function stepAuthLogin(msg) {
   }
 
   p.log.step(msg.step4);
+  const existingConfig = getExistingConfig();
+  if (!existingConfig || (!existingConfig.token && !existingConfig.apikey)) {
+    p.log.warn(msg.step4GuideTitle);
+    p.log.info(fmt(msg.step4Guide, DASHBOARD_API_KEYS_URL));
+  }
   try {
     run(deltaCli, ["auth", "login"]);
     p.log.success(msg.step4Done);
