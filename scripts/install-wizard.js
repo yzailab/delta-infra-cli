@@ -566,11 +566,8 @@ async function stepAuthLogin(msg) {
   }
 
   p.log.step(msg.step4);
-  const existingConfig = getExistingConfig();
-  if (!existingConfig || (!existingConfig.token && !existingConfig.apikey)) {
-    p.log.warn(msg.step4GuideTitle);
-    p.log.info(fmt(msg.step4Guide, DASHBOARD_API_KEYS_URL));
-  }
+  p.log.warn(msg.step4GuideTitle);
+  p.log.info(fmt(msg.step4Guide, DASHBOARD_API_KEYS_URL));
   try {
     run(deltaCli, ["auth", "login"]);
     p.log.success(msg.step4Done);
