@@ -116,6 +116,8 @@ SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary
   ```
 - skill 会把它提取为 `result.json` 的 `summary`，最终输出 `RESULT: exit_code=0, status=ok, cuda_available=True, generated_text=110, ...`。
 
+> **GPU 显存与模型匹配**：创建 sandbox 时的 `--gpu-mem`（单位 MiB）必须匹配实际运行的模型。模型参数量/精度越大，所需显存越大；把大模型塞进过小的 `--gpu-mem` 会直接 OOM。上面的示例用的是 `Qwen2.5-0.5B`（0.5B 小模型），**不要把它当作更大模型（如 7B/9B/13B）的显存参考**。跑较大模型前先评估其显存需求、适当调大 `--gpu-mem`，并建议先用小模型验证流程是否跑通。
+
 ## 注意事项
 
 - 尽量用自然语言描述任务，完整代码由 skill 内部处理。
