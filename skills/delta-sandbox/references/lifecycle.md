@@ -40,11 +40,12 @@ delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200
 
 # 2a. 实时跟随（SSE，推荐）：
 delta-cli sandbox logs <id> --execution-id <exec_id> --stream
-# ↑ 原始 data: 帧逐帧透传到 stdout，直到 complete 事件，无末尾信封
+# ↑ 原始 data: 帧逐帧透传到 stdout，直到 complete 事件，无末尾信封（--stream 必须传 --execution-id）
 
 # 2b. 手动轮询快照（可用 --tail N / --grep <pattern> 过滤大输出）
 delta-cli sandbox logs <id> --execution-id <exec_id>
 # ↑ 返回 {sandbox_id, execution_id, stderr_tail, stderr_size, cursor, running, finished, exit_code, log_file?}
+#   --execution-id 可省略：省略时仅按 sandbox 查询，服务端因 sandbox_id/execution_id 未同时传递而自动走 ES
 
 # 3. 完成后销毁
 delta-cli sandbox kill <id>
@@ -55,11 +56,11 @@ delta-cli sandbox kill <id>
 `sandbox logs` 返回的数据结构为：
 
 ```json
-{"ok":true,"data":{"sandbox_id":"...","execution_id":"...","stdout_tail":"...","stderr_tail":"...","stdout_size":1234,"stderr_size":1234,"cursor":5,"running":false,"finished":true,"exit_code":0,"log_file":"/workspace/{user_id}/{sandbox_id}/{execution_id}/delta-result-{execution_id}.json"}}
+{"ok":true,"data":{"sandbox_id":"...","execution_id":"...","stdout_tail":"...","stderr_tail":"...","stdout_size":1234,"stderr_size":1234,"cursor":5,"running":false,"finished":true,"exit_code":0,"log_file":"/workspace/{user_id}/sandbox_logs/delta-result-{sandbox_id}-{execution_id}.json"}}
 ```
 
 字段说明：
-- `sandbox_id` / `execution_id` — 与请求一致
+- `sandbox_id` / `execution_id` — 与请求一致；省略 `--execution-id` 时走 ES 按 sandbox 查询，该字段为空
 - `stdout_tail` — CLI 默认保留的 **最后 800 字节** stdout 片段，避免上下文爆炸
 - `stderr_tail` — CLI 默认保留的 **最后 200 字节** stderr 片段（CLI 硬编码 `tailString(s, n)` 按字节截取；ASCII 等同 n 字符，多字节 UTF-8 可能被截断），避免上下文爆炸。不传任何 range flag 时，CLI 会把原始 `stdout`/`stderr` 字段清空，只暴露 `stdout_tail`/`stderr_tail` 和 `stdout_size`/`stderr_size`
 - `stdout_size` — 原始 stdout 字节数（CLI 端计算）
