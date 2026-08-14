@@ -141,9 +141,9 @@ delta-cli config init \
   --base-url http://your-server/api/v1 \
   --token your-token
 
-# 通过环境变量
+# 通过环境变量（API Key 或 Token 二选一）
 export DELTA_INFRA_BASE_URL=http://your-server/api/v1
-export DELTA_INFRA_TOKEN=your-token
+export DELTA_INFRA_API_KEY=your-api-key        # 或 DELTA_INFRA_TOKEN
 delta-cli config init
 ```
 
@@ -151,15 +151,25 @@ delta-cli config init
 
 ### 2. 认证
 
-使用 Bearer Token：
+支持 **API Key** 与 **Bearer Token** 两种凭据（API Key 优先）。
+
+**获取 API Key**：登录 Delta Infra **Web 控制台**，在 **API Keys** 页面生成一个 Key。
 
 ```bash
+# API Key（推荐）
+delta-cli auth login --apikey <your-api-key>
+
 # Token
 delta-cli auth login --token <your-token>
+
+# 交互式登录（可直接粘贴 Key/Token，CLI 会自动识别格式）
+delta-cli auth login
 
 # 查看认证状态
 delta-cli auth status
 ```
+
+也可以通过环境变量指定：`DELTA_INFRA_API_KEY=<key>` / `DELTA_INFRA_TOKEN=<token>`。
 
 ### 3. Sandbox 生命周期
 
@@ -201,7 +211,8 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli config init` | 初始化配置文件 |
 | `delta-cli config show` | 查看当前配置（敏感字段已脱敏） |
 | `delta-cli config set <key> <value>` | 修改配置项 |
-| `delta-cli auth login` | 交互式登录 |
+| `delta-cli auth login` | 交互式登录（自动识别 API Key / Token） |
+| `delta-cli auth login --apikey <key>` | API Key 认证（推荐） |
 | `delta-cli auth login --token <token>` | Token 认证 |
 | `delta-cli auth status` | 查看认证状态 |
 | `delta-cli upgrade` | 升级 CLI 和 AI Skills 到最新版本 |
