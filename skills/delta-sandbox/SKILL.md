@@ -182,6 +182,7 @@ required_outputs:
      - `delta-cli sandbox recommend --cpu N --memory XGi [--gpu N]` — 资源配置推荐
 2. **创建**：`delta-cli sandbox create --image <img> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`。**返回的 JSON 信封中是 `data.sandbox_id`，不是 `data.id`；后续所有命令必须使用这个真实的 `sandbox_id`。**（创建后 sandbox 立即可用，无需额外连接）。**响应会回显请求的 `image`/`provider`/`resource`（服务端未返回的字段由 CLI 用请求值补齐，服务端返回值优先），可直接核对一遍资源配置，无需额外调 status。**（`provider` 请求值为 `auto` 时不回显，避免冒充实际 provider）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
     - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
+    - **`--gpu-mem`（单位 MiB）要匹配实际运行的模型**：模型参数量/精度越大所需显存越大，大模型塞进过小显存会直接 OOM。示例中的 8000（8GiB）只适配小模型，跑 7B/9B/13B 前先评估显存需求并适当调大。
     - `--no-auto-cleanup`：加此 flag 后该 sandbox **不会被自动清理**（服务端超时回收 + 本地周期 cleanup_stale 均跳过），只能通过显式 `sandbox kill`/`finish` 销毁。仅当任务确实需要跨越周期清理长期存活时才使用，任务结束后必须主动销毁，避免资源泄漏。
     - **禁止在 create 成功后反复调用 `sandbox status` 轮询**。`sandbox create` 返回时 sandbox 已经就绪，直接用它返回的 `data.sandbox_id` 执行 `write`/`run` 即可。多余的轮询会增加工具调用次数且没有任何收益。
 3. **写入代码/数据**：
