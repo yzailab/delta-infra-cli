@@ -16,8 +16,8 @@ Skill；工具选择、operation、参数、跨工具交接和结果校验都在
 
 - 所有在线 Science 操作最终都经
   `delta-cli science invoke -> Science Server`。
-- 使用 CLI 的标准认证与 `science_base_url` 配置。不得通过环境变量、命令参数或业务 URL
-  改写服务路由。
+- 使用 CLI 的标准认证与 `base_url` 派生出的 Science 服务地址（`{base_url}/science_tool`）。
+  不得通过环境变量、命令参数或业务 URL 改写服务路由。
 - 禁止使用 `curl`、`requests`、`httpx`、浏览器和 PowerShell Web 命令直接访问公司网关或
   业务服务 URL。
 - 不得将本地 RDKit、pymatgen、LAMMPS、BO、回归或 sandbox 结果冒充为 Science 结果。
