@@ -13,8 +13,8 @@ delta-cli science invoke --tool TOOL --endpoint ENDPOINT --data JSON
 仅当 operation 文档明确要求查询参数时使用 `--params JSON`。不要同时传递 `--data` 和
 `--params`，也不要改用 `curl`、`httpx`、`requests`、`Invoke-RestMethod` 或业务服务 URL。
 
-CLI 使用其标准认证和 `science_base_url` 配置。Skill 不得通过环境变量、命令参数或临时配置
-改写服务路由，也不读取、修改或伪造凭据。
+CLI 使用其标准认证和由 `base_url` 派生出的 Science 服务地址（`{base_url}/science_tool`）。
+Skill 不得通过环境变量、命令参数或临时配置改写服务路由，也不读取、修改或伪造凭据。
 
 ## 成功与结果
 
