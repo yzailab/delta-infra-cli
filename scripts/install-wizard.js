@@ -13,9 +13,7 @@ const NPM_REGISTRIES = ["https://registry.npmmirror.com", "https://registry.npmj
 const GH_MIRRORS = ["https://gh.ddlc.top", "https://ghproxy.net", "https://gh-proxy.com"];
 const CONFIG_DIR = path.join(osHomedir(), ".delta-infra");
 const CONFIG_VERSION = 1;
-const DEFAULT_BASE_URL = "https://delta-infra-nacos-test.yangtzeailab.com/sandbox/api/v1";
-const DEFAULT_SCIENCE_BASE_URL = "http://8.141.101.94:8080/science_tool";
-const DASHBOARD_API_KEYS_URL = "https://delta-infra-dashboard-test.yangtzeailab.com/dashboard/api-keys";
+const DEFAULT_BASE_URL = "https://delta-infra-nacos.yangtzeailab.com";
 const isWindows = process.platform === "win32";
 
 const PLATFORM_PATHS = {
@@ -131,8 +129,7 @@ const messages = {
     step2Skip:      "已安装，跳过",
     step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g",
     step3:          "正在初始化配置...",
-    step3BaseUrl:   "Sandbox API 地址",
-    step3ScienceUrl:"Science API 地址",
+    step3BaseUrl:   "Delta Infra 服务器地址",
     step3Skip:      "跳过配置初始化",
     step3Done:      "配置已初始化",
     step3Fail:      "配置初始化失败。运行以下命令重试: delta-cli config init",
@@ -145,7 +142,7 @@ const messages = {
     step4Fail:      "认证失败。运行以下命令重试: delta-cli auth login",
     done:           "安装完成！\n现在可以让你的 AI 工具使用 delta-cli 管理 Delta Sandbox 资源或调用 Science 工具。",
     cancelled:      "安装已取消",
-    nonTtyHint:     "要完成配置，请在终端中运行：\n  delta-cli config init\n  delta-cli auth login\n若还没有 API Key，请先在网页端生成：\n  " + "https://delta-infra-dashboard-test.yangtzeailab.com/dashboard/api-keys",
+    nonTtyHint:     "要完成配置，请在终端中运行：\n  delta-cli config init\n  delta-cli auth login\n若还没有 API Key，请先在网页端生成：\n  %s",
     uninstallConfirm: "将移除全局包、AI Skills 和配置文件。是否继续？",
     uninstallCancelled: "卸载已取消",
     uninstallDone:  "卸载完成",
@@ -167,8 +164,7 @@ const messages = {
     step2Skip:      "Already installed. Skipped",
     step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g",
     step3:          "Initializing config...",
-    step3BaseUrl:   "Sandbox API URL",
-    step3ScienceUrl:"Science API URL",
+    step3BaseUrl:   "Delta Infra server URL",
     step3Skip:      "Skipped config initialization",
     step3Done:      "Config initialized",
     step3Fail:      "Failed to init config. Run manually: delta-cli config init",
@@ -181,7 +177,7 @@ const messages = {
     step4Fail:      "Failed to authorize. Run delta-cli auth login to retry",
     done:           "You are all set!\nYour AI tool can now use delta-cli to manage Delta Sandbox resources or invoke Science tools.",
     cancelled:      "Installation cancelled",
-    nonTtyHint:     "To complete setup, run interactively:\n  delta-cli config init\n  delta-cli auth login\nIf you don't have an API key yet, generate one first:\n  " + "https://delta-infra-dashboard-test.yangtzeailab.com/dashboard/api-keys",
+    nonTtyHint:     "To complete setup, run interactively:\n  delta-cli config init\n  delta-cli auth login\nIf you don't have an API key yet, generate one first:\n  %s",
     uninstallConfirm: "This will remove the global package, AI Skills and config. Continue?",
     uninstallCancelled: "Uninstall cancelled",
     uninstallDone:  "Uninstall complete",
@@ -238,6 +234,15 @@ function runSilentAsync(cmd, args, opts = {}) {
 function fmt(template, ...values) {
   let i = 0;
   return template.replace(/%s/g, () => values[i++] ?? "");
+}
+
+// Choose the API-key management page for a base URL: the production dashboard
+// for the main host, the test dashboard otherwise.
+function dashboardAPIKeysUrl(baseUrl) {
+  const mainHost = "delta-infra-nacos.yangtzeailab.com";
+  const mainDashboard = "https://delta-infra-dashboard.yangtzeailab.com/dashboard/api-keys";
+  const testDashboard = "https://delta-infra-dashboard-test.yangtzeailab.com/dashboard/api-keys";
+  return String(baseUrl || "").includes(mainHost) ? mainDashboard : testDashboard;
 }
 
 function formatExecErr(err) {
@@ -323,12 +328,11 @@ function getExistingConfig() {
   } catch { return null; }
 }
 
-function writeConfig({ baseUrl, scienceUrl, existing = null } = {}) {
+function writeConfig({ baseUrl, existing = null } = {}) {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   const config = {
     version: CONFIG_VERSION,
     base_url: baseUrl || DEFAULT_BASE_URL,
-    science_base_url: scienceUrl || existing?.science_base_url || DEFAULT_SCIENCE_BASE_URL,
   };
   if (existing && existing.token) {
     config.token = existing.token;
@@ -529,15 +533,8 @@ async function stepConfigInit(msg) {
       : DEFAULT_BASE_URL,
   }), msg);
 
-  const scienceUrl = handleCancel(await p.text({
-    message: msg.step3ScienceUrl,
-    initialValue: existingConfig && existingConfig.science_base_url
-      ? existingConfig.science_base_url
-      : DEFAULT_SCIENCE_BASE_URL,
-  }), msg);
-
   try {
-    writeConfig({ baseUrl, scienceUrl, existing: existingConfig });
+    writeConfig({ baseUrl, existing: existingConfig });
     p.log.success(msg.step3Done);
   } catch (e) {
     p.log.error(e.message || String(e));
@@ -567,7 +564,8 @@ async function stepAuthLogin(msg) {
 
   p.log.step(msg.step4);
   p.log.warn(msg.step4GuideTitle);
-  p.log.info(fmt(msg.step4Guide, DASHBOARD_API_KEYS_URL));
+  const existing = getExistingConfig();
+  p.log.info(fmt(msg.step4Guide, dashboardAPIKeysUrl(existing && existing.base_url)));
   try {
     run(deltaCli, ["auth", "login"]);
     p.log.success(msg.step4Done);
@@ -655,7 +653,8 @@ async function doInstall() {
     await stepInstallGlobally(msg);
     const platforms = ["agents"];
     await stepInstallSkills(msg, platforms);
-    console.log(msg.nonTtyHint);
+    const existing = getExistingConfig();
+    console.log(fmt(msg.nonTtyHint, dashboardAPIKeysUrl(existing && existing.base_url)));
   }
 }
 
