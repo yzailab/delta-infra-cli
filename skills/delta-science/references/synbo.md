@@ -1,7 +1,7 @@
 # SynBO operation 参考
 
 所有在线调用都通过 `delta-cli science invoke`，服务地址来自 CLI 的标准
-`science_base_url` 配置。这里的路径只说明业务 operation，不得据此直连 HTTP。
+`base_url` 派生配置（`{base_url}/science_tool`）。这里的路径只说明业务 operation，不得据此直连 HTTP。
 
 用户说“优化反应条件”“推荐下一批实验”“偶联反应怎么继续做”，或给出溶剂、温度、
 催化剂、碱、配体和历史得率时，即使没有提到 SynBO、BO、CLI 或字段名也使用本节。
