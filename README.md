@@ -131,7 +131,7 @@ go install github.com/delta-infra/delta-infra-cli/cmd/delta-cli@latest
 delta-cli config init
 ```
 
-执行时会交互式提示输入服务端地址（默认：`https://delta-infra-nacos-test.yangtzeailab.com/sandbox/api/v1`）以及 Bearer Token（可选，也可后续用 `auth login` 配置）。
+执行时会交互式提示输入服务端地址（默认：`https://delta-infra-nacos.yangtzeailab.com`）以及 Bearer Token（可选，也可后续用 `auth login` 配置）。
 
 非交互式环境（如 CI）会直接使用默认值，也可以通过 flag 或环境变量一次性指定：
 
@@ -258,9 +258,8 @@ delta-cli sandbox kill <sandbox_id>
 
 ### Science 工具
 
-> 默认 Science Server 为 `http://8.141.101.94:8080/science_tool`。可通过
-> `delta-cli config set science_base_url <url>` 或环境变量
-> `DELTA_INFRA_SCIENCE_BASE_URL` 覆盖。
+> Science Server 由 `base_url` 派生（`{base_url}/science_tool`），无需单独配置
+> `science_base_url`；Sandbox API 同样由 `base_url` 派生（`{base_url}/sandbox/api/v1`）。
 
 | 命令 | 说明 |
 |------|------|
