@@ -73,9 +73,11 @@ Remove-Item -Path delta-cli.zip
 # 将 delta-cli.exe 放到 PATH 中的目录
 ```
 
-### 方式三：一键安装脚本（国内用户推荐）
+### 方式三：一键安装脚本（国内用户推荐 / 无 npm 也可用）
 
-安装脚本会自动尝试国内 npm 镜像（npmmirror），失败后再回退到 npm 官方源：
+安装脚本会**自动检测环境**：
+- **已有 npm** → 安装 `@delta-infra/cli` npm 包（自动尝试国内 npm 镜像 npmmirror，失败回退 npm 官方源）
+- **没有 npm** → 直接通过纯 shell 方式下载二进制（PowerShell + curl / bash + curl + tar，Windows 10+、macOS、Linux 均自带），**无需安装 Node.js/npm**
 
 ```bash
 # Linux / macOS
@@ -85,6 +87,8 @@ curl -L https://raw.githubusercontent.com/yzailab/delta-infra-cli/main/install.s
 Invoke-RestMethod -Uri https://raw.githubusercontent.com/yzailab/delta-infra-cli/main/install.ps1 | Invoke-Expression
 ```
 
+脚本下载二进制时会按顺序尝试国内加速镜像（`gh.ddlc.top`、`ghproxy.net`、`gh-proxy.com`），全部失败再用 GitHub 源站，且会校验 SHA-256。可用 `DELTA_CLI_VERSION` 环境变量指定版本。
+
 ### 方式四：npm
 
 ```bash
@@ -93,9 +97,9 @@ npm install -g @delta-infra/cli
 
 `postinstall` 会按以下顺序尝试下载当前平台的二进制：
 
-1. `DELTA_CLI_MIRROR` 环境变量（如果设置）
-2. 国内加速镜像 `https://gh-proxy.com/https://github.com/...`
-3. GitHub 源站 `https://github.com/yzailab/delta-infra-cli/releases/download/...`
+1. `DELTA_CLI_MIRROR` 环境变量指定的镜像（如果设置，需为 HTTPS 且允许全前缀格式，如 `https://gh.ddlc.top`）
+2. 依次探测国内加速镜像 `gh.ddlc.top`、`ghproxy.net`、`gh-proxy.com`，可用的优先
+3. GitHub 源站 `https://github.com/yzailab/delta-infra-cli/releases/download/...`（兜底）
 
 如果安装时下载失败，可以：
 
@@ -110,7 +114,7 @@ DELTA_CLI_ARCHIVE=/path/to/delta-cli-linux-amd64.tar.gz npm install -g @delta-in
 
 | 变量 | 说明 |
 |------|------|
-| `DELTA_CLI_MIRROR` | 下载镜像，例如 `https://gh-proxy.com/https://github.com`。只接受 HTTPS 且需在白名单内。 |
+| `DELTA_CLI_MIRROR` | 下载镜像根地址，例如 `https://gh.ddlc.top`。脚本会自动补全为全前缀格式（`<mirror>/https://github.com/...`）。只接受 HTTPS 且需在白名单内。 |
 | `DELTA_CLI_MIRROR_ALLOWLIST` | 额外允许的主机列表，逗号分隔。 |
 | `DELTA_CLI_ARCHIVE` | 指向预先下载好的 `.tar.gz` / `.zip` 本地路径，跳过网络下载。 |
 | `DELTA_CLI_SKIP_POSTINSTALL` | 设置为 `1` 跳过安装时的二进制下载，之后由 `delta-cli` 运行时兜底。 |
