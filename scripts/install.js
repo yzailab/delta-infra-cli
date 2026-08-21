@@ -85,6 +85,24 @@ var _MIRROR_LIST = [
   ["gh-proxy.com",   "https://gh-proxy.com"],
 ];
 
+// A safe "discard" output path for curl. /dev/null does not exist on Windows
+// and makes curl fail with "client returned ERROR on write" (exit 23), which
+// silently broke mirror probing on Windows. Use a throwaway temp file instead.
+function discardOutputPath() {
+  if (process.platform !== "win32") return "/dev/null";
+  try {
+    return path.join(os.tmpdir(), "delta-cli-probe-" + process.pid + ".out");
+  } catch {
+    return "delta-cli-probe-" + process.pid + ".out";
+  }
+}
+
+function removeDiscardOutput(p) {
+  if (process.platform === "win32" && p) {
+    try { fs.unlinkSync(p); } catch {}
+  }
+}
+
 // Quick connectivity check: fetch a small file (checksums.txt) from each
 // mirror and return only the ones that respond within the probe timeout.
 function probeMirrors(version, cb) {
@@ -113,10 +131,11 @@ function probeMirrors(version, cb) {
       var host = entry[0];
       var prefix = entry[1];
       var testUrl = prefix + probeUrl;
+      var discardPath = discardOutputPath();
       var args = [
         "--fail", "--location", "--silent", "--show-error",
         "--connect-timeout", "3", "--max-time", "5",
-        "--output", "/dev/null", testUrl,
+        "--output", discardPath, testUrl,
       ];
       var child;
       try {
@@ -126,6 +145,7 @@ function probeMirrors(version, cb) {
         child.stdout.on("data", function(d) { stdout += d; });
         child.stderr.on("data", function(d) { stderr += d; });
         child.on("close", function(code) {
+          removeDiscardOutput(discardPath);
           if (code === 0) {
             results.push(prefix + "/https://github.com/" + REPO + "/releases/download/v" + version + "/" + archiveName);
           }
@@ -133,10 +153,12 @@ function probeMirrors(version, cb) {
           if (pending === 0) finish();
         });
         child.on("error", function() {
+          removeDiscardOutput(discardPath);
           pending--;
           if (pending === 0) finish();
         });
       } catch (e) {
+        removeDiscardOutput(discardPath);
         pending--;
         if (pending === 0) finish();
       }
@@ -150,7 +172,10 @@ function releaseAssetUrls(version, assetName, cb) {
   var urls = [];
   var mirror = process.env.DELTA_CLI_MIRROR || "";
   if (mirror) {
-    urls.push("" + mirror.replace(/\/$/, "") + "/yzailab/delta-infra-cli/releases/download/v" + version + "/" + assetName);
+    // The mirror proxies the full GitHub release URL by prefixing it (same
+    // scheme the probed mirrors use, e.g. https://<mirror>/https://github.com/...).
+    // A bare "https://<mirror>/yzailab/..." 404s on these proxy-style mirrors.
+    urls.push("" + mirror.replace(/\/$/, "") + "/https://github.com/" + REPO + "/releases/download/v" + version + "/" + assetName);
   }
   // Probe mirrors in parallel first, then fallback
   probeMirrors(version, function(mirrorUrls) {
