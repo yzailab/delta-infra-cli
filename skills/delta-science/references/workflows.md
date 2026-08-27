@@ -14,6 +14,10 @@
 4. 只有用户明确要求图片时，才调用 RDKit `render`，并解码、验证图片字节。
 5. 比较分子式、分子量、InChIKey 和供体/受体数量时，要明确区分 LogP、TPSA 等依赖模型的数值。
 
+如果用户明确要求一次返回 PubChem 记录以及 RDKit 规范化/描述符/指纹，使用
+`chemistry/molecule.enrich`；只要 PubChem 身份信息或只要 RDKit 计算时，仍使用对应的
+单服务 operation。
+
 ## 多分子比较
 
 1. 用 PubChem 批量解析全部名称，请求体只包含 `identifiers` 和 `namespace:"name"`。省略 `properties`。
@@ -33,6 +37,39 @@
 2. GSAS-II 只能接收真实 CIF 文本后再做衍射计算。
 3. LAMMPS 只能在已有明确的力场、data 和脚本设置后运行；部署检查可以使用内置有界示例。
 4. 从 LAMMPS 返回 pymatgen 或 GSAS-II 前，需要从弛豫结果重新构造 CIF/POSCAR。不要直接传递 LAMMPS data/dump 文件。
+
+## Materials Design 工作流
+
+1. 先明确 identifier、可控设计变量、目标列及方向、泄漏/元数据列、分组或时间切分和
+   可行候选空间；不能优化 identifier、测量后变量或泄漏字段。
+2. 优先使用用户提供的候选表；只有服务契约允许且假设已标明时，才从可控变量的观测域
+   生成离散候选。组成闭合、硬约束、步长和是否允许外推必须显式记录。
+3. 读取作业的 `status` 后再读取 `result_status`；`completed` 不等于推荐可靠。
+   `complete`、`exploratory`、`readiness_only` 和 `failed` 必须分别报告，并保留 warnings。
+4. 只有用户要求或工作流需要时才下载 report/CSV/JSON artifact；依据服务返回的 size 和
+   SHA-256 校验，不能声称结果已经写入本地项目目录。
+
+Materials Design 的 `jobs` 上传是 multipart。当前 `delta-cli science invoke` 只能传 JSON
+body/query；除非实时目录提供明确的文件上传 adapter，否则不猜测 endpoint、不要把文件
+路径或 base64 塞进 `--data`，也不要改走直连 Gateway。
+
+## QE DFT 工作流
+
+1. 读取 health 和实时 workflow catalog，选择当前为 `supported` 的 workflow；收集完整
+   campaign element union，并按服务返回值解析/锁定 PP。
+2. 结构必须先成为服务返回的 checksum-addressed artifact；job 只引用 artifact ID、已批准
+   parameter set、PP lock、k-points、workflow_inputs 和资源请求。
+3. 提交必须使用稳定幂等语义；HTTP 202/accepted 只表示接收，不表示 QE 已收敛。轮询时
+   独立读取 `execution`、`solver`、`scientific` 三个状态，并按原始 stable error code 分类。
+4. CPU 是默认资源策略。只有用户明确要求或项目已有 GPU 授权且 live catalog 标记为
+   `gpu_support_status: verified` 时才请求 GPU；`gpu` 不得静默回退到 CPU，`auto` 也不等于
+   已实际使用 GPU。
+5. 日志和结果 artifact 下载后按服务返回的 SHA-256 校验；不要把 scheduler 完成、solver
+   收敛或可解析输出直接写成 scientific acceptance。
+
+QE 原始 artifact 上传需要二进制 body，job 提交还需要自定义 `Idempotency-Key`。当前 CLI
+没有这两类参数；只能调用 Science Server 已明确暴露的等价 adapter，否则报告“当前 CLI
+未暴露该 operation；未发送远端请求”。
 
 ## 优化工作流
 
