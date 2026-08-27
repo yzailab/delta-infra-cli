@@ -11,7 +11,7 @@
 # Usage:
 #   .\install.ps1                     # default install dir
 #   .\install.ps1 -InstallDir "$env:USERPROFILE\bin"
-#   $env:DELTA_CLI_VERSION = "1.0.95"; .\install.ps1   # pin a version
+#   $env:DELTA_CLI_VERSION = "1.0.97"; .\install.ps1   # pin a version
 #
 # Env overrides (same semantics as scripts/install.js):
 #   DELTA_CLI_VERSION        pin version (default: latest GitHub release)
