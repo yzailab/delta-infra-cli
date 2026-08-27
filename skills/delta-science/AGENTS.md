@@ -14,11 +14,9 @@ delta-science/
 ├── agents/
 │   └── openai.yaml          # host agent registration
 └── references/
-    ├── cli-contract.md      # CLI envelope/exit-code contract
-    ├── routing-index.md     # stable routing rules across tools
-    ├── workflows.md         # multi-tool workflows
-    └── <tool>.md            # per-tool operation contract (pubchem, rdkit, pymatgen, gsasii,
-                             #  lammps, delta-bo, ldm-bo, ldm, strbo, synbo, antbo, ...)
+    └── <tool>.md            # one real tool's operation contract (pubchem, rdkit, pymatgen,
+                             #  gsasii, lammps, delta-bo, ldm-bo, materials-design, qe,
+                             #  strbo, synbo, antbo)
 ```
 
 ## WHERE TO LOOK
@@ -26,16 +24,15 @@ delta-science/
 | Path | Content |
 |------|---------|
 | `SKILL.md` | Service boundary, 安全红线 (no curl/requests/httpx/browser direct gateway), invocation template, cross-tool handoff |
-| `references/cli-contract.md` | `delta-cli science` envelope + exit-code contract; `ok:true` gate |
-| `references/routing-index.md` | Which tool handles which science domain; stable routing |
-| `references/<tool>.md` | Authoritative operation + request field schema per tool |
+| `references/<tool>.md` | One real tool's authoritative operation, request-field, response and failure schema |
 
 ## CONVENTIONS
 
 - All science operations go through `delta-cli science invoke --tool T --endpoint E --data JSON`; no alternate routes
 - Tool/endpoint names are exact contracts from the server DB — read the matching reference first; never invent fields/enums from memory
 - Success is reported only when subprocess exit is 0 AND top-level JSON `ok` is `true`; `data` holds the service response
-- `references/` holds operation contracts; `retired_skills` (old per-tool skills) are removed, not referenced
+- `references/` contains only one real tool per file; routing, service maps, catalogs and workflows belong in `SKILL.md` or live CLI discovery, not here
+- `retired_skills` (old per-tool skills) are removed, not referenced
 - Host-neutral: `delta-cli` is the sole service boundary; no host-specific tool/env dependencies
 - Discover newly-deployed tools via `delta-cli science list` / `delta-cli science endpoints list <tool>`; do not copy the server registry into the Skill
 
