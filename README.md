@@ -328,8 +328,10 @@ operation，并且只加载当前工具对应的 reference，避免大量独立 
 工具目录由 Science Server 数据库维护。新增工具时配置 `tools` 记录及对应的
 `tool_endpoints` 记录；停用时设置 `status=false`。CLI 无需同步任何静态表或重新增加
 命令。若需要让 AI 根据自然语言自动选择新工具并安全组装请求，再更新
-`skills/delta-science/references/<tool>.md` 和路由文档；数据库中的 name 与 reference
-必须完全一致。
+`skills/delta-science/SKILL.md` 的工具选择表和对应的
+`skills/delta-science/references/<tool>.md`；references 目录只保存真实工具文档，不能放置
+目录、路由、服务映射或跨工具工作流等元文档。数据库中的 canonical tool name 与工具表、
+对应 reference 必须完全一致。
 
 ## 开发
 
