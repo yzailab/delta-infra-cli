@@ -56,34 +56,33 @@ catalog、render、descriptors 或文件操作；用户请求、诊断需要或 
 | --- | --- | --- |
 | 化合物身份、CID、同义词、公共属性、名称转 SMILES | `pubchem` | [pubchem.md](references/pubchem.md) |
 | SMILES/InChI、描述符、指纹、相似度、渲染、子结构 | `rdkit` | [rdkit.md](references/rdkit.md) |
-| 批量名称解析并联合 PubChem/RDKit 增强 | `chemistry` | [molecule-enrich.md](references/molecule-enrich.md) |
 | 无机化学式、CIF/POSCAR、晶体结构、空间群 | `pymatgen` | [pymatgen.md](references/pymatgen.md) |
 | 粉末衍射模拟、Rietveld 精修 | `gsasii` | [gsasii.md](references/gsasii.md) |
 | 分子动力学、最小化、thermo 与输出文件 | `lammps` | [lammps.md](references/lammps.md) |
 | 通用数值/整数/分类实验变量优化 | `delta-bo` | [delta-bo.md](references/delta-bo.md) |
 | 表格材料 surrogate、候选空间、EI/PI/UCB 与异步推荐作业 | `materials-design` | [materials-design.md](references/materials-design.md) |
-| Quantum ESPRESSO/QE 的 PP、异步 DFT 作业、日志与 artifact | `qe` | [qe-dft.md](references/qe-dft.md) |
+| Quantum ESPRESSO/QE 的 PP、异步 DFT 作业、日志与 artifact | `qe` | [qe.md](references/qe.md) |
 | 固定候选池 next-SMILES、PDF2Dock、分子 BO 轨迹 | `ldm-bo` | [ldm-bo.md](references/ldm-bo.md) |
 | KRAS G12D 小分子生成、vina/activity 多目标迭代 | `strbo` | [strbo.md](references/strbo.md) |
 | 反应条件初始化、基于真实得率推荐下一批实验 | `synbo` | [synbo.md](references/synbo.md) |
 | 抗体 CDRH3 生成/评估及 AntBO 作业管理 | `antbo` | [antbo.md](references/antbo.md) |
 
 用户使用 “LDM”“大发现模型”“小分子药 LDM” 或 “抗体 LDM” 表述完整科研流程时，
-先读取 [ldm.md](references/ldm.md)，再只读取其中选定后端对应的一个 reference。
-`ldm.md` 是编排规则，不是 tool，不得把 `ldm` 当作 `--tool` 参数。
+先根据任务目标选择真实后端工具，再只读取所选后端对应的 reference；`ldm-bo` 是可调用的
+工具，`LDM` 本身不是 `--tool` 参数。若用户说“批量分子增强”或类似需求，应拆成真实
+工具调用：先用 `pubchem` 做名称/标识解析，再用 `rdkit` 做结构标准化或分子计算。
 
 工具明确时直接读取所选 tool 的 reference，其中已经包含 operation、参数和最小场景；
-不要读取其他工具文档。只有任务在两个或多个工具之间存在歧义时，才先读
-[routing-index.md](references/routing-index.md)。跨工具任务再读
-[workflows.md](references/workflows.md)。
+不要读取其他工具文档。跨工具任务由本 Skill 的路由规则拆分，并只读取实际参与任务的
+工具 reference；不要依赖单独的路由、服务、工作流或目录文档。
 
-本表是经过验证的科研路由，不是服务端工具清单。若用户点名本表之外的新工具，或 reference
+本表只列出已经维护真实工具 reference 的科研工具，不是静态服务端清单。若用户点名本表之外的新工具，或 reference
 缺失、过期或与 CLI 返回不一致，允许运行 `delta-cli science list`，再使用目录返回的精确 tool name 运行一次
 `delta-cli science endpoints list <tool>`；两次输出都必须满足退出码为 0 且顶层
 `ok:true`。不得用空 body、错误参数、源码或直接 HTTP 探测。实时 endpoint
 元数据若没有足够的请求字段契约，应说明“目录已发现，
 但服务端未提供可安全构造请求的 schema”，不得猜 body、模糊匹配或转换名称。新增工具
-因此无需修改 CLI；只有需要自然语言自动选路或自动组装参数时，才补充对应 reference。
+因此无需修改 CLI；只有确认它是独立真实工具并需要自然语言自动选路或自动组装参数时，才补充对应的单工具 reference。
 
 ## 路由边界
 
