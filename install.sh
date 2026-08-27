@@ -10,7 +10,7 @@
 # Usage:
 #   ./install.sh                          # default install dir (~/.local/bin or ~/bin)
 #   ./install.sh --dir "$HOME/.local/bin"
-#   DELTA_CLI_VERSION=1.0.95 ./install.sh # pin a version
+#   DELTA_CLI_VERSION=1.0.97 ./install.sh # pin a version
 #
 # Env overrides (same semantics as scripts/install.js):
 #   DELTA_CLI_VERSION   pin version (default: latest GitHub release)
