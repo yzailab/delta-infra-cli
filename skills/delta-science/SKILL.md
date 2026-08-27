@@ -1,6 +1,6 @@
 ---
 name: delta-science
-description: "公司在线 Science 能力的统一入口，所有调用都经 Delta CLI。凡是查询具体化合物/CID/SMILES/分子性质、计算分子描述符或相似度、解析晶体/CIF/空间群、模拟或精修 XRD、执行 LAMMPS、根据实验数据做贝叶斯优化、反应条件优化，以及任何 LDM/大发现模型、KRAS G12D 小分子生成优化、固定候选池/PDF2Dock 轨迹或抗体 CDRH3 优化任务，都必须使用本 Skill；不得调用旧 large-discovery-model Skill、旧 gateway 脚本、网页搜索或本地科学库绕过 Delta CLI。普通查询、比较或校验默认直接返回文本，不要主动增加 JSON/CSV、报告、图片或图表步骤；只有用户明确要求保存、导出、绘图或生成文件时才创建产物。"
+description: "公司在线 Science 能力的统一入口，所有调用都经 Delta CLI。凡是查询具体化合物/CID/SMILES/分子性质、批量 PubChem 与 RDKit 分子增强、计算分子描述符或相似度、解析晶体/CIF/空间群、材料表格建模与候选推荐、Quantum ESPRESSO/QE DFT、模拟或精修 XRD、执行 LAMMPS、根据实验数据做贝叶斯优化、反应条件优化，以及任何 LDM/大发现模型、KRAS G12D 小分子生成优化、固定候选池/PDF2Dock 轨迹或抗体 CDRH3 优化任务，都必须使用本 Skill；不得调用旧 large-discovery-model Skill、旧 gateway 脚本、网页搜索或本地科学库绕过 Delta CLI。普通查询、比较或校验默认直接返回文本，不要主动增加 JSON/CSV、报告、图片或图表步骤；只有用户明确要求保存、导出、绘图或生成文件时才创建产物。"
 metadata:
   requires:
     bins: ["delta-cli"]
@@ -40,6 +40,11 @@ delta-cli science invoke --tool TOOL --endpoint ENDPOINT --data JSON
 仅当 reference 明确将字段定义为查询参数时使用 `--params JSON`。不要将 JSON 拼接为命令
 代码；使用调用环境的安全参数传递机制传入单个 JSON 参数。
 
+Materials Design 的训练表 multipart 上传、QE 的原始 artifact 上传和要求自定义
+`Idempotency-Key` 的请求，只有在 Science Server 已提供明确的 JSON/query adapter 时才能
+通过本 CLI 使用。不要把本地路径、base64 或请求头伪装成普通 `--data` 字段；若目录没有
+这样的 adapter，按“未暴露、未发送远端请求”处理，不要直连 preflight Gateway。
+
 只调用完成目标所需的 operation。跨工具任务在同一个 Skill 执行中按依赖顺序调用，
 下游只能使用上一步已验证的业务字段。已知工具默认不要额外调用 health、schema、
 catalog、render、descriptors 或文件操作；用户请求、诊断需要或 reference 与实时目录不一致时，
@@ -51,10 +56,13 @@ catalog、render、descriptors 或文件操作；用户请求、诊断需要或 
 | --- | --- | --- |
 | 化合物身份、CID、同义词、公共属性、名称转 SMILES | `pubchem` | [pubchem.md](references/pubchem.md) |
 | SMILES/InChI、描述符、指纹、相似度、渲染、子结构 | `rdkit` | [rdkit.md](references/rdkit.md) |
+| 批量名称解析并联合 PubChem/RDKit 增强 | `chemistry` | [molecule-enrich.md](references/molecule-enrich.md) |
 | 无机化学式、CIF/POSCAR、晶体结构、空间群 | `pymatgen` | [pymatgen.md](references/pymatgen.md) |
 | 粉末衍射模拟、Rietveld 精修 | `gsasii` | [gsasii.md](references/gsasii.md) |
 | 分子动力学、最小化、thermo 与输出文件 | `lammps` | [lammps.md](references/lammps.md) |
 | 通用数值/整数/分类实验变量优化 | `delta-bo` | [delta-bo.md](references/delta-bo.md) |
+| 表格材料 surrogate、候选空间、EI/PI/UCB 与异步推荐作业 | `materials-design` | [materials-design.md](references/materials-design.md) |
+| Quantum ESPRESSO/QE 的 PP、异步 DFT 作业、日志与 artifact | `qe` | [qe-dft.md](references/qe-dft.md) |
 | 固定候选池 next-SMILES、PDF2Dock、分子 BO 轨迹 | `ldm-bo` | [ldm-bo.md](references/ldm-bo.md) |
 | KRAS G12D 小分子生成、vina/activity 多目标迭代 | `strbo` | [strbo.md](references/strbo.md) |
 | 反应条件初始化、基于真实得率推荐下一批实验 | `synbo` | [synbo.md](references/synbo.md) |
@@ -81,6 +89,10 @@ catalog、render、descriptors 或文件操作；用户请求、诊断需要或 
 
 - 普通分子名称先用 PubChem；只有需要结构计算时才把成功返回的 SMILES 交给 RDKit。
 - 无机化学式、组成和式量优先 pymatgen，不用 PubChem 或本地元素表补算。
+- 表格材料建模与候选排序使用 Materials Design；必须区分可控变量、目标、候选空间、
+  交叉验证和不确定性，推荐结果只是待验证假设。
+- 需要显式电子结构计算时使用 QE；先处理元素全集、PP policy/lock 和结构 artifact，
+  再提交异步 workflow，不把作业接收、scheduler 完成或 solver 收敛混为一谈。
 - 通用实验变量使用 Delta-BO；已有固定 SMILES 候选池或 PDF2Dock 轨迹使用 LDM-BO；
   围绕服务端固定 KRAS G12D 生成并迭代小分子使用 STRBO；偶联反应、反应条件和历史
   得率使用 SynBO；抗体/CDRH3 使用 AntBO，不得混用。
