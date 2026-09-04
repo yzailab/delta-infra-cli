@@ -1,6 +1,6 @@
 # delta-cli
 
-Delta Infra 的命令行工具，用于管理 Delta Sandbox GPU/CPU 计算任务和调用 Science 工具。
+Delta Agent Cloud 的命令行工具，用于管理 Delta Sandbox GPU/CPU 计算任务和调用 Science 工具。
 
 ## 安装
 
@@ -157,7 +157,7 @@ delta-cli config init
 
 支持 **API Key** 与 **Bearer Token** 两种凭据（API Key 优先）。
 
-**获取 API Key**：登录 Delta Infra **Web 控制台**，在 **API Keys** 页面生成一个 Key。
+**获取 API Key**：登录 Delta Agent Cloud **Web 控制台**，在 **API Keys** 页面生成一个 Key。
 
 ```bash
 # API Key（推荐）
@@ -417,7 +417,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.0.97
+./release.sh v1.0.99
 ```
 
 脚本执行步骤：
