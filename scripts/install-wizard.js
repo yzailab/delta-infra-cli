@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Copyright (c) 2026 Delta Infra Authors
+// Copyright (c) 2026 Delta Agent Cloud Authors
 // SPDX-License-Identifier: MIT
 
 const fs = require("fs");
@@ -114,7 +114,7 @@ function platformSkillDir(platform) {
 
 const messages = {
   zh: {
-    setup:          "正在设置 Delta Infra CLI...",
+    setup:          "正在设置 Delta Agent Cloud CLI...",
     upgrade:        "正在升级 %s (v%s → v%s)...",
     step1:          "正在安装 %s...",
     step1Skip:      "已安装 (v%s)，跳过",
@@ -129,7 +129,7 @@ const messages = {
     step2Skip:      "已安装，跳过",
     step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g",
     step3:          "正在初始化配置...",
-    step3BaseUrl:   "Delta Infra 服务器地址",
+    step3BaseUrl:   "Delta Agent Cloud 服务器地址",
     step3Skip:      "跳过配置初始化",
     step3Done:      "配置已初始化",
     step3Fail:      "配置初始化失败。运行以下命令重试: delta-cli config init",
@@ -149,7 +149,7 @@ const messages = {
     uninstallComplete: "卸载完成。",
   },
   en: {
-    setup:          "Setting up Delta Infra CLI...",
+    setup:          "Setting up Delta Agent Cloud CLI...",
     upgrade:        "Upgrading %s (v%s → v%s)...",
     step1:          "Installing %s globally...",
     step1Skip:      "Already installed (v%s). Skipped",
@@ -164,7 +164,7 @@ const messages = {
     step2Skip:      "Already installed. Skipped",
     step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g",
     step3:          "Initializing config...",
-    step3BaseUrl:   "Delta Infra server URL",
+    step3BaseUrl:   "Delta Agent Cloud server URL",
     step3Skip:      "Skipped config initialization",
     step3Done:      "Config initialized",
     step3Fail:      "Failed to init config. Run manually: delta-cli config init",
