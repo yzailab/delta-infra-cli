@@ -1,6 +1,6 @@
 # skills/ — AI Agent Skill Packages
 
-**Generated:** 2026-07-15
+**Generated:** 2026-09-07
 **Parent:** `../AGENTS.md`
 
 ## OVERVIEW
@@ -24,10 +24,12 @@ skills/
 │   └── SKILL.md
 └── delta-science/
     ├── SKILL.md
+    ├── agents/
+    │   └── openai.yaml
     └── references/
-        ├── routing-index.md
-        ├── workflows.md
-        └── <science-tool>.md
+        ├── <science-tool>.md  (12 tools: antbo, delta-bo, gsasii, lammps, ldm-bo,
+        │                       materials-design, pubchem, pymatgen, qe, rdkit, strbo, synbo)
+        └── scripts/            (catalog generation + invocation helpers)
 ```
 
 ## WHERE TO LOOK
