@@ -1,5 +1,6 @@
 # skills/delta-science — Science Skill Package
 
+**Generated:** 2026-09-07
 **Parent:** `../AGENTS.md`
 
 ## OVERVIEW
