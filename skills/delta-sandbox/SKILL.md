@@ -143,7 +143,7 @@ required_outputs:
 | 获取资源推荐 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]` |
 | 列出当前用户的 sandbox | `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--sandbox-id <id>] [--days N]` |
 | **生命周期** | |
-| 创建 sandbox | `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --max-life M]`；`--image-name` 用镜像名（`sandbox images` 返回的 `image_name` 字段，如 `"PyTorch CUDA13 (GPU)"`），底层镜像标识对用户隐藏；不希望被自动清理时加 `--no-auto-cleanup`（仅显式 kill/finish 可销毁）；**单沙箱资源上限** cpu ≤ 512 / memory ≤ 1024Gi / gpu ≤ 64 / gpuMem ≤ 1024Gi，超出快速报错不挂起 |
+| 创建 sandbox | `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <型号> --max-life M]`；`--image-name` 用镜像名（`sandbox images` 返回的 `image_name` 字段，如 `"PyTorch CUDA13 (GPU)"`），底层镜像标识对用户隐藏；`--gpu-type` 指定 GPU 型号（如 `"RTX 4090"`、`H100`），服务端映射为 HAMi use-gputype 注解按型号调度，可选型号查 `sandbox resources`（`third_party` 分组 `gpu_types[].gpu_name`），不传则自动调度；不希望被自动清理时加 `--no-auto-cleanup`（仅显式 kill/finish 可销毁）；**单沙箱资源上限** cpu ≤ 512 / memory ≤ 1024Gi / gpu ≤ 64 / gpuMem ≤ 1024Gi，超出快速报错不挂起 |
 | 连接 sandbox | `sandbox connect <id>` |
 | 查看状态 | `sandbox status <id>` |
 | 完成 sandbox | `sandbox finish <id> [--results '{...}']` |
@@ -153,6 +153,10 @@ required_outputs:
 | 后台运行命令（>60s） | `sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--summary/--no-summary] [--artifacts]` |
 | 查看后台日志 | `sandbox logs <id> [--execution-id <exec_id>] [--tail N --grep <pattern> --context N] [--stream]`（`--execution-id` 可选；省略时按 sandbox 从 ES 查询，仅 `--stream` 必须传）|
 | 中断后台命令 | `sandbox cancel <id> --execution-id <exec_id>` |
+| **内网穿透（端口暴露）** | |
+| 暴露端口到公网 | `sandbox expose <id> [--port N]` — 把沙箱内服务端口暴露到公网，返回 `public_url`（`http://<host>:<remote_port>`，remote_port 由服务端从 20000-29999 随机分配）；**必须先启服务再暴露**（服务端探活失败报「服务未就绪」）；`--port` 默认 8700（平台约定） |
+| 查询活跃隧道 | `sandbox exposes <id>` — 列出该 sandbox 当前的公网隧道 |
+| 回收隧道 | `sandbox dispose <id> --port N` — 显式回收单条隧道（杀 frpc + 释放公网端口）；kill sandbox 也会自动回收全部隧道 |
 | **文件操作** | |
 | 读取文件 | `sandbox read <id> --path <path> [--output <本地路径> --tail N --grep <pattern> --offset N --limit N --context N --max-bytes N --parse-json]` |
 | 拉取文件/目录 | `sandbox pull <id> --source <沙箱路径> --target <本地路径> [--recursive] [--pattern <glob>]` — 单文件或目录递归，含 sha1 校验（mirror of upload，flag 方向与 upload 相反：source=远程，target=本地） |
@@ -175,13 +179,14 @@ required_outputs:
 
 1. **选择镜像（按需）**：
    - 算力后端（provider）是内部概念，由系统自动选择，**不需要也不支持用户指定**。
-   - 如果请求里已经明确指定了镜像（例如 `--image-name "PyTorch CUDA13 (GPU)"`，镜像名）和资源（cpu/memory/gpu），**直接跳到步骤 2 创建 sandbox**，不要再调 `sandbox images` / `sandbox recommend`。
+   - 如果请求里已经明确指定了镜像（例如 `--image-name "PyTorch CUDA13 (GPU)"`，镜像名）和资源（cpu/memory/gpu，以及可选的 `--gpu-type`），**直接跳到步骤 2 创建 sandbox**，不要再调 `sandbox images` / `sandbox recommend`。
    - 只有在用户要求“推荐一个配置”或需要查询可用镜像时，才调用：
      - `delta-cli sandbox images` — 服务端支持的镜像列表（返回镜像名，隐藏底层镜像标识）
      - `delta-cli sandbox recommend --cpu N --memory XGi [--gpu N]` — 资源配置推荐
 2. **创建**：`delta-cli sandbox create --image-name <镜像名> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`。**返回的 JSON 信封中是 `data.sandbox_id`，不是 `data.id`；后续所有命令必须使用这个真实的 `sandbox_id`。**（创建后 sandbox 立即可用，无需额外连接）。**响应会回显请求的镜像名/resource（服务端未返回的字段由 CLI 用请求值补齐，服务端返回值优先），可直接核对一遍资源配置，无需额外调 status。**（镜像回显为显示名；`provider` 为内部概念，不再回显）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
     - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
     - **`--gpu-mem`（单位 MiB）要匹配实际运行的模型**：模型参数量/精度越大所需显存越大，大模型塞进过小显存会直接 OOM。示例中的 8000（8GiB）只适配小模型，跑 7B/9B/13B 前先评估显存需求并适当调大。
+    - **`--gpu-type <型号>`（可选）指定 GPU 型号**：如 `"RTX 4090"`、`H100`，服务端映射为 HAMi use-gputype 注解，将 pod 调度到匹配型号的 GPU 上。可用 `sandbox resources` 查看可选型号（`third_party` 分组的 `gpu_types[].gpu_name`）。仅在用户明确要求特定型号时使用；不传则由系统自动调度。
     - `--no-auto-cleanup`：加此 flag 后该 sandbox **不会被自动清理**（服务端超时回收 + 本地周期 cleanup_stale 均跳过），只能通过显式 `sandbox kill`/`finish` 销毁。仅当任务确实需要跨越周期清理长期存活时才使用，任务结束后必须主动销毁，避免资源泄漏。
     - **禁止在 create 成功后反复调用 `sandbox status` 轮询**。`sandbox create` 返回时 sandbox 已经就绪，直接用它返回的 `data.sandbox_id` 执行 `write`/`run` 即可。多余的轮询会增加工具调用次数且没有任何收益。
 3. **写入代码/数据**：
@@ -258,6 +263,40 @@ required_outputs:
 6. **销毁**：`delta-cli sandbox kill <id>`（如需保存结果，用 `sandbox finish --results '{...}'` 替代 kill，finish 会自动销毁 sandbox）
 
 详细步骤见 [lifecycle.md](references/lifecycle.md)。
+
+## 内网穿透（端口暴露）
+
+把沙箱内服务端口暴露到公网，让用户通过 `public_url` 直接访问。原理：沙箱内
+frpc 向外拨号到公网 frps，frps 把公网端口（20000-29999 随机分配）的 TCP 流量
+转发回沙箱内服务；**无需在宿主机为每个 sandbox 配置端口**（反向连接）。
+
+可用命令：
+
+| 命令 | 作用 |
+|------|------|
+| `sandbox expose <id> [--port N]` | 暴露端口，返回 `public_url`；`--port` 默认 **8700**（平台约定），不传即可 |
+| `sandbox exposes <id>` | 查询该 sandbox 当前活跃隧道（service_port / remote_port / public_url） |
+| `sandbox dispose <id> --port N` | 显式回收单条隧道（杀 frpc + 释放公网端口） |
+
+必须遵守的顺序与约定：
+
+1. **先启服务，再暴露**。expose 前服务必须在沙箱内监听（绑定 `0.0.0.0`，不是
+   仅 `127.0.0.1`），且服务端会对 `127.0.0.1:{port}` 探活——**任何 HTTP 响应
+   （含 4xx/5xx）都算存活**，只有连接失败/超时才报「服务未就绪」。
+2. **长驻服务必须前台常驻**：用 `run-bg` 时让服务进程成为任务的前台进程，
+   **禁止** `nohup ... &` 后台化（任务结束时后台进程会被回收，服务随之消失）：
+
+   ```bash
+   delta-cli sandbox run-bg <id> --command "cd <wd> && exec python3 -m http.server 8700 --bind 0.0.0.0" --timeout 3600
+   delta-cli sandbox expose <id>   # --port 默认 8700，无需传
+   ```
+
+3. **生命周期自动回收**：`kill` sandbox 时服务端钩子自动把隧道记录置 closed，
+   frps 侧公网端口随 frpc 连接断开自动释放；`dispose` 用于不销毁 sandbox 的
+   显式回收。**暴露的端口对公网全开放，业务服务自身必须带鉴权**，不要裸奔端口。
+4. 公网连不上排查顺序：① 沙箱内服务是否监听（`curl 127.0.0.1:{port}`，可先
+   `sandbox run` 验证）→ ② frpc 进程是否存活（`ps aux | grep frpc`）→ ③ frps
+   公网主机连通性 → ④ 安全组是否放行业务端口段 → ⑤ frpc/frps 两端 token 一致。
 
 ## 通用结构化输出约定
 
