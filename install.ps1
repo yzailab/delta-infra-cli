@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Delta Infra Authors
+# Copyright (c) 2026 Delta Agent Cloud Authors
 # SPDX-License-Identifier: MIT
 #
 # Install delta-cli on Windows.
