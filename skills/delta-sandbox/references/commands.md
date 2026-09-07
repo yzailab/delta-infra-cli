@@ -15,7 +15,7 @@
 
 | 命令 | 说明 |
 |------|------|
-| `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --max-life M --no-auto-cleanup]` | 创建 sandbox 容器（`--image-name` 用镜像名，如 `"PyTorch CUDA13 (GPU)"`，底层镜像标识对用户隐藏；`--no-auto-cleanup` 不被自动清理，仅显式 kill/finish 可销毁）；**响应回显请求的镜像名/resource**（服务端未返回字段用请求值补齐，服务端值优先）；算力后端为内部概念，自动选择，不再支持 `--provider`。**单沙箱资源上限**：`--cpu` ≤ 512、`--memory` ≤ 1024Gi、`--gpu` ≤ 64、`--gpu-mem` ≤ 1024Gi，超出会在请求阶段**快速返回校验错误**（不会挂起），正常任务远低于这些上限 |
+| `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <型号> --max-life M --no-auto-cleanup]` | 创建 sandbox 容器（`--image-name` 用镜像名，如 `"PyTorch CUDA13 (GPU)"`，底层镜像标识对用户隐藏；`--gpu-type` 指定 GPU 型号，如 `"RTX 4090"`、`H100`，服务端映射为 HAMi use-gputype 注解按型号调度，可选型号查 `sandbox resources`（`third_party` 分组 `gpu_types[].gpu_name`），不传则自动调度；`--no-auto-cleanup` 不被自动清理，仅显式 kill/finish 可销毁）；**响应回显请求的镜像名/resource**（服务端未返回字段用请求值补齐，服务端值优先）；算力后端为内部概念，自动选择，不再支持 `--provider`。**单沙箱资源上限**：`--cpu` ≤ 512、`--memory` ≤ 1024Gi、`--gpu` ≤ 64、`--gpu-mem` ≤ 1024Gi，超出会在请求阶段**快速返回校验错误**（不会挂起），正常任务远低于这些上限 |
 | `sandbox connect <id>` | 连接已有 sandbox |
 | `sandbox status <id>` | 查看 sandbox 状态（running / done） |
 | `sandbox finish <id> [--results '{...}']` | 保存结果后自动销毁 |
