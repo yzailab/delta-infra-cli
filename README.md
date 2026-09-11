@@ -280,7 +280,7 @@ delta-cli sandbox kill <sandbox_id>
 `science list` 与 `science endpoints list` 原样展示服务端数据库中的启用项，
 `science invoke` 原样传递 `--tool` 和 `--endpoint`，不执行别名映射或旧名称兼容。
 
-v1.2.0 起线上 catalog 已包含 `qe`（Quantum ESPRESSO DFT，20 个端点：任务提交/查询/
+v1.1.1 起线上 catalog 已包含 `qe`（Quantum ESPRESSO DFT，20 个端点：任务提交/查询/
 日志/artifact/PP 库等）与 `materials-design`（持久化材料代理建模，7 个端点：
 health/capabilities/job-submit(multipart)/job-status/job-cancel 等）。用法见
 Skill 文档 `skills/delta-science/references/qe.md` 与
@@ -427,7 +427,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.2.0
+./release.sh v1.1.1
 ```
 
 脚本执行步骤：
