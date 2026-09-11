@@ -22,10 +22,21 @@ Materials Design 用于从实验或计算材料表格中建立 surrogate、验�
 | `/chem/materials-design/v1/jobs/{job_id}/artifacts` | 列出产物 | name、size、media_type、SHA-256 |
 | `/chem/materials-design/v1/jobs/{job_id}/artifacts/{path}` | 下载单个产物 | 原始 report/JSON/CSV/figure bytes |
 
-所有实时调用都必须走：
+所有 JSON/query 调用都必须走：
 
 ```text
 delta-cli science invoke --tool TOOL --endpoint ENDPOINT --data JSON
+```
+
+训练表提交使用受控文件 adapter：
+
+```text
+delta-cli science file invoke --tool materials-design --endpoint job-submit \
+  --file train.xlsx --candidate-file candidates.xlsx --data CONFIG_JSON
+delta-cli science task submit --tool materials-design --operation job-status \
+  --input '{"job_id":"mdjob_..."}' --wait
+delta-cli science file download --tool materials-design --endpoint artifact-download \
+  --params '{"job_id":"mdjob_...","artifact_path":"report.html"}' --output report.html
 ```
 
 只读 query operation 才使用 `--params JSON`。如果新工具尚未出现在目录中，或目录没有
@@ -41,12 +52,10 @@ candidate_file=<optional candidate table>
 config=<serialized JSON object>
 ```
 
-当前通用 `delta-cli science invoke` 只接受 JSON object body 和 JSON query 参数，不能表达
-multipart 文件上传，也不能把本地路径或 base64 伪装成文件字段。artifact 下载同样是原始
-bytes，不应当当作普通 JSON 结果。只有 Science Server 目录明确提供等价的文件/adapter
-operation 时，才通过 CLI 调用；否则 Materials Design 的作业提交或文件下载属于当前 CLI
-未暴露能力，未发送远端请求。不得调用 `materials-design-service:8900` 或直连 preflight
-Gateway。
+`science invoke` 只接受 JSON object body 和 JSON query 参数，不能表达 multipart；因此不能
+把本地路径或 base64 伪装成文件字段。artifact 下载同样是原始 bytes，必须通过
+`science file download` 保存并校验，不能当作普通 JSON 结果。不得调用
+`materials-design-service:8900` 或直连 preflight Gateway。
 
 ## 输入与配置
 
