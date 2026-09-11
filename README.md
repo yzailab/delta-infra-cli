@@ -271,10 +271,20 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli science get <tool_name>` | 查看指定工具的详情 |
 | `delta-cli science invoke --tool <tool_name> --endpoint <endpoint_name> [--data '{"key":"value"}'] [--params '{"key":"value"}']` | 调用工具端点 |
 | `delta-cli science endpoints list <tool_name>` | 列出指定工具的所有端点 |
+| `delta-cli science task submit --tool <tool> --operation <operation> --input '<json>' [--wait]` | 提交持久化 Science 任务 |
+| `delta-cli science task get/list/cancel/invocations/artifacts` | 查询、取消任务及读取调用/artifact 元数据 |
+| `delta-cli science file invoke --tool <tool> --endpoint <operation> --file <path>` | 调用受控文件/multipart operation |
+| `delta-cli science file download --tool <tool> --endpoint <operation> --params '<json>' --output <path>` | 下载原始 artifact 并计算 SHA-256 |
 
 `tools.name` 和 `tool_endpoints.name` 是 Science 工具调用的唯一权威名称。
 `science list` 与 `science endpoints list` 原样展示服务端数据库中的启用项，
 `science invoke` 原样传递 `--tool` 和 `--endpoint`，不执行别名映射或旧名称兼容。
+
+v1.2.0 起线上 catalog 已包含 `qe`（Quantum ESPRESSO DFT，20 个端点：任务提交/查询/
+日志/artifact/PP 库等）与 `materials-design`（持久化材料代理建模，7 个端点：
+health/capabilities/job-submit(multipart)/job-status/job-cancel 等）。用法见
+Skill 文档 `skills/delta-science/references/qe.md` 与
+`skills/delta-science/references/materials-design.md`。
 
 ## 输出格式
 
@@ -417,12 +427,12 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.1.0
+./release.sh v1.2.0
 ```
 
 脚本执行步骤：
 1. 更新 `package.json` 版本号。
-2. 使用 Docker + `make release` 交叉编译 5 个平台二进制文件。
+2. 交叉编译 5 个平台二进制文件（优先 Docker + `make release`，Docker 不可用时回退本地 Go 工具链）。
 3. 在 `bin/` 目录生成 `.tar.gz` / `.zip` 归档。
 4. 通过 `.ci/publish-github-release.js` 创建 GitHub Release 并上传资产。
 5. 同步 npm 脚本、README 与全部 Skills 到公开仓库 `yzailab/delta-infra-cli`。
