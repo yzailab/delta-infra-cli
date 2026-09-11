@@ -14,8 +14,9 @@ Skill；工具选择、operation、参数、跨工具交接和结果校验都在
 
 ## 服务调用边界
 
-- 所有在线 Science 操作最终都经
-  `delta-cli science invoke -> Science Server`。
+- 所有在线 Science 操作最终都经 Delta CLI：只读/JSON 兼容端点使用
+  `delta-cli science invoke`，需要持久化生命周期的调用使用
+  `delta-cli science task`，原始文件或 multipart 使用 `delta-cli science file`。
 - 使用 CLI 的标准认证与 `base_url` 派生出的 Science 服务地址（`{base_url}/science_tool`）。
   不得通过环境变量、命令参数或业务 URL 改写服务路由。
 - 禁止使用 `curl`、`requests`、`httpx`、浏览器和 PowerShell Web 命令直接访问公司网关或
@@ -31,19 +32,41 @@ Skill；工具选择、operation、参数、跨工具交接和结果校验都在
   CLI 顶层 `data` 保存服务响应；仅按对应 reference 说明的信封和业务结构读取字段，
   不得递归搜索看似合理的值，也不得把 `valid:false` 等业务结果误报为传输失败。
 
-调用模板：
+JSON 兼容端点调用模板：
 
 ```text
 delta-cli science invoke --tool TOOL --endpoint ENDPOINT --data JSON
 ```
 
+持久化任务模板：
+
+```text
+delta-cli science task submit --tool TOOL --operation OPERATION \
+  --input JSON --idempotency-key STABLE_KEY [--wait --timeout SECONDS]
+delta-cli science task get TASK_ID
+delta-cli science task cancel TASK_ID
+delta-cli science task invocations TASK_ID
+delta-cli science task artifacts TASK_ID
+```
+
+文件型操作模板：
+
+```text
+delta-cli science file invoke --tool qe --endpoint artifact-upload \
+  --file structure.cif --data '{"name":"structure.cif","role":"structure"}'
+delta-cli science file invoke --tool materials-design --endpoint job-submit \
+  --file train.xlsx --candidate-file candidates.xlsx --data CONFIG_JSON
+delta-cli science file download --tool qe --endpoint artifact-content \
+  --params '{"artifact_id":"sha256:<digest>"}' --output result.bin
+```
+
 仅当 reference 明确将字段定义为查询参数时使用 `--params JSON`。不要将 JSON 拼接为命令
 代码；使用调用环境的安全参数传递机制传入单个 JSON 参数。
 
-Materials Design 的训练表 multipart 上传、QE 的原始 artifact 上传和要求自定义
-`Idempotency-Key` 的请求，只有在 Science Server 已提供明确的 JSON/query adapter 时才能
-通过本 CLI 使用。不要把本地路径、base64 或请求头伪装成普通 `--data` 字段；若目录没有
-这样的 adapter，按“未暴露、未发送远端请求”处理，不要直连 preflight Gateway。
+Materials Design 的训练表 multipart 上传、QE 的原始 artifact/custom PP 上传和
+`Idempotency-Key` 都已有受控 CLI adapter：文件必须通过 `science file` 的文件 flag 传递，
+幂等键必须通过 `science task submit --idempotency-key` 或 file operation 的专用 flag 传递。
+不要把本地路径、base64 或请求头伪装成普通 `--data` 字段，也不要直连 preflight Gateway。
 
 只调用完成目标所需的 operation。跨工具任务在同一个 Skill 执行中按依赖顺序调用，
 下游只能使用上一步已验证的业务字段。已知工具默认不要额外调用 health、schema、
