@@ -31,18 +31,20 @@ delta-cli science endpoints list <exact tool name>
 再用目录返回的精确名称调用；如果 catalog 没有 schema，不猜测 operation、路径参数、
 请求头或 body。
 
-## 当前 CLI 的文件和请求头边界
+## CLI 的文件和幂等边界
 
 结构 artifact 上传需要 `application/octet-stream` 和 query metadata，QE job 提交要求
-稳定的 `Idempotency-Key`。当前通用 `delta-cli science invoke` 只有 JSON body/query 参数，
-没有原始二进制上传、multipart 或自定义请求头 flag。因此：
+稳定的 `Idempotency-Key`。`science invoke` 仍只用于 JSON/query；文件通过
+`science file`，持久化 job 通过 `science task`：
 
-- 只有在 Science Server 已提供明确等价 adapter 时，才可以通过 CLI 解析 PP、提交 job
-  或上传 artifact；
+- `delta-cli science file invoke --tool qe --endpoint artifact-upload --file <path>` 上传
+  结构 artifact；`custom-pp-upload` 同理并在 `--data` 中提供 `custom_pp_id`；
+- `delta-cli science task submit --tool qe --operation job-submit --input JSON
+  --idempotency-key KEY` 提交 durable QE job，worker 将幂等键传给 Gateway；
+- `delta-cli science file download --tool qe --endpoint artifact-content --params JSON
+  --output <path>` 下载原始 artifact；
 - 不要把结构文本、文件路径、base64、`Idempotency-Key` 或 QE service credential 当成
-  普通业务字段发送；
-- 若目录没有 adapter，报告“当前 CLI 未暴露该 operation；未发送远端请求”，不要调用
-  公开/私有 Gateway URL 或 `qe-cloud-compute:18020`。
+  普通业务字段发送，也不要调用公开/私有 Gateway URL 或 `qe-cloud-compute:18020`。
 
 ## 新作业的正确顺序
 
