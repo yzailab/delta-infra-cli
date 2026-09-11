@@ -5,7 +5,7 @@
 
 ## OVERVIEW
 
-Single public `delta-science` skill: the company online-Science unified entrypoint. It is host-neutral and routed exclusively through `delta-cli science invoke -> Science Server`. Per-tool operation contracts live in `references/` and are loaded on demand; there are no separate planner-visible per-tool skills.
+Single public `delta-science` skill: the company online-Science unified entrypoint. It is host-neutral and routed exclusively through Delta CLI (`science invoke`, durable `science task`, or controlled `science file`) to the Science Server. Per-tool operation contracts live in `references/` and are loaded on demand; there are no separate planner-visible per-tool skills.
 
 ## STRUCTURE
 
@@ -24,12 +24,12 @@ delta-science/
 
 | Path | Content |
 |------|---------|
-| `SKILL.md` | Service boundary, 安全红线 (no curl/requests/httpx/browser direct gateway), invocation template, cross-tool handoff |
+| `SKILL.md` | Service boundary, 安全红线 (no curl/requests/httpx/browser direct gateway), invoke/task/file templates, cross-tool handoff |
 | `references/<tool>.md` | One real tool's authoritative operation, request-field, response and failure schema |
 
 ## CONVENTIONS
 
-- All science operations go through `delta-cli science invoke --tool T --endpoint E --data JSON`; no alternate routes
+- JSON endpoint operations go through `delta-cli science invoke`; durable jobs go through `delta-cli science task`; raw/multipart operations go through `delta-cli science file`; no direct HTTP alternate routes
 - Tool/endpoint names are exact contracts from the server DB — read the matching reference first; never invent fields/enums from memory
 - Success is reported only when subprocess exit is 0 AND top-level JSON `ok` is `true`; `data` holds the service response
 - `references/` contains only one real tool per file; routing, service maps, catalogs and workflows belong in `SKILL.md` or live CLI discovery, not here
