@@ -140,10 +140,10 @@ required_outputs:
 | **发现** | |
 | 查看可用镜像（镜像名） | `sandbox images` |
 | 查看剩余可申请资源 | `sandbox resources` — 按算力分组返回 GPU/显存/核心可用量：`compute_sources[].source` 为 `private`（私有算力）或 `third_party`（第三方算力）；`gpu_types` 结构随分组不同（private 含 `vgpu`/`core`/`memory_mib`，third_party 含 `gpu_name`/`total_gpu_num`/`idle_gpu_num`）。算力后端为内部概念，自动选择，无需指定 |
-| 获取资源推荐 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]` |
+| 获取资源推荐 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]`（`--memory`/`--gpu-mem` 支持 g/m/G/M 格式，如 `1G`/`512M`，CLI 自动转换为 Gi/Mi） |
 | 列出当前用户的 sandbox | `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--sandbox-id <id>] [--days N]` |
 | **生命周期** | |
-| 创建 sandbox | `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <型号> --max-life M]`；`--image-name` 用镜像名（`sandbox images` 返回的 `image_name` 字段，如 `"PyTorch CUDA13 (GPU)"`），底层镜像标识对用户隐藏；`--gpu-type` 指定 GPU 型号（如 `"RTX 4090"`、`H100`），服务端映射为 HAMi use-gputype 注解按型号调度，可选型号查 `sandbox resources`（`third_party` 分组 `gpu_types[].gpu_name`），不传则自动调度；不希望被自动清理时加 `--no-auto-cleanup`（仅显式 kill/finish 可销毁）；**单沙箱资源上限** cpu ≤ 512 / memory ≤ 1024Gi / gpu ≤ 64 / gpuMem ≤ 1024Gi，超出快速报错不挂起 |
+| 创建 sandbox | `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <型号> --max-life M]`；`--memory`/`--gpu-mem` 支持 g/m/G/M 格式（如 `1G`/`512M`，小写亦可），CLI 自动转换为服务端接受的 `Gi`/`Mi` 单位；`--image-name` 用镜像名（`sandbox images` 返回的 `image_name` 字段，如 `"PyTorch CUDA13 (GPU)"`），底层镜像标识对用户隐藏；`--gpu-type` 指定 GPU 型号（如 `"RTX 4090"`、`H100`），服务端映射为 HAMi use-gputype 注解按型号调度，可选型号查 `sandbox resources`（`third_party` 分组 `gpu_types[].gpu_name`），不传则自动调度；不希望被自动清理时加 `--no-auto-cleanup`（仅显式 kill/finish 可销毁）；**单沙箱资源上限** cpu ≤ 512 / memory ≤ 1024Gi / gpu ≤ 64 / gpuMem ≤ 1024Gi，超出快速报错不挂起 |
 | 连接 sandbox | `sandbox connect <id>` |
 | 查看状态 | `sandbox status <id>` |
 | 完成 sandbox | `sandbox finish <id> [--results '{...}']` |
