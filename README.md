@@ -215,6 +215,7 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli config init` | 初始化配置文件 |
 | `delta-cli config show` | 查看当前配置（敏感字段已脱敏） |
 | `delta-cli config set <key> <value>` | 修改配置项 |
+| `delta-cli config remove <key>` | 移除配置项（支持 `token`、`apikey`） |
 | `delta-cli auth login` | 交互式登录（自动识别 API Key / Token） |
 | `delta-cli auth login --apikey <key>` | API Key 认证（推荐） |
 | `delta-cli auth login --token <token>` | Token 认证 |
@@ -223,6 +224,7 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli upgrade --check` | 检查是否有可用更新 |
 | `delta-cli upgrade --cli-only` | 只升级 CLI 二进制 |
 | `delta-cli upgrade --skills-only` | 只升级 AI Skills |
+| `delta-cli usage` | 查看当前用户用量和剩余额度 |
 | `delta-cli --version` | 显示版本 |
 
 ### Sandbox 命令
@@ -258,7 +260,11 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox rmdir <id> --path <路径>` | 递归删除目录 |
 | `delta-cli sandbox mkdir <id> --path <路径>` | 创建目录 |
 | `delta-cli sandbox search <id> --path <根目录> --pattern <glob>` | 搜索文件 |
+| `delta-cli sandbox working-directory <id>` | 获取沙箱工作目录路径 |
 | `delta-cli sandbox upload <id> --source <本地目录> --target <沙箱路径>` | 上传目录（tar.gz + 自动解压） |
+| `delta-cli sandbox expose <id> [--port N]` | 将沙箱内服务端口暴露到公网（frp 隧道），默认端口 8700 |
+| `delta-cli sandbox exposes <id>` | 列出沙箱当前活跃的公网端口隧道 |
+| `delta-cli sandbox dispose <id> --port N` | 回收公网端口隧道（需指定端口号） |
 
 ### Science 工具
 
