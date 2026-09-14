@@ -42,6 +42,20 @@ delta-cli config init --base-url <server-url> --token <token>
 
 CLI 使用 `token` 发送请求头 `Authorization: Bearer <token>`，并自动从 JWT 中提取 `uid` 作为 `X-User-Uid`。
 
+## 查询用户信息与剩余额度
+
+```bash
+delta-cli usage
+```
+
+返回当前用户信息与剩余额度（走网关 `/infra/api/users/me`，鉴权由 CLI 自动携带配置的凭证）。只保留三个字段：
+
+- `data.display_name`：显示名（缺失时回退 `user_id`）
+- `data.user_id`：用户 ID
+- `data.resources.credit`：剩余额度（credits）
+
+`username`/`id`/`email`/`role`/`quota`/`group`/`tier`/`status`/`created_at`/`is_admin`、`stats` 及其中的 `total_consumed_credits`（数据库原始 quota 单位）均为内部字段，不对外输出。
+
 ## 安全红线
 
 - **禁止输出密钥**：`token` 不得出现在日志、消息、终端。
