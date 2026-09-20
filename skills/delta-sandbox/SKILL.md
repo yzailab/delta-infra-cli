@@ -143,7 +143,7 @@ required_outputs:
 | 获取资源推荐 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]`（`--memory`/`--gpu-mem` 支持 g/m/G/M 格式，如 `1G`/`512M`，CLI 自动转换为 Gi/Mi） |
 | 列出当前用户的 sandbox | `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--sandbox-id <id>] [--days N]` |
 | **生命周期** | |
-| 创建 sandbox | `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <型号> --max-life M]`；`--memory`/`--gpu-mem` 支持 g/m/G/M 格式（如 `1G`/`512M`，小写亦可），CLI 自动转换为服务端接受的 `Gi`/`Mi` 单位；`--image-name` 用镜像名（`sandbox images` 返回的 `image_name` 字段，如 `"PyTorch CUDA13 (GPU)"`），底层镜像标识对用户隐藏；`--gpu-type` 指定 GPU 型号（如 `"RTX 4090"`、`H100`），服务端映射为 HAMi use-gputype 注解按型号调度，可选型号查 `sandbox resources`（`third_party` 分组 `gpu_types[].gpu_name`），不传则自动调度；不希望被自动清理时加 `--no-auto-cleanup`（仅显式 kill/finish 可销毁）；**单沙箱资源上限** cpu ≤ 512 / memory ≤ 1024Gi / gpu ≤ 64 / gpuMem ≤ 1024Gi，超出快速报错不挂起 |
+| 创建 sandbox | `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <型号> --max-life M]`；`--memory`/`--gpu-mem` 支持 g/m/G/M 格式（如 `1G`/`512M`，小写亦可），CLI 自动转换为服务端接受的 `Gi`/`Mi` 单位；`--image-name` 用镜像名（`sandbox images` 返回的 `image_name` 字段，如 `"PyTorch CUDA13 (GPU)"`），底层镜像标识对用户隐藏；`--gpu-type` 指定 GPU 型号（如 `"RTX 4090"`、`H100`），可选型号查 `sandbox resources` 输出的 `gpu_types[].gpu_name`，不传则自动调度；不希望被自动清理时加 `--no-auto-cleanup`（仅显式 kill/finish 可销毁）；**单沙箱资源上限** cpu ≤ 512 / memory ≤ 1024Gi / gpu ≤ 64 / gpuMem ≤ 1024Gi，超出快速报错不挂起 |
 | 连接 sandbox | `sandbox connect <id>` |
 | 查看状态 | `sandbox status <id>` |
 | 完成 sandbox | `sandbox finish <id> [--results '{...}']` |
@@ -185,8 +185,8 @@ required_outputs:
      - `delta-cli sandbox recommend --cpu N --memory XGi [--gpu N]` — 资源配置推荐
 2. **创建**：`delta-cli sandbox create --image-name <镜像名> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`。**返回的 JSON 信封中是 `data.sandbox_id`，不是 `data.id`；后续所有命令必须使用这个真实的 `sandbox_id`。**（创建后 sandbox 立即可用，无需额外连接）。**响应会回显请求的镜像名/resource（服务端未返回的字段由 CLI 用请求值补齐，服务端返回值优先），可直接核对一遍资源配置，无需额外调 status。**（镜像回显为显示名；`provider` 为内部概念，不再回显）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
     - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
-    - **`--gpu-mem`（单位 MiB）要匹配实际运行的模型**：模型参数量/精度越大所需显存越大，大模型塞进过小显存会直接 OOM。示例中的 8000（8GiB）只适配小模型，跑 7B/9B/13B 前先评估显存需求并适当调大。
-    - **`--gpu-type <型号>`（可选）指定 GPU 型号**：如 `"RTX 4090"`、`H100`，服务端映射为 HAMi use-gputype 注解，将 pod 调度到匹配型号的 GPU 上。可用 `sandbox resources` 查看可选型号（`third_party` 分组的 `gpu_types[].gpu_name`）。仅在用户明确要求特定型号时使用；不传则由系统自动调度。
+    - **`--gpu-mem`（单位 MiB）要匹配实际运行的模型**：模型参数量/精度越大所需显存越大，大模型塞进过小显存会直接 OOM。示例中的 8000（8GiB）只适配小模型，跑 7B/9B/13B 前先评估显存需求并适当调大。**语义：`--gpu-mem` 是【每张卡】的显存 MiB（`--gpu 2 --gpu-mem 8000` = 每卡 8000MiB、总 16000MiB）；`--memory` 是容器 CPU 内存总量。**
+    - **`--gpu-type <型号>`（可选）指定 GPU 型号**：如 `"RTX 4090"`、`H100`，将任务调度到该型号 GPU 上；可用 `sandbox resources` 查看可选型号（`gpu_types[].gpu_name`）。仅在用户明确要求特定型号时使用；不传则由系统自动调度。
     - `--no-auto-cleanup`：加此 flag 后该 sandbox **不会被自动清理**（服务端超时回收 + 本地周期 cleanup_stale 均跳过），只能通过显式 `sandbox kill`/`finish` 销毁。仅当任务确实需要跨越周期清理长期存活时才使用，任务结束后必须主动销毁，避免资源泄漏。
     - **禁止在 create 成功后反复调用 `sandbox status` 轮询**。`sandbox create` 返回时 sandbox 已经就绪，直接用它返回的 `data.sandbox_id` 执行 `write`/`run` 即可。多余的轮询会增加工具调用次数且没有任何收益。
 3. **写入代码/数据**：
