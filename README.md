@@ -179,6 +179,9 @@ delta-cli auth status
 
 ```bash
 # 创建带 GPU 的 sandbox（--max-life 默认 30 分钟，长任务请调高）
+# ⚠️ 资源语义：`--memory` 是容器 CPU 内存【总量】（每沙箱一份）；`--gpu-mem` 是【每张卡】的显存（MiB）——
+# `--gpu 2 --gpu-mem 8000` = 每卡 8000MiB、总显存 16000MiB（内部 OpenSandbox/HAMi 后端直接写入 HAMi 每卡注解；
+# 注意云端 runpod 后端将 --gpu-mem 视为总显存÷卡数）。单卡显存上限可查 `sandbox resources`（memory_mib）。
 delta-cli sandbox create \
   --image image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
   --cpu 4 --memory 16Gi --gpu 1 \
