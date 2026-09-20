@@ -138,7 +138,7 @@ required_outputs:
 | 用户目标 | 命令 |
 |---------|------|
 | **发现** | |
-| 查看可用镜像（镜像名） | `sandbox images` — 返回每条的 `image_name`（对外镜像名）/`tags`（用途标签）/`description`（简短镜像简介）；**镜像较多时按 `description` + `tags` 选匹配任务的镜像**（如 Pytorch→`PyTorch CUDA13 (GPU)`、vLLM→`vLLM …`、需 juicefs 存储→名称含 `(juicefs)`） |
+| 查看可用镜像（镜像名） | `sandbox images` — 返回每条的 `image_name`（对外镜像名）/`tags`（用途标签）/`description`（简短镜像简介）；**镜像较多时按 `description` + `tags` 选匹配任务的镜像**（如 Pytorch→`PyTorch CUDA13 (GPU)`、vLLM→`vLLM …`、需 juicefs 存储/共享工作区→看 `supports_shared_workspace` 字段或名称含 `(juicefs)`） |
 | 查看剩余可申请资源 | `sandbox resources` — 按算力分组返回 GPU/显存/核心可用量：`compute_sources[].source` 为 `private`（私有算力）或 `third_party`（第三方算力）；`gpu_types` 结构随分组不同（private 含 `vgpu`/`core`/`memory_mib`，third_party 含 `gpu_name`/`total_gpu_num`/`idle_gpu_num`）。算力后端为内部概念，自动选择，无需指定 |
 | 获取资源推荐 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]`（`--memory`/`--gpu-mem` 支持 g/m/G/M 格式，如 `1G`/`512M`，CLI 自动转换为 Gi/Mi） |
 | 列出当前用户的 sandbox | `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--sandbox-id <id>] [--days N]` |
