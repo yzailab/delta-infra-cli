@@ -64,7 +64,7 @@ metadata:
    - ✅ **显式指定**：`delta-cli sandbox write <id> --path <working-directory>/train.py --source train.py`（`--path` 传相对路径也会自动以 working-directory 为前缀）
    - ❌ **禁止**：`--source "$WORKSPACE_ROOT/train.py"`、`--source "$(pwd)/train.py"`（Shell 展开路径 → 空文件或失败）
    - ❌ **禁止**：`--data "大量代码..."`（Shell 转义问题）
-   - ❌ **不建议**：`--path /workspace/train.py` 这类直接写工作目录根、落在 `{user_id}` 之外的路径——kill 后 `rclone sync` 不会写回 OSS，文件不持久化。
+   - ❌ **不建议**：`--path /workspace/train.py` 这类直接写工作目录根、落在 `{user_id}` 之外的路径——kill 后数据不会写回共享工作区，文件不持久化。
    - 查询 sandbox 的 working-directory：`delta-cli sandbox working-directory <id>`（返回 `data.path`）。`run`/`run-bg` 引用脚本时用 `python <working-directory>/train.py` 的完整路径。
    - 少量配置（< 20 行）可用 `--data "..."`，此时必须带 `--path`（无法从文件名推断）。`--mode 755` 可设置文件权限。
 
@@ -138,12 +138,14 @@ required_outputs:
 | 用户目标 | 命令 |
 |---------|------|
 | **发现** | |
-| 查看可用镜像（镜像名） | `sandbox images` — 返回每条的 `image_name`（对外镜像名）/`tags`（用途标签）/`description`（简短镜像简介）；**镜像较多时按 `description` + `tags` 选匹配任务的镜像**（如 Pytorch→`PyTorch CUDA13 (GPU)`、vLLM→`vLLM …`、需 juicefs 存储/共享工作区→看 `supports_shared_workspace` 字段或名称含 `(juicefs)`） |
+| 查看可用镜像（镜像名） | `sandbox images` — 返回每条的 `image_name`（对外镜像名）/`tags`（用途标签）/`description`（简短镜像简介）；**镜像较多时按 `description` + `tags` 选匹配任务的镜像**（如 Pytorch→`PyTorch CUDA13 (GPU)`、vLLM→`vLLM …`、需共享工作区→看 `supports_shared_workspace` 字段） |
 | 查看剩余可申请资源 | `sandbox resources` — 按算力分组返回 GPU/显存/核心可用量：`compute_sources[].source` 为 `private`（私有算力）或 `third_party`（第三方算力）；`gpu_types` 结构随分组不同（private 含 `vgpu`/`core`/`memory_mib`，third_party 含 `gpu_name`/`total_gpu_num`/`idle_gpu_num`）。算力后端为内部概念，自动选择，无需指定 |
 | 获取资源推荐 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]`（`--memory`/`--gpu-mem` 支持 g/m/G/M 格式，如 `1G`/`512M`，CLI 自动转换为 Gi/Mi） |
 | 列出当前用户的 sandbox | `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--sandbox-id <id>] [--days N]` |
 | **生命周期** | |
-| 创建 sandbox | `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <型号> --max-life M]`；`--memory`/`--gpu-mem` 支持 g/m/G/M 格式（如 `1G`/`512M`，小写亦可），CLI 自动转换为服务端接受的 `Gi`/`Mi` 单位；`--image-name` 用镜像名（`sandbox images` 返回的 `image_name` 字段，如 `"PyTorch CUDA13 (GPU)"`），底层镜像标识对用户隐藏；`--gpu-type` 指定 GPU 型号（如 `"RTX 4090"`、`H100`），可选型号查 `sandbox resources` 输出的 `gpu_types[].gpu_name`，不传则自动调度；不希望被自动清理时加 `--no-auto-cleanup`（仅显式 kill/finish 可销毁）；`--shared-workspace` 默认 true（启用共享工作区，镜像需名含 juicefs，可查 `sandbox images` 的 `supports_shared_workspace` 字段）；不依赖共享数据的快速任务可 `--shared-workspace=false` 跳过工作区播种/写回；**单沙箱资源上限** cpu ≤ 512 / memory ≤ 1024Gi / gpu ≤ 64 / gpuMem ≤ 1024Gi，超出快速报错不挂起 |
+| 创建 sandbox | `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <型号> --max-life M]`；`--memory`/`--gpu-mem` 支持 g/m/G/M 格式（如 `1G`/`512M`，小写亦可），CLI 自动转换为服务端接受的 `Gi`/`Mi` 单位；`--image-name` 用镜像名（`sandbox images` 返回的 `image_name` 字段，如 `"PyTorch CUDA13 (GPU)"`），底层镜像标识对用户隐藏；`--gpu-type` 指定 GPU 型号（如 `"RTX 4090"`、`H100`），可选型号查 `sandbox resources` 输出的 `gpu_types[].gpu_name`，不传则自动调度；不希望被自动清理时加 `--no-auto-cleanup`（仅显式 kill/finish 可销毁）；`--shared-workspace` 默认 true（启用共享工作区；需要跨沙箱持久化时用 `sandbox images` 里 `supports_shared_workspace=true` 的镜像）；不依赖共享数据的快速任务可 `--shared-workspace=false` 跳过工作区播种/写回
+| 共享工作区（跨沙箱持久化） | `--shared-workspace=true`（默认）启用共享工作区：创建时平台把该用户工作区数据**播种**到 `/workspace/{user_id}`，`kill`/`finish` 时**写回**、下次创建自动带出（可跨沙箱取回文件）。**唯一会持久化的目录是 `/workspace/{user_id}`**，写到其它路径（/tmp、/root、自建目录等）销毁即丢失——需要留存的结果请放入该目录。⚠️ 需要可靠持久化时用 `sandbox images` 中 `supports_shared_workspace=true` 的镜像；普通镜像虽可开 `shared=true`，但若服务端探测到不支持同步，播种/写回会被跳过（数据不跨沙箱持久）。不依赖共享数据的快速任务用 `--shared-workspace=false` 跳过播种/写回 |
+**单沙箱资源上限** cpu ≤ 512 / memory ≤ 1024Gi / gpu ≤ 64 / gpuMem ≤ 1024Gi，超出快速报错不挂起 |
 | 延长生命周期 | `sandbox extend <sandbox_id> --max-life N` — **动态延长运行中** sandbox 的 max-life（可增可减，N 需大于已存活分钟且 ≤10080；提前回收用 `kill`/`finish`；`--no-auto-cleanup` 沙箱无需续期）；不带 `--max-life` 时查询当前生命周期（已存活/剩余/到期时间）；`status` 输出含 `data.lifecycle` 生命周期摘要（已存活/剩余/到期；生命周期接口不可用时省略） |
 | 连接 sandbox | `sandbox connect <id>` |
 | 查看状态 | `sandbox status <id>` |
