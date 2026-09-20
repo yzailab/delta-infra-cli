@@ -1,5 +1,5 @@
-3cd7a17143d29a5e8671497d590ac8b5d95d158e98dad44051afd0baa657e75d  delta-cli-darwin-amd64.tar.gz
-99eb5fc4324803e3775bd1061bedefc09676ef3e8f622f8bb471c268e2c80be0  delta-cli-darwin-arm64.tar.gz
-11e8dcca1d94eecd24c404c2fb4b0824af7356489672154ba5bea8b3f6926b37  delta-cli-linux-amd64.tar.gz
-14013cfb2466e24689b3ed58f23c391ff2109a6c3b15392798a6db9f0cd8f730  delta-cli-linux-arm64.tar.gz
-71e780b8ceeb688c17f12d7df825e90d3403f5a5e6ba12b7cc2bb5780f09eede  delta-cli-windows-amd64.zip
+d61903498d7778661cf3e22f872645921ee14443186945e5cc29c8deb56ef574  delta-cli-darwin-amd64.tar.gz
+a87026f43d659bba5d8138d648642aa22d01170d5be9adc9fe5aac63fde96238  delta-cli-darwin-arm64.tar.gz
+485cf51888ae0746ec0438fa1649cfdbae00d8a0491d5f1236d96844ab0924a0  delta-cli-linux-amd64.tar.gz
+59d01e10e0dc64c7d26ab1b9b9736aeac33bfbe694d868202c2b0cf79ccba7db  delta-cli-linux-arm64.tar.gz
+2400638be0651ee69afbe971a498d2b65975140c1512b42cbefc488109883c61  delta-cli-windows-amd64.zip
