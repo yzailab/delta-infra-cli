@@ -242,7 +242,7 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox images` | 查看可用镜像列表 |
 | `delta-cli sandbox recommend --cpu N --memory XGi` | 获取资源配置推荐 |
 | `delta-cli sandbox create --image <img> [--no-auto-cleanup]` | 创建 sandbox 容器（`--no-auto-cleanup` 不被自动清理） |
-| `delta-cli sandbox extend <id> --max-life N` | **动态延长运行中** sandbox 的 max-life（仅向后延长，N 需大于已存活时长；提前回收用 `kill`/`finish`）；不带 `--max-life` 时查询当前生命周期（已存活/剩余/到期时间）；`status` 输出含 `data.lifecycle` 生命周期摘要（已存活/剩余/到期；生命周期接口不可用时省略） |
+| `delta-cli sandbox extend <id> --max-life N` | **动态延长运行中** sandbox 的 max-life（可增可减，N 需大于已存活分钟且 ≤10080；提前回收用 `kill`/`finish`）；不带 `--max-life` 时查询当前生命周期（已存活/剩余/到期时间）；`status` 输出含 `data.lifecycle` 生命周期摘要（已存活/剩余/到期；生命周期接口不可用时省略） |
 | `delta-cli sandbox connect <id>` | 连接 sandbox |
 | `delta-cli sandbox status <id>` | 查看 sandbox 状态 |
 | `delta-cli sandbox finish <id>` | 保存结果并销毁 |
