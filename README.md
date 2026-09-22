@@ -437,7 +437,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.1.2
+./release.sh v1.1.15
 ```
 
 脚本执行步骤：
