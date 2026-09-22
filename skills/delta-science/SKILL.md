@@ -1,6 +1,6 @@
 ---
 name: delta-science
-description: "公司在线 Science 能力的统一入口，所有调用都经 Delta CLI。凡是查询具体化合物/CID/SMILES/分子性质、批量 PubChem 与 RDKit 分子增强、计算分子描述符或相似度、解析晶体/CIF/空间群、材料表格建模与候选推荐、Quantum ESPRESSO/QE DFT、模拟或精修 XRD、执行 LAMMPS、根据实验数据做贝叶斯优化、反应条件优化，以及任何 LDM/大发现模型、KRAS G12D 小分子生成优化、固定候选池/PDF2Dock 轨迹或抗体 CDRH3 优化任务，都必须使用本 Skill；不得调用旧 large-discovery-model Skill、旧 gateway 脚本、网页搜索或本地科学库绕过 Delta CLI。普通查询、比较或校验默认直接返回文本，不要主动增加 JSON/CSV、报告、图片或图表步骤；只有用户明确要求保存、导出、绘图或生成文件时才创建产物。"
+description: "公司在线 Science 能力的统一入口，所有调用都经 Delta CLI。凡是查询具体化合物/CID/SMILES/分子性质、批量 PubChem 与 RDKit 分子增强、计算分子描述符或相似度、解析晶体/CIF/空间群、云端 XRD 相识别与精修、材料表格建模与候选推荐、Quantum ESPRESSO/QE DFT、执行 LAMMPS、根据实验数据做贝叶斯优化、反应条件优化，以及任何 LDM/大发现模型、KRAS G12D 小分子生成优化、固定候选池/PDF2Dock 轨迹或抗体 CDRH3 优化任务，都必须使用本 Skill；不得调用旧 large-discovery-model Skill、旧 gateway 脚本、网页搜索或本地科学库绕过 Delta CLI。普通查询、比较或校验默认直接返回文本，不要主动增加 JSON/CSV、报告、图片或图表步骤；只有用户明确要求保存、导出、绘图或生成文件时才创建产物。"
 metadata:
   requires:
     bins: ["delta-cli"]
@@ -88,7 +88,8 @@ catalog、render、descriptors 或文件操作；用户请求、诊断需要或 
 | 化合物身份、CID、同义词、公共属性、名称转 SMILES | `pubchem` | [pubchem.md](references/pubchem.md) |
 | SMILES/InChI、描述符、指纹、相似度、渲染、子结构 | `rdkit` | [rdkit.md](references/rdkit.md) |
 | 无机化学式、CIF/POSCAR、晶体结构、空间群 | `pymatgen` | [pymatgen.md](references/pymatgen.md) |
-| 粉末衍射模拟、Rietveld 精修 | `gsasii` | [gsasii.md](references/gsasii.md) |
+| 云端 XRD 相识别、XQueryer/XMatcher/XDecomposer、CIF 模拟、MP500、artifact 与精修作业 | `xrd` | [xrd.md](references/xrd.md) |
+| 直接 GSAS-II 模拟或精修 | `gsasii` | [gsasii.md](references/gsasii.md) |
 | 分子动力学、最小化、thermo 与输出文件 | `lammps` | [lammps.md](references/lammps.md) |
 | 通用数值/整数/分类实验变量优化 | `delta-bo` | [delta-bo.md](references/delta-bo.md) |
 | 表格材料 surrogate、候选空间、EI/PI/UCB 与异步推荐作业 | `materials-design` | [materials-design.md](references/materials-design.md) |
@@ -119,6 +120,8 @@ catalog、render、descriptors 或文件操作；用户请求、诊断需要或 
 
 - 普通分子名称先用 PubChem；只有需要结构计算时才把成功返回的 SMILES 交给 RDKit。
 - 无机化学式、组成和式量优先 pymatgen，不用 PubChem 或本地元素表补算。
+- 云端粉末 XRD 相识别、峰匹配、相分解、CIF/MP500 操作和精修生命周期使用 `xrd`；
+  直接请求 GSAS-II 工具时才使用 `gsasii`。两者的 score、作业状态和后端语义不能混用。
 - 表格材料建模与候选排序使用 Materials Design；必须区分可控变量、目标、候选空间、
   交叉验证和不确定性，推荐结果只是待验证假设。
 - 需要显式电子结构计算时使用 QE；先处理元素全集、PP policy/lock 和结构 artifact，
