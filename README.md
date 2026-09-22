@@ -295,6 +295,8 @@ v1.1.1 起线上 catalog 已包含 `qe`（Quantum ESPRESSO DFT，20 个端点：
 health/capabilities/job-submit(multipart)/job-status/job-cancel 等）。用法见
 Skill 文档 `skills/delta-science/references/qe.md` 与
 `skills/delta-science/references/materials-design.md`。
+云端 XRD 的相识别、artifact、CIF 模拟和精修契约见
+`skills/delta-science/references/xrd.md`。
 
 ## 输出格式
 
@@ -336,7 +338,7 @@ Skill 文件位于 `skills/` 目录：
 - `delta-shared/` — 全局通用规则（认证、配置、错误处理）
 - `delta-sandbox/` — Sandbox 操作指南（生命周期、命令路由）
 - `delta-science/` — 唯一 Science 入口，包含统一 Delta CLI wrapper、跨工具工作流和
-  PubChem、RDKit、pymatgen、GSAS-II、LAMMPS、Delta-BO、LDM-BO、SynBO、AntBO
+  PubChem、RDKit、pymatgen、XRD、GSAS-II、LAMMPS、Delta-BO、LDM-BO、SynBO、AntBO
   的按需 reference
 
 Memento 等宿主只需要选择 `delta-science`。Skill 根据自然语言科研目标选择 tool 和
@@ -437,7 +439,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.1.15
+./release.sh v1.1.16
 ```
 
 脚本执行步骤：
