@@ -17,7 +17,7 @@ delta-science/
 └── references/
     └── <tool>.md            # one real tool's operation contract (pubchem, rdkit, pymatgen,
                              #  gsasii, lammps, delta-bo, ldm-bo, materials-design, qe,
-                             #  strbo, synbo, antbo)
+                             #  strbo, synbo, antbo, xrd)
 ```
 
 ## WHERE TO LOOK
