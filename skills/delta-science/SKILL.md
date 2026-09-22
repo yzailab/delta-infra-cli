@@ -35,8 +35,16 @@ Skill；工具选择、operation、参数、跨工具交接和结果校验都在
 JSON 兼容端点调用模板：
 
 ```text
-delta-cli science invoke --tool TOOL --endpoint ENDPOINT --data JSON
+delta-cli science invoke --tool TOOL --endpoint ENDPOINT \
+  [--data JSON] [--params JSON] [--path-params JSON] [--headers JSON]
 ```
+
+工具代理端点如果声明了路径参数、额外上游请求头或文件字段，分别使用
+`--path-params JSON`、`--headers JSON`、`--file PATH`（或
+`--file-base64 BASE64`）和可选的 `--content-type MIME`。`--params` 只表示 URL
+查询参数，不能代替 `--path-params`。这些字段会作为 `/api/v1/tools/invoke` 的请求体
+字段转发；`science file invoke` 是另一条面向 QE/Materials Design 文件操作的接口，
+不能用来替代工具代理端点的文件上传。
 
 持久化任务模板：
 
