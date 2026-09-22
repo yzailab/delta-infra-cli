@@ -27,8 +27,8 @@ skills/
     ├── agents/
     │   └── openai.yaml
     └── references/
-        ├── <science-tool>.md  (12 tools: antbo, delta-bo, gsasii, lammps, ldm-bo,
-        │                       materials-design, pubchem, pymatgen, qe, rdkit, strbo, synbo)
+        ├── <science-tool>.md  (13 tools: antbo, delta-bo, gsasii, lammps, ldm-bo,
+        │                       materials-design, pubchem, pymatgen, qe, rdkit, strbo, synbo, xrd)
         └── scripts/            (catalog generation + invocation helpers)
 ```
 
