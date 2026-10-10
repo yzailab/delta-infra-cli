@@ -182,9 +182,20 @@ delta-cli auth status
 # ⚠️ 资源语义：`--memory` 是容器 CPU 内存【总量】（每沙箱一份）；`--gpu-mem` 是【每张卡】的显存（MiB）——
 # `--gpu 2 --gpu-mem 8000` = 每卡 8000MiB、总显存 16000MiB（内部 OpenSandbox/HAMi 后端直接写入 HAMi 每卡注解；
 # 注意云端 runpod 后端将 --gpu-mem 视为总显存÷卡数）。单卡显存上限可查 `sandbox resources`（memory_mib）。
+# ⚠️ 资源语义：`--shm-size` 是容器 /dev/shm 大小（默认仅 64Mi），PyTorch DataLoader(num_workers>0)/
+# multiprocessing、Chromium 系内核等共享内存不足时报 "No space left on device"/"Bus error"，此时调大；
+# 必须带 Gi/Mi 单位（4G/512M 会被归一化为 4Gi/512Mi，裸数字会被服务端拒绝），且不得超过 --memory。
+# `--devices` 申请宿主机设备直通（逗号分隔，如 kvm → 容器内 /dev/kvm，用于嵌套虚拟化）：属权限提升，
+# 服务端白名单未开启时创建会被明确拒绝（不会静默忽略）。两者仅私有算力生效，第三方算力忽略。
 delta-cli sandbox create \
   --image image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
   --cpu 4 --memory 16Gi --gpu 1 \
+  --max-life 120
+
+# DataLoader 多进程/需要嵌套虚拟化时：调大 /dev/shm 并申请 /dev/kvm（shm 不得超过 memory）
+delta-cli sandbox create \
+  --image image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
+  --cpu 4 --memory 8Gi --shm-size 4Gi --devices kvm \
   --max-life 120
 
 # 需要长期存活、不被自动清理的 sandbox：加 --no-auto-cleanup（仅显式 kill/finish 可销毁）
@@ -241,7 +252,7 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox resources [--provider opensandbox\|autodl]` | 查看各后端当前剩余可申请资源（GPU/显存/核心） |
 | `delta-cli sandbox images` | 查看可用镜像列表（每条含 `image_name`/`tags`/`description`/`supports_shared_workspace`；`supports_shared_workspace=true` 表示该算力可开共享工作区（opensandbox/autodl），可与 `--shared-workspace` 搭配；实际播种/写回由平台创建时探测镜像内 rclone 决定） |
 | `delta-cli sandbox recommend --cpu N --memory XGi` | 获取资源配置推荐 |
-| `delta-cli sandbox create --image <img> [--no-auto-cleanup] [--shared-workspace=true\|false]` | 创建 sandbox 容器（`--no-auto-cleanup` 不被自动清理；`--shared-workspace` 默认 true：启用共享工作区（播种/写回由平台创建时探测镜像内 rclone 决定，镜像无 rclone 时跳过、数据不跨沙箱持久）；false 跳过播种/写回，适合快速任务） |
+| `delta-cli sandbox create --image <img> [--shm-size XGi] [--devices kvm] [--no-auto-cleanup] [--shared-workspace=true\|false]` | 创建 sandbox 容器（`--no-auto-cleanup` 不被自动清理；`--shared-workspace` 默认 true：启用共享工作区（播种/写回由平台创建时探测镜像内 rclone 决定，镜像无 rclone 时跳过、数据不跨沙箱持久）；false 跳过播种/写回，适合快速任务；`--shm-size` 调大 /dev/shm（默认 64Mi，**必须带 Gi/Mi 单位**且 ≤ `--memory`，PyTorch DataLoader/multiprocessing 场景常用）；`--devices` 逗号分隔的宿主机设备令牌（`kvm` → /dev/kvm，嵌套虚拟化），**属权限提升**，服务端白名单未开启时**明确拒绝**；`--shm-size`/`--devices` 仅私有算力生效、第三方算力忽略） |
 | `delta-cli sandbox extend <id> --max-life N` | **动态延长运行中** sandbox 的 max-life（可增可减，N 需大于已存活分钟且 ≤10080；提前回收用 `kill`/`finish`）；不带 `--max-life` 时查询当前生命周期（已存活/剩余/到期时间）；`status` 输出含 `data.lifecycle` 生命周期摘要（已存活/剩余/到期；生命周期接口不可用时省略） |
 | `delta-cli sandbox connect <id>` | 连接 sandbox |
 | `delta-cli sandbox status <id>` | 查看 sandbox 状态 |
@@ -439,7 +450,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.1.16
+./release.sh v1.1.17
 ```
 
 脚本执行步骤：
