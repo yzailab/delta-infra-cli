@@ -1,19 +1,22 @@
-# SynBO operation 参考
+# SynBO operation reference
 
-所有在线调用都通过 `delta-cli science invoke`，服务地址来自 CLI 的标准
-`base_url` 派生配置（`{base_url}/science_tool`）。这里的路径只说明业务 operation，不得据此直连 HTTP。
+Make all online calls with `delta-cli science invoke`; the service address comes from the CLI's
+standard `base_url` configuration (`{base_url}/science_tool`). The paths here describe business
+operations only and do not authorise direct HTTP access.
 
-用户说“优化反应条件”“推荐下一批实验”“偶联反应怎么继续做”，或给出溶剂、温度、
-催化剂、碱、配体和历史得率时，即使没有提到 SynBO、BO、CLI 或字段名也使用本节。
-每个用户任务最多一次 SynBO 业务调用；成功后立即结束，validation、502、504、
-timeout、断连或空 recommendations 均不得换参数、换模型或重试。
+Use this section when the user asks to optimise reaction conditions, recommend the next batch of
+experiments, continue a coupling reaction, or provides solvents, temperatures, catalysts, bases,
+ligands and historical yields—even if they do not mention SynBO, BO, the CLI or field names. Make
+at most one SynBO business call per user task. Stop immediately after success; for validation
+errors, 502, 504, timeouts, disconnections or empty recommendations, do not change parameters or
+models, or retry.
 
 ## Health
 
-operation：`health`，无 body。
+Operation: `health`; no request body.
 
 Reports SynBO import status, Torch/CUDA runtime availability, service limits,
-default device, and visible CUDA devices.
+default device and visible CUDA devices.
 
 Important fields inside gateway `data`:
 
@@ -46,7 +49,7 @@ Important fields inside gateway `data`:
 
 ## Initialize
 
-operation：`initialize`。
+Operation: `initialize`.
 
 Use for initial condition sampling when no measured previous results exist.
 
@@ -74,7 +77,7 @@ Supported `sampling_method` values: `sobol`, `random`, `lhs`, `kmeans`.
 
 ## Optimize
 
-operation：`optimize`。
+Operation: `optimize`.
 
 Use after measured experiment rows are available. Each previous row must contain
 all condition columns and all objective metric columns.
@@ -103,11 +106,11 @@ Request body:
 }
 ```
 
-### 数值条件必须先离散化
+### Discretise numeric conditions first
 
-SynBO 的 `condition_dict` 只接受显式列表，不接受连续范围对象。对于“温度
-40–100°C、催化剂用量 0.5–2.0%”并已有 60/70/80/90°C 与
-0.5/1.0/1.5/2.0% 历史值的任务，使用：
+SynBO's `condition_dict` accepts explicit lists only; it does not accept continuous range
+objects. For a task with a temperature range of 40–100°C and catalyst loading of 0.5–2.0%, with
+historical values at 60/70/80/90°C and 0.5/1.0/1.5/2.0%, use:
 
 ```json
 {
@@ -135,14 +138,12 @@ SynBO 的 `condition_dict` 只接受显式列表，不接受连续范围对象�
 }
 ```
 
-约束：
+Constraints:
 
-- 每个条件值统一为字符串，objective metric 保持数值。
-- 每条 `previous_results` 中的条件值必须出现在对应 `condition_dict` 列表中。
-- 连续范围的离散网格必须包含用户上下界和全部历史观测值；最终答案必须说明实际网格。
-- 将条件值显式序列化为字符串，并确保每条历史记录只使用 `condition_dict` 中列出的值。
-  如需小数据 CPU 设置，显式传递 `accuracy:"tiny"`、`surrogate_model:"RF"`、
-  `acq_func:"UCB"` 和 `device:"cpu"`；不得假定客户端会补充默认值。
+- Represent every condition value as a string and keep objective metrics numeric.
+- Every condition value in each `previous_results` row must appear in the corresponding `condition_dict` list.
+- The discretised grid for a continuous range must include the user's lower and upper bounds and all historical observations. State the actual grid in the final answer.
+- Serialise condition values explicitly as strings, and ensure each historical row uses only values listed in `condition_dict`. For a small-data CPU configuration, pass `accuracy:"tiny"`, `surrogate_model:"RF"`, `acq_func:"UCB"` and `device:"cpu"` explicitly; do not assume the client supplies defaults.
 
 Useful optional fields:
 
@@ -190,9 +191,11 @@ Gateway errors have the standard envelope:
 }
 ```
 
-常见原因包括条件空间过大、条件值重复、历史条件值不在 condition_dict 中、
-descriptor 非数值、历史行缺列、metric 非数值，以及无 GPU 时请求 CUDA。
+Common causes include an oversized condition space, duplicate condition values, historical
+condition values absent from `condition_dict`, non-numeric descriptors, missing columns in
+historical rows, non-numeric metrics, and a CUDA request when no GPU is available.
 
-服务端有独立于客户端的单次请求时限。GP、EHVI、高 accuracy 或共享资源繁忙可能导致
-timeout。普通用户任务中不得自动换参数重试；应报告“未产生推荐”，保留本次错误，
-由用户决定是否另起一次明确的回归测试。
+The server has a per-request timeout independent of the client. GP, EHVI, high accuracy or busy
+shared resources may cause a timeout. Do not automatically change parameters and retry during an
+ordinary user task. Report “no recommendations were produced”, preserve the error, and let the
+user decide whether to start a separate, explicitly requested regression test.
