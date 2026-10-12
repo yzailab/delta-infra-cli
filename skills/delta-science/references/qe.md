@@ -1,65 +1,70 @@
-# Quantum ESPRESSO DFT 详细规则
+# Quantum ESPRESSO DFT reference
 
-QE 用于通过 Chemistry Gateway 执行可追踪的异步 Quantum ESPRESSO 工作流。agent 只接触
-Gateway/Science Server contract，不运行本地 `pw.x`，不调用内部 QE 容器，也不提交 shell
-命令、scheduler 脚本、`pseudo_dir`、`outdir` 或主机路径。
+Use QE to run traceable, asynchronous Quantum ESPRESSO workflows through Chemistry Gateway.
+The agent interacts only with the Gateway/Science Server contract: it does not run local `pw.x`,
+call internal QE containers, or submit shell commands, scheduler scripts, `pseudo_dir`, `outdir`
+or host paths.
 
-本 reference 对应 CLI 的真实工具为 `qe`。实际 `tools.name` 与 `tool_endpoints.name`
-必须逐字取自当前 CLI catalog。下列路径是 QE 服务契约，不是可直接访问的 URL，也不是
-可以自动改写的 endpoint 别名。
+The actual CLI tool for this reference is `qe`. Copy `tools.name` and `tool_endpoints.name`
+exactly from the current CLI catalogue. The paths below describe the QE service contract; they
+are not URLs to access directly or endpoint aliases that may be rewritten automatically.
 
-## 能力分组
+## Capability groups
 
-| 服务路径 | 作用 | 类型 |
+| Service path | Purpose | Type |
 | --- | --- | --- |
-| `/chem/qe/health`、`/healthz`、`/readyz` | 运行时、scheduler、存储和 PP 就绪 | 只读 |
-| `/chem/qe/v1/qe/workflow-types` | workflow catalog 和支持状态 | 只读 |
-| `/chem/qe/v1/pp-sets`、`/pp-locks/{digest}` | 已发布 PP profile/lock | 只读 |
-| `/chem/qe/v1/pp-sets:resolve` | 按 campaign 元素全集解析 PP 候选 | 只读/校验 |
-| `/chem/qe/v1/artifacts` | 上传、查询和下载结构/fixed-coordinate artifact | 文件/二进制 |
-| `/chem/qe/v1/qe/jobs` | 提交异步计算并查询 job | 远端变更 |
-| `/chem/qe/v1/qe/jobs/{job_id}/events`、`steps`、`logs`、`artifacts` | 读取作业过程和结果 | 只读 |
-| `/chem/qe/v1/qe/jobs/{job_id}:cancel`、`:retry`、`:review` | 取消、重试和科学审核 | 远端变更 |
+| `/chem/qe/health`, `/healthz`, `/readyz` | Runtime, scheduler, storage and PP readiness | Read-only |
+| `/chem/qe/v1/qe/workflow-types` | Workflow catalogue and support status | Read-only |
+| `/chem/qe/v1/pp-sets`, `/pp-locks/{digest}` | Published PP profiles/locks | Read-only |
+| `/chem/qe/v1/pp-sets:resolve` | Resolve PP candidates for the complete set of campaign elements | Read-only/validation |
+| `/chem/qe/v1/artifacts` | Upload, query and download structure/fixed-coordinate artifacts | File/binary |
+| `/chem/qe/v1/qe/jobs` | Submit asynchronous calculations and query jobs | Remote mutation |
+| `/chem/qe/v1/qe/jobs/{job_id}/events`, `steps`, `logs`, `artifacts` | Read job progress and results | Read-only |
+| `/chem/qe/v1/qe/jobs/{job_id}:cancel`, `:retry`, `:review` | Cancel, retry and scientifically review a job | Remote mutation |
 
-选择新 operation 时，先使用：
+When selecting a new operation, first run:
 
 ```text
 delta-cli science list
 delta-cli science endpoints list <exact tool name>
 ```
 
-再用目录返回的精确名称调用；如果 catalog 没有 schema，不猜测 operation、路径参数、
-请求头或 body。
+Then call it using the exact names returned by the catalogue. If the catalogue has no schema, do
+not guess the operation, path parameters, headers or body.
 
-## CLI 的文件和幂等边界
+## CLI file and idempotency boundaries
 
-结构 artifact 上传需要 `application/octet-stream` 和 query metadata，QE job 提交要求
-稳定的 `Idempotency-Key`。`science invoke` 仍只用于 JSON/query；文件通过
-`science file`，持久化 job 通过 `science task`：
+Structure artifact uploads require `application/octet-stream` and query metadata; QE job
+submission requires a stable `Idempotency-Key`. `science invoke` remains for JSON/query only;
+send files through `science file` and persistent jobs through `science task`:
 
-- `delta-cli science file invoke --tool qe --endpoint artifact-upload --file <path>` 上传
-  结构 artifact；`custom-pp-upload` 同理并在 `--data` 中提供 `custom_pp_id`；
+- `delta-cli science file invoke --tool qe --endpoint artifact-upload --file <path>` uploads
+  a structure artifact; for `custom-pp-upload`, also provide `custom_pp_id` in `--data`;
 - `delta-cli science task submit --tool qe --operation job-submit --input JSON
-  --idempotency-key KEY` 提交 durable QE job，worker 将幂等键传给 Gateway；
+  --idempotency-key KEY` submits a durable QE job; the worker passes the idempotency key to Gateway;
 - `delta-cli science file download --tool qe --endpoint artifact-content --params JSON
-  --output <path>` 下载原始 artifact；
-- 不要把结构文本、文件路径、base64、`Idempotency-Key` 或 QE service credential 当成
-  普通业务字段发送，也不要调用公开/私有 Gateway URL 或 `qe-cloud-compute:18020`。
+  --output <path>` downloads a raw artifact;
+- Do not send structure text, file paths, base64, `Idempotency-Key` or QE service credentials as
+  ordinary business fields, and do not call public or private Gateway URLs or `qe-cloud-compute:18020`.
 
-## 新作业的正确顺序
+## Correct sequence for a new job
 
-1. 读取 health；需要部署诊断时再读取 readiness，并从 workflow catalog 选择当前
-   `supported` 的 task。
-2. 计算完整 `campaign_elements` 集合，使用 `pp-sets:resolve` 得到 profile；生产作业
-   必须使用服务返回的 `pp_set_id` 与不可变 `lock_id`，不能只凭 profile 名称推断 lock。
-3. 让服务校验结构 artifact，job 只引用返回的 `sha256:<digest>` artifact ID。
-4. 用稳定幂等语义提交 `qe/jobs`；接收 `202` 只代表 accepted/queued，不代表 QE 已收敛。
-5. 轮询 job、events、steps、logs 和 artifacts；独立读取 `execution`、`solver`、
-   `scientific` 三个状态。
-6. 下载结果时校验每个 artifact 的 SHA-256，并分别报告 selected backend、资源 telemetry、
-   solver 状态、scientific review 状态和 warnings。
+1. Read health. Read readiness only when diagnosing the deployment, and choose a currently
+   `supported` task from the workflow catalogue.
+2. Determine the complete `campaign_elements` set and use `pp-sets:resolve` to obtain a profile.
+   Production jobs must use the returned `pp_set_id` and immutable `lock_id`; do not infer the
+   lock from the profile name alone.
+3. Ask the service to validate the structure artifact. The job must reference only the returned
+   `sha256:<digest>` artifact ID.
+4. Submit to `qe/jobs` with stable idempotency semantics. A `202` response means accepted/queued,
+   not that QE has converged.
+5. Poll the job, events, steps, logs and artifacts; read the `execution`, `solver` and
+   `scientific` states independently.
+6. Verify each artifact's SHA-256 when downloading results. Report the selected backend, resource
+   telemetry, solver state, scientific review state and warnings separately.
 
-PP 解析的最小业务数据形状如下；其中值必须来自当前服务/目录，不能填入虚构的生产 lock：
+The minimum business-data shape for PP resolution is shown below. Values must come from the
+current service/catalogue; do not insert a fabricated production lock:
 
 ```json
 {
@@ -70,7 +75,7 @@ PP 解析的最小业务数据形状如下；其中值必须来自当前服务/�
 }
 ```
 
-作业的核心结构如下，`workflow_inputs` 必须遵循当前 task schema：
+The core job structure is shown below. `workflow_inputs` must follow the current task schema:
 
 ```json
 {
@@ -101,25 +106,29 @@ PP 解析的最小业务数据形状如下；其中值必须来自当前服务/�
 }
 ```
 
-## CPU/GPU 与状态解释
+## CPU/GPU and state interpretation
 
-CPU 是默认策略，尤其适用于小/中型交互任务、PP/结构/审计/归档任务和成本敏感场景。
-只有用户明确要求或项目已有 GPU 预算，并且 live catalog 返回
-`gpu_support_status: "verified"` 时，才使用 `gpu`；强制 GPU 不得静默回退 CPU。只有
-结果明确返回 `selected_backend: "gpu"` 才能声称实际使用 GPU；`auto` 不是 GPU 使用证明。
+CPU is the default, particularly for small or medium interactive jobs, PP/structure/audit/archive
+jobs, and cost-sensitive work. Use `gpu` only when the user explicitly requests it or the project
+already has a GPU budget, and the live catalogue returns `gpu_support_status: "verified"`. Do not
+silently fall back to CPU when GPU is required. Claim that GPU was used only when the result
+explicitly returns `selected_backend: "gpu"`; `auto` does not prove GPU use.
 
-三个状态通道不可合并：
+Keep the three state channels separate:
 
-- `execution`：prepared/submitted/queued/running/scheduler completion/cancelled/failed；
-- `solver`：not started/running/converged/not converged/failed/unknown；
-- `scientific`：unreviewed、scientifically accepted、accepted with limitations、needs
-  recalculation、not assessable、failed 或 archived。
+- `execution`: prepared/submitted/queued/running/scheduler completion/cancelled/failed;
+- `solver`: not started/running/converged/not converged/failed/unknown;
+- `scientific`: unreviewed, scientifically accepted, accepted with limitations, needs
+  recalculation, not assessable, failed or archived.
 
-scheduler 完成不等于 solver 收敛，solver 收敛也不等于 scientific acceptance。按稳定
-错误码而不是 message 分支，重点包括 `PP_SET_INCOMPLETE`、`PP_POLICY_INCOMPATIBLE`、
-`PP_CAPABILITY_UNKNOWN`、`ARTIFACT_MISSING`、`SOLVER_NOT_CONVERGED`、
-`SCIENTIFIC_GATE_FAILED`、`RESTART_INCOMPATIBLE`、`IDEMPOTENCY_CONFLICT`、
-`EXECUTION_BACKEND_NOT_READY`、`GPU_UNSUPPORTED` 和 `GPU_UNAVAILABLE`。
+scheduler completion does not mean solver convergence, and solver convergence does not mean
+scientific acceptance. Branch on stable error codes rather than messages. Key codes include
+`PP_SET_INCOMPLETE`, `PP_POLICY_INCOMPATIBLE`,
+`PP_CAPABILITY_UNKNOWN`, `ARTIFACT_MISSING`, `SOLVER_NOT_CONVERGED`,
+`SCIENTIFIC_GATE_FAILED`, `RESTART_INCOMPATIBLE`, `IDEMPOTENCY_CONFLICT`,
+`EXECUTION_BACKEND_NOT_READY`, `GPU_UNSUPPORTED` and `GPU_UNAVAILABLE`.
 
-提交、取消、重试或审核属于远端变更，必须有用户明确授权；结果未知时禁止重试。不要把
-GPU smoke test、scheduler 日志或可解析的 QE 输出描述成科学结论或客户级性能保证。
+Submission, cancellation, retry and review are remote mutations and require the user's explicit
+authorisation. Do not retry when the outcome is unknown. Do not describe a GPU smoke test,
+scheduler log or parseable QE output as a scientific conclusion or a customer-level performance
+guarantee.
