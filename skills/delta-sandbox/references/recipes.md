@@ -1,10 +1,10 @@
-# 标准任务请求模式
+# Standard task request patterns
 
-本文件提供 `delta-sandbox` 处理常见任务时的推荐请求写法。这些示例是语言无关的模板，实际代码由 skill 在 sandbox 内部生成或写入。
+This file provides recommended request patterns for common tasks handled by `delta-sandbox`. The examples are language-agnostic templates; the actual code is generated or written by the skill inside the sandbox.
 
-## Planner 调用本 skill 时的 required_outputs
+## `required_outputs` when the Planner calls this skill
 
-所有直接调用 `delta-sandbox` 的 plan step 都应该声明会落盘一个 `.json` 文件。这样 skill 运行命令后把 sandbox `log_file` 写入本地 `result.json` 时，host 可以正确通过 Phase-10B deliverable 校验。
+Every plan step that directly calls `delta-sandbox` should declare that it will write a `.json` file to disk. This allows the host to validate the deliverable in Phase-10B when the skill writes the sandbox `log_file` to the local `result.json` after running the command.
 
 ```yaml
 required_outputs:
@@ -12,127 +12,127 @@ required_outputs:
     extensions: [".json"]
 ```
 
-> 说明：这是声明 skill 会创建 `.json` 结果文件，不是要求用户请求中出现 `.json`。用户请求仍按下面的模板使用中性动词。
+> This declares that the skill will create a `.json` result file; it does not require `.json` to appear in the user's request. Keep the user's request neutral in its wording, following the templates below.
 
-## 通用脚本输出模板
+## General script output template
 
-为了让 skill 用同一套流程生成 `RESULT:` 并避免大模型去摘要长日志，推荐任何 sandbox 脚本在**执行结束时**打印一行结构化 JSON：
+To let the skill generate `RESULT:` consistently and avoid asking an LLM to summarise long logs, we recommend that every sandbox script print one line of structured JSON **at the end of execution**:
 
 ```json
 {"status":"ok","key_metric_1":"value_1","key_metric_2":123}
 ```
 
-> SSE 路径下 `sandbox run` / `run-bg --wait` 的 **complete 帧已带 `result_summary`**（CLI 检测 stdout 末尾 50 行内的合法 JSON 对象并注入，无需手动 read+parse）。脚本作者保证 stdout 最后一行是合法 JSON 即可，skill 端直接从 complete 帧取 `result_summary`；仅当 complete 帧缺失该字段（末尾无合法 JSON）时才退化为 `sandbox read` 读取 `log_file` 反向扫描提取。`--summary` 富化（含 hints）仍仅旧服务器回退路径生效。
+> On the SSE path, the **complete frame for `sandbox run` / `run-bg --wait` already includes `result_summary`** (the CLI detects a valid JSON object in the last 50 lines of stdout and injects it, so there is no need to read and parse it manually). The script author only needs to ensure that the last line of stdout is valid JSON; the skill can then take `result_summary` directly from the complete frame. Only if the complete frame lacks this field (because there is no valid JSON at the end) should it fall back to `sandbox read` to read the `log_file` and scan backwards. `--summary` enrichment (including hints) still takes effect only on the legacy-server fallback path.
 
-SKILL 会把它提取为 `result.json` 的 `summary`，并生成 `result_summary` 与最终 `RESULT:` 行。
+The skill extracts this as the `summary` in `result.json`, then generates `result_summary` and the final `RESULT:` line.
 
-**不要**再输出 `FINAL_ANSWER: ...` 这样的标记行，也不要在 JSON 里使用 `final_answer` 字段。summary 里的语义字段（如 `output`、`result`、`generated_text`、`final_accuracy`）已经足够表达结果。
+**Do not** output marker lines such as `FINAL_ANSWER: ...` or use a `final_answer` field in the JSON. Semantic fields in the summary (such as `output`, `result`, `generated_text` and `final_accuracy`) are enough to express the result.
 
-不同任务的关键字段示例：
+Examples of key fields for different tasks:
 
-- **CUDA 检查**：`status`, `torch_version`, `cuda_available`, `device_name`
-- **训练任务**：`status`, `epochs`, `final_loss`, `final_accuracy`, `model_file`
-- **推理任务**：`status`, `input_samples`, `output_file`, `avg_latency_ms`
-- **数据处理**：`status`, `input_rows`, `output_rows`, `output_file`
-- **编译/构建**：`status`, `build_time_s`, `output_binary`, `tests_passed`
+- **CUDA check**: `status`, `torch_version`, `cuda_available`, `device_name`
+- **Training task**: `status`, `epochs`, `final_loss`, `final_accuracy`, `model_file`
+- **Inference task**: `status`, `input_samples`, `output_file`, `avg_latency_ms`
+- **Data processing**: `status`, `input_rows`, `output_rows`, `output_file`
+- **Compilation/build**: `status`, `build_time_s`, `output_binary`, `tests_passed`
 
-## 1. GPU / CUDA 可用性检查
+## 1. GPU / CUDA availability check
 
-用户请求示例：
+Example user request:
 
 ```text
-在 GPU sandbox 中运行标准 PyTorch CUDA 自检脚本，返回 exit_code、torch 版本、CUDA 是否可用、CUDA/cuDNN 版本、GPU 名称与显存信息。
+Run the standard PyTorch CUDA self-check script in a GPU sandbox; return exit_code, the torch version, whether CUDA is available, CUDA/cuDNN versions, the GPU name and memory information.
 ```
 
-说明：
+Notes:
 
-- 不要在请求里出现 `torch.cuda.is_available()` 等完整代码 token，避免被 host 误判为 `.cuda` 文件承诺。对应的 plan step 仍按上面模板声明 `.json` 输出。
-- 推荐让脚本在 `stdout` 末尾输出一行结构化 JSON，例如：
+- Do not include full code expressions such as `torch.cuda.is_available()` in the request; the host may mistake them for a `.cuda` file commitment. The corresponding plan step should still declare `.json` output using the template above.
+- We recommend that the script print one line of structured JSON at the end of `stdout`, for example:
   ```json
   {"torch_version":"2.7.0+cu128","cuda_available":true,"device_count":1,
    "device_name":"NVIDIA GeForce RTX 3090","tensor_op":"[101.0]",
    "memory_before_mb":{"allocated":0,"reserved":0,"max_allocated":0},
    "memory_after_mb":{"allocated":0.0005,"reserved":2.0,"max_allocated":0.001}}
   ```
-- skill 会从 `log_file` 提取这个 JSON 作为本地 `result.json` 的 `summary`，最终只输出一行 `RESULT: ...`。
-- 完整 `nvidia-smi` 原始输出保留在 sandbox 的 `log_file` 中。
+- The skill extracts this JSON from `log_file` as the `summary` in the local `result.json`, then outputs only one `RESULT: ...` line.
+- The full raw `nvidia-smi` output remains in the sandbox `log_file`.
 
-## 2. 运行用户已有的脚本
-
-```text
-在 sandbox <sandbox_id> 中运行 <wd>/train.py，参数为 --epochs 10 --batch-size 32。
-```
-
-> `<wd>` 为该 sandbox 的 working-directory（`/workspace/{user_id}/{sandbox_id}`，先 `delta-cli sandbox working-directory <id>` 查询）。
-
-说明：文件已存在，用中性动词 `运行`，不使用 `创建` 等承诺动词。
-
-## 3. 安装依赖并执行命令
+## 2. Run a script the user already has
 
 ```text
-在 sandbox 中运行 pip install -r <wd>/requirements.txt，然后运行 python <wd>/app.py。
+In sandbox <sandbox_id>, run <wd>/train.py with the arguments --epochs 10 --batch-size 32.
 ```
 
-说明：依赖安装和命令执行都没有落盘新文件，使用中性动词描述。
+> `<wd>` is this sandbox's working directory (`/workspace/{user_id}/{sandbox_id}`; first check it with `delta-cli sandbox working-directory <id>`).
 
-## 4. 训练并将指标落盘
+Notes: the file already exists, so use the neutral verb `run` rather than a commitment verb such as `create`.
+
+## 3. Install dependencies and run a command
 
 ```text
-在 GPU sandbox 中运行训练脚本（例如基于 PyTorch 的 MNIST 训练），训练完成后在 stdout 末尾打印包含 epochs、final_loss、final_accuracy、model_file 的结构化 JSON。
+In the sandbox, run pip install -r <wd>/requirements.txt, then run python <wd>/app.py.
 ```
 
-说明：
+Notes: neither dependency installation nor command execution creates a new deliverable file, so describe them with neutral verbs.
 
-- 训练日志可能很长，不要让 skill 去读整段日志再摘要；让脚本自己输出关键指标。
-- 推荐脚本最终打印：`{"status":"ok","epochs":10,"final_loss":0.023,"final_accuracy":0.992,"model_file":"<wd>/model.pt"}`
-- skill 会把它提取为 `result.json` 的 `summary`，最终输出 `RESULT: exit_code=0, status=ok, epochs=10, ...`。
-- 如需保存完整模型文件，可再用 `sandbox read` 或 `sandbox upload` 处理，不属于 `result.json` 的摘要范围。
-
-## 5. 通用数据处理
+## 4. Train and write metrics to disk
 
 ```text
-在 sandbox 中运行数据处理命令，读取 <wd>/input.csv，输出 <wd>/output.csv，并在 stdout 末尾打印包含 input_rows、output_rows、output_file 的结构化 JSON。
+In a GPU sandbox, run a training script (for example, PyTorch-based MNIST training). When training finishes, print structured JSON at the end of stdout containing epochs, final_loss, final_accuracy and model_file.
 ```
 
-说明：
+Notes:
 
-- 推荐脚本最终打印：`{"status":"ok","input_rows":10000,"output_rows":9876,"output_file":"<wd>/output.csv"}`
-- skill 会把它提取为 `result.json` 的 `summary`，最终输出 `RESULT: exit_code=0, status=ok, input_rows=10000, output_rows=9876, output_file=<wd>/output.csv`。
+- Training logs can be long; do not have the skill read the entire log and then summarise it. Have the script output the key metrics itself.
+- We recommend that the script finish by printing: `{"status":"ok","epochs":10,"final_loss":0.023,"final_accuracy":0.992,"model_file":"<wd>/model.pt"}`
+- The skill extracts this as the `summary` in `result.json`, then outputs `RESULT: exit_code=0, status=ok, epochs=10, ...`.
+- To save the complete model file, use `sandbox read` or `sandbox upload` as needed; the model file is outside the scope of the `result.json` summary.
 
-## 6. 模型推理（Qwen / LLM / 视觉等）
-
-用户请求示例：
+## 5. General data processing
 
 ```text
-在 GPU sandbox 中用 ModelScope 上的 Qwen/Qwen2.5-0.5B-Instruct 运行一次推理，输入 "100+10"，返回模型的输出结果及 CUDA 可用性摘要。
+In the sandbox, run a data-processing command that reads <wd>/input.csv and writes <wd>/output.csv, then prints structured JSON at the end of stdout containing input_rows, output_rows and output_file.
 ```
 
-说明：
+Notes:
 
-- 请求里不要贴完整 Python 代码，也不要指定宿主文件路径（如 `@ROOT/inference.py`、本地绝对路径等），更不要要求脚本输出 `FINAL_ANSWER:` 标记行。脚本内容、模型下载、执行路径都由 skill 内部通过 `delta-cli sandbox write` 写入 sandbox 后运行。
-- 推荐让脚本在 `stdout` 末尾打印一行结构化 JSON，例如：
+- We recommend that the script finish by printing: `{"status":"ok","input_rows":10000,"output_rows":9876,"output_file":"<wd>/output.csv"}`
+- The skill extracts this as the `summary` in `result.json`, then outputs `RESULT: exit_code=0, status=ok, input_rows=10000, output_rows=9876, output_file=<wd>/output.csv`.
+
+## 6. Model inference (Qwen / LLM / vision, etc.)
+
+Example user request:
+
+```text
+Run one inference in a GPU sandbox using Qwen/Qwen2.5-0.5B-Instruct from ModelScope, with "100+10" as input; return the model's output and a summary of CUDA availability.
+```
+
+Notes:
+
+- Do not paste complete Python code into the request or specify a host file path (such as `@ROOT/inference.py` or a local absolute path), and do not ask the script to output a `FINAL_ANSWER:` marker line. The skill writes the script, downloads the model and sets the execution path inside the sandbox using `delta-cli sandbox write`.
+- We recommend that the script print one line of structured JSON at the end of `stdout`, for example:
   ```json
   {"status":"ok","cuda_available":true,"device":"cuda","model":"Qwen/Qwen2.5-0.5B-Instruct","input":"100+10","generated_text":"110"}
   ```
-- skill 会把它提取为 `result.json` 的 `summary`，最终输出 `RESULT: exit_code=0, status=ok, cuda_available=True, generated_text=110, ...`。
+- The skill extracts this as the `summary` in `result.json`, then outputs `RESULT: exit_code=0, status=ok, cuda_available=True, generated_text=110, ...`.
 
-> **GPU 显存与模型匹配**：创建 sandbox 时的 `--gpu-mem`（单位 MiB）必须匹配实际运行的模型。模型参数量/精度越大，所需显存越大；把大模型塞进过小的 `--gpu-mem` 会直接 OOM。上面的示例用的是 `Qwen2.5-0.5B`（0.5B 小模型），**不要把它当作更大模型（如 7B/9B/13B）的显存参考**。跑较大模型前先评估其显存需求、适当调大 `--gpu-mem`，并建议先用小模型验证流程是否跑通。
+> **Match GPU memory to the model:** The `--gpu-mem` value (in MiB) used to create the sandbox must match the model being run. Larger models and higher precision require more memory; putting a large model in a sandbox with too little `--gpu-mem` will cause OOM directly. The example above uses `Qwen2.5-0.5B` (a small 0.5B model); **do not use it as a memory reference for larger models such as 7B/9B/13B**. Before running a larger model, assess its memory requirements, increase `--gpu-mem` as appropriate, and consider verifying the workflow with a smaller model first.
 
-## 注意事项
+## Notes
 
-- 尽量用自然语言描述任务，完整代码由 skill 内部处理。
-- 只有在 skill 会真实创建文件时，才在请求中显式写出 `*.py` / `*.json` / `*.csv` 等扩展名。
-- 不要使用 `脚本需输出...` 这类把代码片段直接跟在承诺动词后的句式。
-- **任务完成的标准是执行结果，不是脚本文件存在**。Planner 和 skill 都要以本地 `result.json` 的生成作为完成标志；`required_outputs` 必须声明 `.json`，不要只声明 `{"kind": "file"}`。
-- **`skill_request` 里不要出现完整代码块或宿主文件路径概念**（如 `@ROOT/...`、`/Users/...`）。脚本应通过 `delta-cli sandbox write <id> --source <文件名>` 写入 sandbox 的 working-directory（`/workspace/{user_id}/{sandbox_id}/...`）。
+- Describe tasks in natural language where possible; the skill handles the full code internally.
+- Mention extensions such as `*.py` / `*.json` / `*.csv` explicitly in the request only when the skill will actually create a file.
+- Do not use phrasing such as `The script should output...` that puts a code fragment immediately after a commitment verb.
+- **Task completion is determined by the execution result, not by the presence of a script file.** The Planner and skill should both treat the creation of the local `result.json` as the completion criterion. `required_outputs` must declare `.json`; do not declare only `{"kind": "file"}`.
+- **Do not include complete code blocks or host-file-path concepts in `skill_request`** (such as `@ROOT/...` or `/Users/...`). The script should be written to the sandbox working directory (`/workspace/{user_id}/{sandbox_id}/...`) with `delta-cli sandbox write <id> --source <filename>`.
 
-## 本地 `result.json` 的内容约定
+## Local `result.json` content contract
 
-- **SSE 首选路径（推荐，一步到位）**：`sandbox run` / `run-bg --wait` 的 **complete 帧直接带 `result_summary`**（CLI 检测 stdout 末尾 JSON 注入），skill 从 complete 帧提取即可，无需 read+parse。
-- **SSE 回退路径**：complete 帧缺失 `result_summary`（stdout 末尾无合法 JSON）时，`delta-cli sandbox read <id> --path <log_file>` 读取 run envelope 日志文件 + 反向扫描 stdout 末尾 JSON 提取。`log_file` 路径来自 SSE `complete` 帧（CLI 已兜底补全）或 `sandbox logs` 快照（`finished=true` 后）。
-- **旧服务器回退路径**：`run` / `run-bg --wait` 走轮询回退时返回 `CommandResult` 信封，可直接复用 `data.result_summary` 字段。
-- 本地 `result.json` 是一份**精简摘要**，用于 host deliverable 校验，不是完整日志存档。
-- 必须包含 `result_summary` 字段，内容与最终 `RESULT:` 行一致，方便 Runner 直接读取结论。
-- 只写入关键字段（`exit_code`、`finished`、`summary`、`result_summary`、`error`）。**不要**额外添加 `final_answer` 等字段。
-- 不要把完整原始 `stdout` 塞进 `result.json`，否则 host 的 `read_file` 工具预览时会截断，Runner 可能误以为文件被截断。
-- 完整原始输出保留在 sandbox 的 `log_file` 中，需要时再 `sandbox read`。
+- **Preferred SSE path (recommended, one step):** The **complete frame for `sandbox run` / `run-bg --wait` includes `result_summary` directly** (the CLI injects detected trailing JSON from stdout), so the skill can extract it from the complete frame without reading and parsing the log.
+- **SSE fallback path:** If the complete frame lacks `result_summary` (there is no valid JSON at the end of stdout), `delta-cli sandbox read <id> --path <log_file>` reads the run-envelope log file, then scans backwards through stdout to extract trailing JSON. The `log_file` path comes from the SSE `complete` frame (the CLI fills it in if needed) or the `sandbox logs` snapshot (after `finished=true`).
+- **Legacy-server fallback path:** When `run` / `run-bg --wait` falls back to polling, it returns a `CommandResult` envelope whose `data.result_summary` field can be reused directly.
+- The local `result.json` is a **concise summary** for host deliverable validation, not a complete log archive.
+- It must include the `result_summary` field, with content matching the final `RESULT:` line, so the Runner can read the conclusion directly.
+- Write only the key fields (`exit_code`, `finished`, `summary`, `result_summary`, `error`). **Do not** add fields such as `final_answer`.
+- Do not put the full raw `stdout` in `result.json`; the host's `read_file` preview would be truncated, and the Runner might mistake this for a truncated file.
+- Keep the full raw output in the sandbox `log_file` and use `sandbox read` to inspect it when needed.
