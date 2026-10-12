@@ -1,21 +1,22 @@
-# GSAS-II 详细规则
+# GSAS-II reference
 
-所有调用直接使用 `delta-cli science invoke`。模拟必须使用真实 CIF；精修必须使用真实 powder data、
-instrument parameters 和 phase CIF，任何失败不得用合成数据补齐。输入不是 CIF 时，
-先使用当前任务中成功的 pymatgen `structure-convert` 结果。
+Make all calls with `delta-cli science invoke`. Simulation requires a real CIF; refinement
+requires real powder data, instrument parameters and phase CIFs. Never fill in a failed result
+with synthetic data. If the input is not a CIF, first use a successful pymatgen
+`structure-convert` result from the current task.
 
 ## Health
 
-operation：`health`，无 body。
+Operation: `health`; no request body.
 
 Key response fields in `data`: `status`, `service`, `gsasii_available`,
 `metadata`, and `limits`.
 
-只有用户明确要求健康检查时才调用；不要在模拟或精修前自动增加 health。
+Call this only when the user explicitly asks for a health check; do not add a health call automatically before simulation or refinement.
 
 ## Powder Simulation
 
-operation：`powder-simulate`。
+Operation: `powder-simulate`.
 
 ```json
 {
@@ -63,7 +64,7 @@ Notes:
 
 ## Powder Refinement
 
-operation：`powder-refine`。
+Operation: `powder-refine`.
 
 ```json
 {
@@ -109,8 +110,9 @@ Notes:
 - Refinement may return `valid: false` with partial phase/profile information
   if GSAS-II constructed the project but a refinement step failed.
 
-## 跨工具交接
+## Cross-tool hand-off
 
-结构转换、衍射模拟和精修必须在本 Skill 内通过 CLI 逐步完成：
-`pymatgen structure-convert -> gsasii powder-simulate/powder-refine`。下游只使用上一步
-成功业务响应中的结构文本或 profile；不得执行本地脚本或直连服务。
+Complete structure conversion, diffraction simulation and refinement step by step through the
+CLI within this Skill: `pymatgen structure-convert -> gsasii powder-simulate/powder-refine`.
+Use downstream only the structure text or profile from the preceding successful business response;
+do not run local scripts or call the service directly.
