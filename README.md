@@ -2,6 +2,12 @@
 
 Delta Agent Cloud 的命令行工具，用于管理 Delta Sandbox GPU/CPU 计算任务和调用 Science 工具。
 
+## v1.1.18 Release Notes
+
+- Translate the three active agent skills (`delta-shared`, `delta-sandbox`, and `delta-science`) and their maintained references into English.
+- Validate representative agent workflows for authentication-state reporting, sandbox resource discovery, live Science catalogue discovery, and safe handling of tools without a request schema.
+- Include all three skill directories in the source release commit and regenerate platform binary checksums as part of the release.
+
 ## 安装
 
 ### 方式一：npx 一键安装（推荐）
@@ -450,16 +456,17 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.1.17
+./release.sh v1.1.18
 ```
 
 脚本执行步骤：
 1. 更新 `package.json` 版本号。
 2. 交叉编译 5 个平台二进制文件（优先 Docker + `make release`，Docker 不可用时回退本地 Go 工具链）。
-3. 在 `bin/` 目录生成 `.tar.gz` / `.zip` 归档。
-4. 通过 `.ci/publish-github-release.js` 创建 GitHub Release 并上传资产。
+3. 在 `bin/` 目录生成 `.tar.gz` / `.zip` 归档及 SHA-256 checksums，并更新仓库根目录的 `checksums.txt`。
+4. 通过 `.ci/publish-github-release.js` 创建 GitHub Release 并上传二进制归档及 checksums。
 5. 同步 npm 脚本、README 与全部 Skills 到公开仓库 `yzailab/delta-infra-cli`。
 6. 执行 `npm publish --access public` 发布 `@delta-infra/cli`。
+7. 创建本地 source commit 和 Git tag；只有显式设置 `PUSH_SOURCE=1` 时才会推送 source GitLab remote。
 
 需要提前安装 `gh` CLI、Node.js/npm，并配置 `GH_TOKEN` 与 `NPM_TOKEN`。CI 流程可参考 `.gitlab-ci.yml`。
 
