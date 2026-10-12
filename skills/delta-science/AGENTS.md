@@ -24,7 +24,7 @@ delta-science/
 
 | Path | Content |
 |------|---------|
-| `SKILL.md` | Service boundary, 安全红线 (no curl/requests/httpx/browser direct gateway), invoke/task/file templates, cross-tool handoff |
+| `SKILL.md` | Service boundary, security guardrails (no curl/requests/httpx/browser direct gateway), invoke/task/file templates, cross-tool handoff |
 | `references/<tool>.md` | One real tool's authoritative operation, request-field, response and failure schema |
 
 ## CONVENTIONS
