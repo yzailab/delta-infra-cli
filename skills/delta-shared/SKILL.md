@@ -1,111 +1,113 @@
 ---
 name: delta-shared
-description: "delta-cli 全局共享规则：配置/认证检查、安全红线、错误处理、sandbox 销毁。"
+description: "delta-cli shared global rules: configuration and authentication checks, security boundaries, error handling, and sandbox destruction."
 ---
 
-# delta-cli 共享规则
+# delta-cli Shared Rules
 
-指导 AI 使用 `delta-cli` 的通用规则。核心原则：**只检查、不猜测、不泄露密钥**。
+General guidance for AI agents using `delta-cli`. Core principles: **check, do not guess or expose credentials**.
 
-## 执行任何操作之前
+## Before any operation
 
-1. 确认服务端地址：
+1. Verify the server address:
    ```bash
    delta-cli config show
    ```
-2. 确认认证状态：
+2. Inspect the local authentication configuration:
    ```bash
    delta-cli auth status
    ```
 
-- 若 `auth status` 显示 `method: token`，**直接执行目标命令**，不要重复登录或初始化配置。
-- 若显示 `method: none`，或操作返回 `error.type: auth` / `permission`，才进入下面的“补全配置”流程。
+- If `auth status` reports `method: token` or `method: apikey`, a credential is configured locally; **run the requested command directly without logging in or initialising configuration again**.
+- `auth status` reads local configuration and environment overrides; it does not validate the credential with the remote server. If it reports `method: none`, follow “Complete configuration” below. If a requested command returns `error.type: auth` or `permission`, follow the matching recovery action below.
 
-## 补全配置
+## Complete configuration
 
-缺少服务端地址或凭证时，**向用户询问一次**，然后用 flag 初始化：
+If the server address or credentials are missing, **ask the user once**, then initialise with the flag that matches the credential type:
 
 ```bash
 delta-cli config init --base-url <server-url> --token <token>
+# For an API key:
+delta-cli config init --base-url <server-url> --apikey <api-key>
 ```
 
-不要用交互式 `config init`（无 flag），避免在 stdin 不可用时卡住。
+Do not use interactive `config init` (without flags), as it may hang when stdin is unavailable.
 
-### 信息来源优先级
+### Priority of information sources
 
-1. 环境变量：`DELTA_INFRA_BASE_URL`、`DELTA_INFRA_TOKEN`
-2. `~/.delta-infra/config.json` 中的 `base_url` / `token`
-3. 默认值：仅 `base_url` 有内部默认值
-4. 以上都缺失时，**必须询问用户**，禁止虚构
+1. Environment variables: `DELTA_INFRA_BASE_URL`, `DELTA_INFRA_TOKEN`, `DELTA_INFRA_API_KEY`
+2. `base_url`, `token`, and `apikey` in `~/.delta-infra/config.json` (environment values override file values)
+3. Default value: only `base_url` has an internal default
+4. If none of the above are available, **you must ask the user**; do not make anything up
 
-### 运行时凭证
+### Runtime credentials
 
-CLI 使用 `token` 发送请求头 `Authorization: Bearer <token>`，并自动从 JWT 中提取 `uid` 作为 `X-User-Uid`。
+The CLI sends the effective credential in the `Authorization: Bearer <credential>` header; an API key takes precedence over a token when both are configured. It adds `X-User-Uid` when it can parse a `uid` from the credential as an unverified JWT.
 
-## 查询用户信息与剩余额度
+## Querying user information and remaining credits
 
 ```bash
 delta-cli usage
 ```
 
-返回当前用户信息与剩余额度（走网关 `/infra/api/users/me`，鉴权由 CLI 自动携带配置的凭证）。只保留三个字段：
+This returns the current user's information and remaining credits (through the gateway `/infra/api/users/me`; the CLI automatically attaches the configured credentials). Keep only these three fields in the output:
 
-- `data.display_name`：显示名（缺失时回退 `user_id`）
-- `data.user_id`：用户 ID
-- `data.resources.credit`：剩余额度（credits）
+- `data.display_name`: display name (fall back to `user_id` if missing)
+- `data.user_id`: user ID
+- `data.resources.credit`: remaining balance in credits
 
-`username`/`id`/`email`/`role`/`quota`/`group`/`tier`/`status`/`created_at`/`is_admin`、`stats` 及其中的 `total_consumed_credits`（数据库原始 quota 单位）均为内部字段，不对外输出。
+`username`/`id`/`email`/`role`/`quota`/`group`/`tier`/`status`/`created_at`/`is_admin`, `stats` and its `total_consumed_credits` (in the database's original quota units) are internal fields and must not be exposed externally.
 
-## 安全红线
+## Security rules
 
-- **禁止输出密钥**：`token` 不得出现在日志、消息、终端。
-- **禁止自己拼 URL / 构造 HTTP 请求**：所有请求都走 `delta-cli`。
-- **不要主动安装 CLI**：如果用户说没装，建议他去 README 或 install.sh，不要自己选安装方式。
-- **写入/删除操作前确认意图**：`sandbox kill`、`sandbox finish`、`sandbox write` 等必须告诉用户影响。
-- `~/.delta-infra/config.json` 权限为 `0600`，不要手动放宽。
-- **sandbox 必须销毁**：调用 `sandbox create` 后，当前任务结束前必须调用 `sandbox kill`。server 端无自动清理，不销毁 = 永久占用 GPU；即使出错也不得跳过。
+- **Never output credentials**: token and API key values must not appear in logs, messages or the terminal.
+- **Never construct URLs or make HTTP requests yourself**: route all requests through `delta-cli`.
+- **Do not install the CLI proactively**: if the user says it is not installed, direct them to the README or `install.sh`; do not choose an installation method yourself.
+- **Confirm intent before write or delete operations**: tell the user what commands such as `sandbox kill`, `sandbox finish` and `sandbox write` will affect.
+- `~/.delta-infra/config.json` must have `0600` permissions; do not loosen them manually.
+- **The sandbox must be destroyed**: after calling `sandbox create`, call `sandbox kill` before the current task ends. The server does not clean up automatically; failure to destroy a sandbox leaves GPU resources occupied indefinitely. Do not skip this, even if an error occurs.
 
-## JSON 输出约定
+## JSON output conventions
 
 ```json
 {"ok":true,"data":{...}}
 {"ok":false,"error":{"type":"auth","message":"...","hint":"..."}}
 ```
 
-AI Agent 解析规则：
-- 始终检查 `ok`，不要只看 exit code。
-- `error.type` 是稳定分支字段：`auth`, `permission`, `not_found`, `validation`, `network`, `api`, `command_failed`, `internal`。
-- `error.hint` 可展示给用户。
+AI agent parsing rules:
+- Always check `ok`; do not rely on the exit code alone.
+- `error.type` is the stable field for branching on: `auth`, `permission`, `not_found`, `validation`, `network`, `api`, `command_failed`, `internal`.
+- `error.hint` may be shown to the user.
 
-## 退出码约定
+## Exit code conventions
 
-| Type | Exit Code | 场景 |
-|------|-----------|------|
-| validation | 2 | flag / 参数错误 |
-| auth | 3 | 未认证或认证失败 |
-| permission | 4 | 权限不足 |
-| not_found | 5 | sandbox/file 不存在 |
-| network | 6 | DNS、超时、连接失败 |
-| api | 7 | 服务端非 2xx |
-| command_failed | 8 | sandbox 内命令执行失败（非零 exit_code 或报错）；SSE 路径在 complete 帧后追加该 error 信封，**message 附 stderr 尾部**便于快速扫读 |
-| internal | 10 | 客户端内部错误 |
+| Type | Exit Code | Scenario |
+|------|-----------|----------|
+| validation | 2 | Invalid flag or argument |
+| auth | 3 | Not authenticated or authentication failed |
+| permission | 4 | Insufficient permissions |
+| not_found | 5 | Sandbox or file does not exist |
+| network | 6 | DNS, timeout or connection failure |
+| api | 7 | Server returned a non-2xx response |
+| command_failed | 8 | Command failed inside the sandbox (non-zero `exit_code` or an error); on the SSE path, an error envelope is appended after the `complete` frame, with the stderr tail in `message` for quick reference |
+| internal | 10 | Internal client error |
 
-## 升级检查
+## Upgrade check
 
-完成用户请求后，如果 JSON 中有 `_notice.update`，可建议：
+After completing the user's request, if the JSON contains `_notice.update`, you may recommend:
 
 ```bash
 delta-cli upgrade
 ```
 
-## 常见恢复
+## Common recovery actions
 
-| 错误 / 现象 | 恢复动作 |
+| Error / symptom | Recovery action |
 |-------------|----------|
-| `error.type: auth` / `method: none` | 询问用户后执行 `config init --base-url <url> --token <token>` |
-| `error.type: permission` | 确认当前认证是否有权限；必要时换 token |
-| `error.type: not_found` | 检查 `sandbox_id` / path |
-| `error.type: network` | 检查 `base_url` 和网络连通性 |
-| `error.type: validation` | 检查必填 flag 和参数格式 |
-| `error.type: command_failed` | sandbox 内命令失败：信封 `message` 已带 stderr 尾部，可快速定位；完整 `stderr`/`result_summary` 在 complete 帧里，重试或修正命令 |
-| 配置文件解析失败 | 检查 `~/.delta-infra/config.json` 是否为有效 JSON |
+| `error.type: auth` / `method: none` | Check the server address and local credential configuration. If no credential is configured or the server rejects it, ask the user once for a credential; use `--apikey` for an API key or `--token` for a bearer token, or set the matching `DELTA_INFRA_API_KEY` / `DELTA_INFRA_TOKEN` environment variable. |
+| `error.type: permission` | Check whether the current credential has sufficient permissions; if needed, ask for a credential with the required permissions. |
+| `error.type: not_found` | Check `sandbox_id` / path |
+| `error.type: network` | Check `base_url` and network connectivity |
+| `error.type: validation` | Check required flags and argument formats |
+| `error.type: command_failed` | Command failed inside the sandbox: the envelope's `message` already includes the stderr tail to help locate the issue quickly; the full `stderr` / `result_summary` are in the `complete` frame. Retry or correct the command |
+| Configuration file parsing failed | Check that `~/.delta-infra/config.json` contains valid JSON |
