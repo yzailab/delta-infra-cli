@@ -1,127 +1,127 @@
 ---
 name: delta-sandbox
-description: "在 Delta Sandbox Linux 容器中运行任意命令或脚本。适用于训练、推理、编译、数据处理等任意需要 sandbox 的计算任务，支持 Python / Node.js / Go / Java / Rust 等语言。所有任务通用同一套输出约定：命令在 stdout 末尾输出结构化 JSON；SSE 路径下 CLI 检测 stdout 末尾 JSON 并直接在 complete 帧带出 `result_summary`，缺失时才需 skill 从 log_file 反向扫描提取（旧服务器回退路径由 CLI `--summary` 自动提取为 `data.result_summary`）。Planner 调用本 skill 时，请在 plan step 的 required_outputs 中声明 [{kind: 'file', extensions: ['.json']}]。请求中用中性动词（运行/执行）描述命令，只有真的会落盘文件时，才使用创建/写入/保存等动词并带上扩展名。认证/配置/权限错误转 delta-shared。"
+description: "Run any command or script in a Delta Sandbox Linux container. Use it for sandbox-based tasks such as training, inference, compilation and data processing, supporting Python / Node.js / Go / Java / Rust and other runtimes. All tasks use the same output convention: the command prints structured JSON at the end of stdout; on the SSE path the CLI detects trailing JSON in stdout and includes it as `result_summary` in the complete frame, and the skill only needs to scan backwards through `log_file` if it is missing (on older servers, the CLI automatically extracts it as `data.result_summary` via `--summary` on the fallback path). When the Planner calls this skill, declare `[{kind: 'file', extensions: ['.json']}]` in `required_outputs` for the plan step. Describe commands in requests with neutral verbs (run/execute); use verbs such as create/write/save, with a file extension, only when a file will actually be written. Route authentication/configuration/permission errors to delta-shared."
 metadata:
   requires:
     bins: ["delta-cli"]
   cliHelp: "delta-cli sandbox --help"
 ---
 
-**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../delta-shared/SKILL.md`](../delta-shared/SKILL.md)，其中包含认证、配置和通用错误处理**
+**CRITICAL — Before starting, you MUST use the Read tool to read [`../delta-shared/SKILL.md`](../delta-shared/SKILL.md), which covers authentication, configuration and general error handling**
 
 # delta-sandbox
 
-## 何时使用
+## When to use
 
-- 用户提到 sandbox、容器、GPU、CUDA、训练、推理、计算任务。
-- 用户需要创建/管理 sandbox 实例、在 sandbox 中运行命令、读写文件。
-- **不要**用于：认证、配置初始化、权限恢复、更新检查 → 转 `delta-shared`。
+- The user mentions a sandbox, container, GPU, CUDA, training, inference or a compute task.
+- The user needs to create/manage a sandbox instance, run commands in it, or read/write files.
+- **Do not** use this for authentication, configuration setup, permission recovery or update checks → route these to `delta-shared`.
 
-## 使用边界
+## Scope
 
-- 所有 sandbox 操作使用 `delta-cli sandbox <subcommand>`。
-- delta-cli 不内嵌默认凭证，运行前必须按 `delta-shared` 完成认证配置。
-- sandbox_id 必须来自真实返回，不要凭用户口述猜测。
+- Perform all sandbox operations with `delta-cli sandbox <subcommand>`.
+- delta-cli has no built-in default credentials; complete authentication and configuration via `delta-shared` before running it.
+- Get `sandbox_id` from an actual command response; do not guess it from what the user says.
 
-## 沙箱环境（镜像源）
+## Sandbox environment (package mirrors)
 
-- **国内部署（domestic）**：沙箱创建时服务端已自动注入国内镜像配置。`pip install` / `npm install` / `git clone` / HuggingFace 下载**无需额外配置**，直接可用。覆盖：pip index-url（pypi.tuna.tsinghua.edu.cn）、npm registry（npmmirror）、HF_ENDPOINT（hf-mirror.com）、git insteadOf（github 代理）。
-- **海外部署（overseas）**：不注入镜像，使用官方源。
-- **第三方算力沙箱**：默认不注入镜像（默认关闭），按官方源使用。
-- 若镜像源异常，优先检查沙箱所在区域的网络，而不是假设沙箱未配置。
+- **Domestic deployments (`domestic`)**: the server automatically configures domestic package mirrors when creating a sandbox. `pip install`, `npm install`, `git clone` and Hugging Face downloads work without extra configuration. This covers the pip index URL (`pypi.tuna.tsinghua.edu.cn`), npm registry (`npmmirror`), `HF_ENDPOINT` (`hf-mirror.com`) and Git `insteadOf` rules (GitHub proxy).
+- **Overseas deployments (`overseas`)**: mirrors are not configured; use the official sources.
+- **Third-party compute sandboxes**: mirror injection is off by default; use the official sources.
+- If a mirror fails, first check network access in the sandbox's region rather than assuming that no mirror is configured.
 
-## 强制规则（违规则任务视为失败）
+## Mandatory rules (breaking any of these makes the task a failure)
 
-1. **必须使用 delta-cli**：所有 sandbox 操作必须通过 `delta-cli sandbox <subcommand>` 执行。**禁止**用 Python（urllib/httpx/requests）或任何 SDK 直接调用 HTTP API。delta-cli 提供类型化错误输出（`error.type`），是 AI agent 正确解析错误的唯一途径。
-2. **必须销毁**：每次 `sandbox create` 成功后，在当前任务的最终 `step_finish` 之前 **必须** 执行 `sandbox kill <id>` 或 `sandbox finish <id>` 销毁 sandbox。未销毁等价于任务失败。
-3. **异常时也必须销毁**：即使 sandbox 内命令失败、超时或报错，仍然 **必须** 执行 `sandbox kill <id>`。异常不是跳过销毁的理由。
-4. **不得依赖外部清理**：server 端 **没有** sandbox 的自动过期或 TTL 机制。不 kill → sandbox 永久占用 GPU 资源。
-5. **同步任务一条命令内完成，后台任务可跨轮次**：
-   - 同步模式（`sandbox run`）：从 `create` 到 `kill` 的完整生命周期必须在同一次执行中完成。不允许跨任务保留。
-   - 后台模式（`sandbox run-bg`）：允许在当前执行中将 `sandbox_id` 和 `execution_id` 报告给用户，后续轮次通过 `sandbox status` + `sandbox logs` 获取结果。任务完成后仍需 `sandbox kill`。
-6. **禁止重复创建**：同一次任务中只允许存在一个活跃 sandbox。若命令失败需要重试，优先复用已创建的 `sandbox_id`；若确实需要重新创建，必须先 `sandbox kill <旧_sandbox_id>`，确认旧实例销毁后再执行新的 `sandbox create`。可用 `delta-cli sandbox list` 查询当前用户的活跃 sandbox 来**清理残留**（上轮任务异常中断遗留的 sandbox），但 **禁止** 用 list 来绕过“同一次任务只保留一个 sandbox”的规则。
+1. **You must use delta-cli**: perform all sandbox operations with `delta-cli sandbox <subcommand>`. **Do not** call the HTTP API directly with Python (`urllib`/`httpx`/`requests`) or any SDK. delta-cli provides typed error output (`error.type`), the only reliable way for an AI agent to interpret errors.
+2. **You must destroy the sandbox**: after each successful `sandbox create`, you **must** run `sandbox kill <id>` or `sandbox finish <id>` to destroy it before the current task's final `step_finish`. Failing to destroy it counts as task failure.
+3. **Destroy it even after an error**: if a command inside the sandbox fails, times out or reports an error, you **must still** run `sandbox kill <id>`. An error is no reason to skip cleanup.
+4. **Do not rely on external cleanup**: the server has **no** automatic sandbox expiry or TTL mechanism. Without `kill`, the sandbox will occupy GPU resources indefinitely.
+5. **Complete synchronous tasks in one command; background tasks may span turns**:
+   - Synchronous mode (`sandbox run`): complete the full lifecycle from `create` to `kill` in the same execution. Do not retain a sandbox across tasks.
+   - Background mode (`sandbox run-bg`): you may report `sandbox_id` and `execution_id` to the user during the current execution, then retrieve the result in a later turn with `sandbox status` and `sandbox logs`. You must still run `sandbox kill` when the task is complete.
+6. **Do not create duplicates**: only one sandbox may be active for the same task. If a command needs retrying, reuse the existing `sandbox_id` where possible. If a new sandbox really is needed, first run `sandbox kill <old_sandbox_id>` and confirm that the old instance has been destroyed before running another `sandbox create`. You may use `delta-cli sandbox list` to find and **clean up leftovers** from an interrupted previous task, but **do not** use `list` to get around the rule that only one sandbox may be kept for the same task.
 
-7. **长任务必须后台执行**：预计执行时间超过 60 秒的任务（例如下载模型、训练、微调、长推理、大规模数据处理），**必须**使用 `delta-cli sandbox run-bg <id> --command "..." --timeout <秒>` 提交为后台任务，禁止使用同步的 `sandbox run`。
+7. **Long tasks must run in the background**: for tasks expected to take over 60 seconds (for example, model downloads, training, fine-tuning, long inference runs or large-scale data processing), submit a background task with `delta-cli sandbox run-bg <id> --command "..." --timeout <seconds>`. Do not use synchronous `sandbox run`.
 
-   **推荐方式（1 次 tool call 等完成）**：
+    **Recommended: one tool call, wait for completion**:
    ```bash
-   delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait
+    delta-cli sandbox run-bg <id> --command "<command>" --timeout <seconds> --wait
    ```
-   CLI 通过 SSE 实时流（`/logs/stream`）跟随输出，把原始 SSE 帧（`data: {...}`）**逐帧透传到 stdout**（curl -N 风格），帧类型见 JSON 的 `type` 字段：`init`（含 `execution_id`）/ `stdout` / `stderr` / `error` / `complete`。收到 `complete` 即命令结束。**CLI 会在 complete 帧里补全字段**：服务端给 `exit_code`/`execution_id`/`error`，CLI 注入流内累计的 `stdout`/`stderr`、兜底恢复的 `log_file`、以及检测到的末尾 JSON `result_summary`（stdout 末尾 50 行内有合法 JSON 对象时）。命令成败看 `complete` 帧里的 `exit_code`；**命令非零退出或报错时，CLI 追加一个 `error.type: command_failed` 信封并以非零码退出（进程退出码 8）**，信封 `message` 已附 stderr 尾部，便于 `&&` 链与按 `error.type` 分支、快速扫读失败原因；`type:"error"` 帧的 `message` 也会 best-effort 附上已流出的 stderr 尾部；成功则不追加信封。若在 `--timeout`（默认 300s，同时充当服务端命令超时和客户端等待 deadline）内未收到 `complete`，CLI 会在已透传的帧后**追加一个 `finished=false` 的快照信封**（`CommandLogsResult`），表示命令仍运行。完整 stdout 在 `finished` 后被写入沙箱内的 `log_file`（默认 `/workspace/{user_id}/sandbox_logs/delta-result-{sandbox_id}-{execution_id}.json`，以服务端返回的 `log_file` 字段为准），需要读全文时用 `sandbox read <id> --path <log_file>`（末尾 JSON 摘要已在 complete 帧里，通常无需再读）。**`--summary`/`--artifacts` 富化（含 hints）仅在旧服务器回退路径生效**（服务端无 `/logs/stream` 端点时 CLI 自动回退到 5s 轮询并输出 `CommandResult` 信封）。`execution_id` 可用于后续 `sandbox logs` / `cancel`。
+    The CLI follows output in real time over SSE (`/logs/stream`) and passes each raw SSE frame (`data: {...}`) through to stdout, as with `curl -N`. The JSON `type` field identifies each frame: `init` (with `execution_id`), `stdout`, `stderr`, `error` or `complete`. The command ends when `complete` arrives. **The CLI fills in fields in the complete frame**: the server supplies `exit_code`/`execution_id`/`error`; the CLI adds the accumulated streamed `stdout`/`stderr`, a recovered `log_file` as a fallback, and a trailing-JSON `result_summary` when it detects a valid JSON object in the last 50 lines of stdout. Use `exit_code` in the `complete` frame to determine success. **If the command exits non-zero or reports an error, the CLI appends an `error.type: command_failed` envelope and exits with a non-zero code (process exit code 8)**; the envelope's `message` includes the end of stderr, which makes it easier to use with `&&`, branch on `error.type` and scan the failure reason. The CLI also best-effort appends the stderr tail to the `message` of a `type:"error"` frame; it does not append an envelope on success. If no `complete` frame arrives within `--timeout` (300s by default, serving as both the server command timeout and the client wait deadline), the CLI appends a snapshot envelope with `finished=false` after the frames already passed through, indicating that the command is still running. After `finished`, full stdout is written to `log_file` inside the sandbox (default: `/workspace/{user_id}/sandbox_logs/delta-result-{sandbox_id}-{execution_id}.json`; use the server-returned `log_file` field as authoritative). To read the full output, use `sandbox read <id> --path <log_file>` (the trailing JSON summary is already in the complete frame, so this is usually unnecessary). **`--summary`/`--artifacts` enrichment, including hints, is available only on the older-server fallback path** (when the server lacks the `/logs/stream` endpoint, the CLI automatically falls back to polling every 5s and returns a `CommandResult` envelope). Use `execution_id` for later `sandbox logs` or `cancel` calls.
 
-   **实时跟随 / 手动轮询（需要查看中间进度时）**：
-   `sandbox logs <id> --execution-id <exec_id> --stream` 实时跟随（SSE）：原始 `data:` 帧逐帧透传到 stdout，直到 `complete` 事件，无末尾信封（`--stream` 必须传 `--execution-id`）。`sandbox logs <id> --execution-id <exec_id>`（不加 `--stream`）返回快照信封；`--execution-id` 可省略——省略时仅按 sandbox 查询，服务端因 sandbox_id / execution_id 未同时传递而自动走 ES（Elasticsearch）查询（此时返回按 execution_id 聚合的**数组**，而非单个快照对象）：
-   - `finished=true` + `exit_code=0` → 完成
-   - `finished=true` + `exit_code!=0` → 失败  
-   - `running=true` → 仍运行
+    **Live following / manual polling (when you need intermediate progress)**:
+    `sandbox logs <id> --execution-id <exec_id> --stream` follows the task in real time (SSE), passing each raw `data:` frame through to stdout until the `complete` event, with no trailing envelope (`--stream` requires `--execution-id`). Without `--stream`, `sandbox logs <id> --execution-id <exec_id>` returns a snapshot envelope. You may omit `--execution-id`; if omitted, the server queries only by sandbox and automatically uses ES (Elasticsearch) because `sandbox_id` and `execution_id` were not both supplied (it returns an **array** aggregated by execution ID rather than a single snapshot object):
+    - `finished=true` and `exit_code=0` → complete
+    - `finished=true` and `exit_code!=0` → failed
+    - `running=true` → still running
 
-   **故障诊断**：连续 3 次 `running=true` 且 `stderr_tail`/`stdout_tail`/`cursor` 无变化且距离提交超过 60 秒 → 用 `sandbox status <id>` 检查 sandbox 是否存活。注意：`cursor` 字段无 `omitempty`，永远会出现在响应中（即使为 0）；`stderr_tail` 默认只保留 **最后 200 字节** stderr 片段，`stdout_tail` 默认保留 **最后 800 字节** stdout 片段（CLI 硬编码 `tailString(s, n)`，按字节截取；ASCII 文本等同于 n 字符，多字节 UTF-8 可能被截断），`cursor=0` 通常意味着服务端从 provider 还没读到任何 stderr 行。
+    **Troubleshooting**: if `running=true` for three consecutive checks, `stderr_tail`/`stdout_tail`/`cursor` have not changed, and more than 60 seconds have passed since submission, use `sandbox status <id>` to check whether the sandbox is alive. Note: `cursor` has no `omitempty` and is always present in the response, even when it is 0; `stderr_tail` retains only the **last 200 bytes** of stderr by default, while `stdout_tail` retains the **last 800 bytes** of stdout (`tailString(s, n)` is hard-coded in the CLI and truncates by byte; for ASCII this is n characters, while multi-byte UTF-8 may be cut off). `cursor=0` usually means the server has not yet read any stderr lines from the provider.
 
-   - 后台任务成功后仍需按规则 2/3 销毁 sandbox。
+    - After a background task succeeds, you must still destroy the sandbox as required by rules 2/3.
 
-8. **写入文件默认落到 sandbox 的 working-directory，禁止使用 Shell 变量路径**：
-   - ✅ **推荐**：`delta-cli sandbox write <id> --source train.py`（不传 `--path`，默认写到 `<working-directory>/train.py`）
-   - ✅ **显式指定**：`delta-cli sandbox write <id> --path <working-directory>/train.py --source train.py`（`--path` 传相对路径也会自动以 working-directory 为前缀）
-   - ❌ **禁止**：`--source "$WORKSPACE_ROOT/train.py"`、`--source "$(pwd)/train.py"`（Shell 展开路径 → 空文件或失败）
-   - ❌ **禁止**：`--data "大量代码..."`（Shell 转义问题）
-   - ❌ **不建议**：`--path /workspace/train.py` 这类直接写工作目录根、落在 `{user_id}` 之外的路径——kill 后数据不会写回共享工作区，文件不持久化。
-   - 查询 sandbox 的 working-directory：`delta-cli sandbox working-directory <id>`（返回 `data.path`）。`run`/`run-bg` 引用脚本时用 `python <working-directory>/train.py` 的完整路径。
-   - 少量配置（< 20 行）可用 `--data "..."`，此时必须带 `--path`（无法从文件名推断）。`--mode 755` 可设置文件权限。
+8. **Files are written to the sandbox working directory by default; do not use shell-variable paths**:
+    - ✅ **Recommended**: `delta-cli sandbox write <id> --source train.py` (omit `--path` to write to `<working-directory>/train.py` by default)
+    - ✅ **Explicit path**: `delta-cli sandbox write <id> --path <working-directory>/train.py --source train.py` (relative paths passed to `--path` are also prefixed with the working directory)
+    - ❌ **Do not**: use `--source "$WORKSPACE_ROOT/train.py"` or `--source "$(pwd)/train.py"` (shell expansion can produce an empty file or fail)
+    - ❌ **Do not**: use `--data "a large block of code..."` (shell-escaping problems)
+    - ❌ **Discouraged**: write directly to the working-directory root with a path such as `--path /workspace/train.py`, outside `{user_id}`. Data there is not written back to the shared workspace after `kill` and will not persist.
+    - To find the sandbox working directory, run `delta-cli sandbox working-directory <id>` (returns `data.path`). When a script is used with `run`/`run-bg`, give its full path, such as `python <working-directory>/train.py`.
+    - For small configuration files (< 20 lines), you may use `--data "..."`, but you must also pass `--path` (the path cannot be inferred from a filename). Use `--mode 755` to set file permissions.
 
-9. **每个 `run-bg` 生成独立 `execution_id`**：每次调用 `sandbox run-bg` 都会返回一个唯一的 `execution_id`，多个后台任务之间通过它区分。务必保存每次返回的 `execution_id` 并与任务对应，后续通过 `sandbox logs <id> --execution-id <exec_id>` 分别查询各任务的结果。同步 `sandbox run` 无需 `execution_id`，结果直接返回。
+9. **Each `run-bg` creates a separate `execution_id`**: every call to `sandbox run-bg` returns a unique `execution_id`, which distinguishes background tasks. Save each returned `execution_id` and associate it with its task, then query each result with `sandbox logs <id> --execution-id <exec_id>`. Synchronous `sandbox run` does not need an `execution_id`; it returns the result directly.
 
-10. **执行 delta-cli 命令必须使用 `bash` 工具，禁止用 `python_repl` 包装 `subprocess`**
-    - `delta-cli` 返回的是结构化 JSON，用 `bash` 直接执行最清晰，也便于 `log_file` 提取。
-    - ❌ **禁止**：在 `python_repl` 里写 `subprocess.run(['delta-cli', ...])`。这会把输出混在 Python 代码块中，既难读又多走一步解析。
-    - ✅ **正确**：`bash` 工具直接执行 `delta-cli sandbox ...`。
-    - 只有在**解析 JSON**（例如从 `sandbox read` 的信封中提取 `summary` 并写入 `result.json`）时，才使用 `python3`/`python_repl`。
+10. **Use the available shell tool to run delta-cli commands directly; do not wrap `subprocess` in `python_repl`**
+    - `delta-cli` returns structured JSON. Running it directly in the available shell keeps its output clear and makes `log_file` extraction easier.
+    - ❌ **Do not** write `subprocess.run(['delta-cli', ...])` in `python_repl`. This mixes the output into a Python code block, making it harder to read and adding an unnecessary parsing step.
+    - ✅ **Correct**: run `delta-cli sandbox ...` directly with the available shell tool.
+    - Use `python3`/`python_repl` only when **parsing JSON**, for example, extracting `summary` from a `sandbox read` envelope and writing it to `result.json`.
 
-11. **代码/数据必须经由 `delta-cli sandbox write` 进入 sandbox**
-    - 所有要送进 sandbox 执行的脚本、配置、数据文件，**必须**通过 `delta-cli sandbox write <id> --source <本地文件名>` 写入，默认落到该 sandbox 的 working-directory（`/workspace/{user_id}/{sandbox_id}/`，可用 `delta-cli sandbox working-directory <id>` 查询），位于 OSS 同步范围内、kill 后可持久化。
-    - 不要把脚本先写到宿主 workspace 再依赖同步；宿主 workspace 的文件对 sandbox 内部不可见。
-    - 本规则关注的是“入口统一为 `sandbox write`”，不针对任何特定宿主工具。无论宿主提供何种文件操作接口，最终都要把内容送到 sandbox 内部。
+11. **All code/data must enter the sandbox through `delta-cli sandbox write`**
+    - All scripts, configuration files and data files to be run in the sandbox **must** be written with `delta-cli sandbox write <id> --source <local-filename>`. By default, files go to that sandbox's working directory (`/workspace/{user_id}/{sandbox_id}/`, which you can query with `delta-cli sandbox working-directory <id>`), within the OSS sync scope and available for persistence after `kill`.
+    - Do not write a script to the host workspace and rely on synchronisation; files in the host workspace are not visible inside the sandbox.
+    - This rule standardises the entry point as `sandbox write`; it does not depend on any particular host tool. Whatever file operation the host provides, the content must ultimately be sent into the sandbox.
 
-12. **任务完成标准是执行结果，而不是脚本文件存在**
-    - 本 skill 的交付物是**命令在 sandbox 中执行后的结果摘要**（本地 `result.json` 及其 `result_summary`），而不是 `.py`、`.sh` 等脚本文件本身。
-    - 仅把脚本写入 disk 不代表任务完成；必须完成 `write → run → read log_file → create result.json → kill sandbox` 整个生命周期，才能调用 `step_finish`。
-    - 因此，`skill_request` 中不要用“写出/保存/创建某某文件并执行”这类把文件落盘当成里程碑的措辞，而是直接要求“运行某某命令并返回结果摘要”。
+12. **A task is complete when the command has produced a result, not when a script file exists**
+    - The deliverable for this skill is **a summary of the result after the command has run in the sandbox** (the local `result.json` and its `result_summary`), not the `.py`, `.sh` or other script itself.
+    - Writing a script to disk alone does not complete the task. Finish the full lifecycle—`write → run → read log_file → create result.json → kill sandbox`—before calling `step_finish`.
+    - Therefore, do not phrase `skill_request` as “write/save/create a file and run it”, which makes writing the file sound like the milestone. Ask directly to “run the command and return a result summary”.
 
-13. **`result.json` 是完成前的必要条件**
-    - 在调用 `step_finish` 之前，必须确认：
-      1. `delta-cli sandbox run` / `run-bg --wait` 已返回且 `finished=true`；
-      2. （默认）直接复用 `sandbox run` / `run-bg --wait` 的 SSE `complete` 帧里的 `result_summary` 写入 `result.json`；缺失时（fallback）从 `log_file` 用 `sandbox read` + Python 解析
-      3. 已执行 `sandbox kill <id>` 销毁 sandbox；
-      4. `final_response` 只有一行 `RESULT: <result_summary>`。
+13. **`result.json` is required before completion**
+    - Before calling `step_finish`, confirm that:
+      1. `delta-cli sandbox run` / `run-bg --wait` has returned with `finished=true`;
+      2. (By default) the `result_summary` in the SSE `complete` frame from `sandbox run` / `run-bg --wait` has been written to `result.json`; if it is missing (fallback), read `log_file` with `sandbox read` and parse it with Python.
+      3. `sandbox kill <id>` has been run to destroy the sandbox;
+      4. `final_response` consists of the single line `RESULT: <result_summary>`.
 
-14. **避免冗余检查与验证**
-    - 如果 `skill_request` 或用户请求已经明确指定了镜像与资源，**不要**在 `sandbox create` 前先调用 `sandbox images` 或 `sandbox recommend`。
-    - 文件写入 sandbox 后，只需要 `sandbox stat`（可选）确认 size 正常即可。**禁止**用 `sandbox ls` + `sandbox read` 把刚写入的文件读回宿主再验证内容；这会产生一次无意义的往返。
-    - 不要在 `sandbox create` 成功后反复调用 `sandbox status` 轮询；create 返回时 sandbox 已就绪。
+14. **Avoid redundant checks and validation**
+    - If `skill_request` or the user's request already specifies the image and resources, **do not** call `sandbox images` or `sandbox recommend` before `sandbox create`.
+    - After writing a file to the sandbox, it is enough to use `sandbox stat` (optionally) to confirm the size. **Do not** use `sandbox ls` plus `sandbox read` to read the file back to the host and verify its contents; that is an unnecessary round trip.
+    - Do not repeatedly poll with `sandbox status` after a successful `sandbox create`; the sandbox is ready as soon as create returns.
 
-## 请求措辞约定
+## Request wording conventions
 
-为降低被 host 的 Phase-10B 文件扩展名校验误判的概率，构造 `skill_request` 时遵守：
+To reduce the risk of the host's Phase-10B file-extension check misclassifying a request, follow these conventions when constructing `skill_request`:
 
-1. **运行/执行命令时，用中性动词**  
-   优先使用 `运行`、`执行`、`调用`。  
-   - 正确：`在 GPU sandbox 中运行 PyTorch CUDA 自检脚本`  
-   - 不推荐在请求里直接写代码并带“输出”动词，例如  
-     `脚本需输出：1) torch.cuda.is_available()；...`  
-     其中的 `torch.cuda` 会被正则误判为承诺输出 `.cuda` 文件。
+1. **Use neutral verbs when asking to run/execute commands**
+   Prefer `run`, `execute` or `call`.
+   - Correct: `Run a PyTorch CUDA self-check script in a GPU sandbox`
+   - Avoid putting code directly in the request and using a verb such as “output”, for example:
+     `Script should output: 1) torch.cuda.is_available(); ...`
+     The regular expression may misread `torch.cuda` as a commitment to produce a `.cuda` file.
 
-2. **只有真正会创建文件时，才用承诺动词 + 扩展名**  
-   `创建`、`写入`、`保存`、`输出`、`生成` 这类词只在你确实会让 skill 落盘文件时使用，并显式写出扩展名。  
-   - 正确：`创建 check_cuda.py 并运行`  
-   - 正确：`训练完成后将指标写入 result.json`
+2. **Use commitment verbs and file extensions only when a file will actually be created**
+   Use words such as `create`, `write`, `save`, `output` and `generate`, and specify the extension, only when the skill will actually write a file to disk.
+   - Correct: `Create check_cuda.py and run it`
+   - Correct: `Write the metrics to result.json after training`
 
-3. **不要把完整代码块写进 `skill_request`**  
-   用自然语言描述任务目标，具体代码由 skill 内部写入 sandbox。  
-   - 正确：`运行标准 PyTorch CUDA 可用性检查`  
-   - 不推荐：在 `skill_request` 里粘贴 `import torch; print(torch.cuda.is_available())`。
+3. **Do not put a complete code block in `skill_request`**
+   Describe the task goal in natural language; the skill writes the specific code into the sandbox.
+   - Correct: `Run the standard PyTorch CUDA availability check`
+   - Avoid pasting `import torch; print(torch.cuda.is_available())` into `skill_request`.
 
-### required_outputs 声明
+### Declaring required_outputs
 
-构造调用本 skill 的 plan step 时，**必须**在 `required_outputs` 中声明会落盘一个 `.json` 文件：
+When constructing a plan step that calls this skill, you **must** declare that a `.json` file will be written in `required_outputs`:
 
 ```yaml
 required_outputs:
@@ -129,107 +129,107 @@ required_outputs:
     extensions: [".json"]
 ```
 
-原因：本 skill 运行命令后会从 sandbox 读取 `log_file` 并写入本地 `result.json`。host 的 Phase-10B deliverable 校验是“或”语义（任意一个 required 扩展名被真实文件满足即可）；显式声明 `.json` 可以避免 `torch.cuda` 等代码 token 被误判为 `.cuda` 文件承诺，从而防止 `VERIFICATION_FAILED` 导致的重复执行。
+The reason is that, after running a command, this skill reads `log_file` from the sandbox and writes a local `result.json`. The host's Phase-10B deliverable check uses OR semantics (any required extension satisfied by an actual file is enough); explicitly declaring `.json` prevents code tokens such as `torch.cuda` from being misread as a commitment to produce a `.cuda` file, avoiding duplicate execution caused by `VERIFICATION_FAILED`.
 
-## 快速路由
+## Quick routing
 
-> ⚠️ **`list` 与 `ls` 区分**：`sandbox list` 列出用户的 **沙箱实例**（与 `docker ps` 类似），`sandbox ls <id>` 列出 **沙箱内目录**（与 `ls` 命令类似）。Tab 补全时注意区分。
+> ⚠️ **Distinguish `list` from `ls`**: `sandbox list` lists the user's **sandbox instances** (like `docker ps`), while `sandbox ls <id>` lists a **directory inside a sandbox** (like the `ls` command). Take care when using Tab completion.
 
-| 用户目标 | 命令 |
+| User goal | Command |
 |---------|------|
-| **发现** | |
-| 查看可用镜像（镜像名） | `sandbox images` — 返回每条的 `image_name`（对外镜像名）/`tags`（用途标签）/`description`（简短镜像简介）；**镜像较多时按 `description` + `tags` 选匹配任务的镜像**（如 Pytorch→`PyTorch CUDA13 (GPU)`、vLLM→`vLLM …`、需共享工作区→看 `supports_shared_workspace` 字段） |
-| 查看剩余可申请资源 | `sandbox resources` — 按算力分组返回 GPU/显存/核心可用量：`compute_sources[].source` 为 `private`（私有算力）或 `third_party`（第三方算力）；`gpu_types` 结构随分组不同（private 含 `vgpu`/`core`/`memory_mib`，third_party 含 `gpu_name`/`total_gpu_num`/`idle_gpu_num`）。算力后端为内部概念，自动选择，无需指定 |
-| 获取资源推荐 | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]`（`--memory`/`--gpu-mem` 支持 g/m/G/M 格式，如 `1G`/`512M`，CLI 自动转换为 Gi/Mi） |
-| 列出当前用户的 sandbox | `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--sandbox-id <id>] [--days N]` |
-| **生命周期** | |
-| 创建 sandbox | `sandbox create --image-name <镜像名> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <型号> --shm-size XGi --devices kvm --max-life M]`；`--memory`/`--gpu-mem` 支持 g/m/G/M 格式（如 `1G`/`512M`，小写亦可），CLI 自动转换为服务端接受的 `Gi`/`Mi` 单位；`--image-name` 用镜像名（`sandbox images` 返回的 `image_name` 字段，如 `"PyTorch CUDA13 (GPU)"`），底层镜像标识对用户隐藏；`--gpu-type` 指定 GPU 型号（如 `"RTX 4090"`、`H100`），可选型号查 `sandbox resources` 输出的 `gpu_types[].gpu_name`，不传则自动调度；`--shm-size` 调大容器 `/dev/shm`（默认仅 64Mi，多进程/DataLoader 场景必调，**必须带 Gi/Mi 单位**且不得超过 `--memory`，仅私有算力生效）；`--devices kvm` 申请宿主机设备直通（容器内出现 `/dev/kvm`，用于嵌套虚拟化，需运维开启白名单，仅私有算力生效）；不希望被自动清理时加 `--no-auto-cleanup`（仅显式 kill/finish 可销毁）；`--shared-workspace` 默认 true（启用共享工作区；`sandbox images` 的 `supports_shared_workspace` 表示该算力可开共享工作区）；不依赖共享数据的快速任务可 `--shared-workspace=false` 跳过工作区播种/写回
-| 共享工作区（跨沙箱持久化） | `--shared-workspace=true`（默认）启用共享工作区：创建时平台把该用户工作区数据**播种**到 `/workspace/{user_id}`，`kill`/`finish` 时**写回**、下次创建自动带出（可跨沙箱取回文件）。**唯一会持久化的目录是 `/workspace/{user_id}`**，写到其它路径（/tmp、/root、自建目录等）销毁即丢失——需要留存的结果请放入该目录。⚠️ 是否能跨沙箱持久由**平台在创建时探测镜像内是否预置 rclone** 决定：有 rclone → 播种/写回生效；无 rclone → 播种/写回被跳过（数据不跨沙箱持久，但创建不受阻）。不确定镜像是否预置 rclone 时，可写入 `/workspace/{user_id}` 后销毁重建验证。不依赖共享数据的快速任务用 `--shared-workspace=false` 跳过播种/写回 |
-**单沙箱资源上限** cpu ≤ 512 / memory ≤ 1024Gi / gpu ≤ 64 / gpuMem ≤ 1024Gi / shmSize ≤ memory，超出快速报错不挂起 |
-| 延长生命周期 | `sandbox extend <sandbox_id> --max-life N` — **动态延长运行中** sandbox 的 max-life（可增可减，N 需大于已存活分钟且 ≤10080；提前回收用 `kill`/`finish`；`--no-auto-cleanup` 沙箱无需续期）；不带 `--max-life` 时查询当前生命周期（已存活/剩余/到期时间）；`status` 输出含 `data.lifecycle` 生命周期摘要（已存活/剩余/到期；生命周期接口不可用时省略） |
-| 连接 sandbox | `sandbox connect <id>` |
-| 查看状态 | `sandbox status <id>` |
-| 完成 sandbox | `sandbox finish <id> [--results '{...}']` |
-| 销毁 sandbox | `sandbox kill <id>` |
-| **命令执行** | |
-| 同步运行命令（≤60s） | `sandbox run <id> --command "..." [--timeout <秒>] [--summary/--no-summary] [--artifacts]` |
-| 后台运行命令（>60s） | `sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--summary/--no-summary] [--artifacts]` |
-| 查看后台日志 | `sandbox logs <id> [--execution-id <exec_id>] [--tail N --grep <pattern> --context N] [--stream]`（`--execution-id` 可选；省略时按 sandbox 从 ES 查询，仅 `--stream` 必须传）|
-| 中断后台命令 | `sandbox cancel <id> --execution-id <exec_id>` |
-| **内网穿透（端口暴露）** | |
-| 暴露端口到公网 | `sandbox expose <id> [--port N]` — 把沙箱内服务端口暴露到公网，返回 `public_url`（`http://<host>:<remote_port>`，remote_port 由服务端从 20000-29999 随机分配）；**必须先启服务再暴露**（服务端探活失败报「服务未就绪」）；`--port` 默认 8700（平台约定） |
-| 查询活跃隧道 | `sandbox exposes <id>` — 列出该 sandbox 当前的公网隧道 |
-| 回收隧道 | `sandbox dispose <id> --port N` — 显式回收单条隧道（杀 frpc + 释放公网端口）；kill sandbox 也会自动回收全部隧道 |
-| **文件操作** | |
-| 读取文件 | `sandbox read <id> --path <path> [--output <本地路径> --tail N --grep <pattern> --offset N --limit N --context N --max-bytes N --parse-json]` |
-| 拉取文件/目录 | `sandbox pull <id> --source <沙箱路径> --target <本地路径> [--recursive] [--pattern <glob>]` — 单文件或目录递归，含 sha1 校验（mirror of upload，flag 方向与 upload 相反：source=远程，target=本地） |
-| 查询工作目录 | `sandbox working-directory <id>`（返回 `data.path`，形如 `/workspace/{user_id}/{sandbox_id}`）|
-| 写入文件 | `sandbox write <id> --source <文件名>`（不传 `--path` 默认写到 working-directory）；`--path <路径>` 传相对路径自动加 working-directory 前缀，绝对路径原样使用 |
-| 批量写入 | `sandbox write-multiple <id> --entry <远程路径>=<本地路径> [--entry ...]` |
-| 上传目录 | `sandbox upload <id> --source <本地目录> --target <沙箱路径>` |
-| 列出目录 | `sandbox ls <id> --path <路径>`（默认 `.`）|
-| 文件元数据 | `sandbox stat <id> --path <path>` |
-| 移动/重命名 | `sandbox mv <id> --entry <src=dest> [--entry ...]` |
-| 替换内容 | `sandbox replace <id> --path <path> --old <文本> --new <文本>` |
-| 修改权限 | `sandbox chmod <id> --path <path> --mode <八进制>` |
-| 删除文件 | `sandbox rm <id> --path <path> [--path ...]` |
-| 删除目录 | `sandbox rmdir <id> --path <路径> [--path ...]` |
-| 创建目录 | `sandbox mkdir <id> --path <路径> [--path ...]` |
-| 搜索文件 | `sandbox search <id> --path <根目录> --pattern <glob>` |
-| 上传目录 | `sandbox upload <id> --source <本地目录> --target <沙箱路径>` |
+| **Discover** | |
+| View available images (image names) | `sandbox images` — returns `image_name` (public image name), `tags` (purpose tags) and `description` (brief image description) for each image; when there are many, **choose an image that suits the task using `description` and `tags`** (for example, Pytorch → `PyTorch CUDA13 (GPU)`, vLLM → `vLLM …`, or check `supports_shared_workspace` when a shared workspace is needed) |
+| View remaining allocatable resources | `sandbox resources` — returns available GPUs, GPU memory and cores grouped by compute source: `compute_sources[].source` is `private` (private compute) or `third_party` (third-party compute); the shape of `gpu_types` varies by group (`private` includes `vgpu`/`core`/`memory_mib`; `third_party` includes `gpu_name`/`total_gpu_num`/`idle_gpu_num`). The compute backend is an internal detail and is selected automatically; it need not be specified. |
+| Get a resource recommendation | `sandbox recommend --cpu N --memory XGi [--gpu N] [--gpu-mem N]` (`--memory`/`--gpu-mem` accept g/m/G/M formats such as `1G`/`512M`; the CLI converts these automatically to Gi/Mi) |
+| List the current user's sandboxes | `sandbox list [--status <running/finished/killed/error>] [--start-time <ISO8601>] [--end-time <ISO8601>] [--sandbox-id <id>] [--days N]` |
+| **Lifecycle** | |
+| Create a sandbox | `sandbox create --image-name <image-name> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <model> --shm-size XGi --devices kvm --max-life M]`; `--memory`/`--gpu-mem` accept g/m/G/M formats (for example `1G`/`512M`, including lower-case forms), which the CLI converts to the server's `Gi`/`Mi` units; `--image-name` takes an image name (the `image_name` field returned by `sandbox images`, for example `"PyTorch CUDA13 (GPU)"`); the underlying image identifier is hidden from users. `--gpu-type` selects a GPU model (for example `"RTX 4090"` or `H100`); see `gpu_types[].gpu_name` in the output of `sandbox resources` for available models. If omitted, scheduling is automatic. `--shm-size` increases the container's `/dev/shm` (default is only 64Mi; essential for multiprocessing/DataLoader workloads; **must include Gi/Mi units** and must not exceed `--memory`; only applied on private compute). `--devices kvm` requests host-device passthrough (the container receives `/dev/kvm` for nested virtualisation; an operator must enable it on the allowlist; only applied on private compute). Add `--no-auto-cleanup` if you do not want automatic cleanup (only an explicit kill/finish destroys it). `--shared-workspace` defaults to true and enables a shared workspace; `supports_shared_workspace` in `sandbox images` indicates whether that compute source supports one. For quick tasks that do not rely on shared data, use `--shared-workspace=false` to skip workspace seeding/write-back. |
+| Shared workspace (persistence across sandboxes) | `--shared-workspace=true` (the default) enables a shared workspace: when creating a sandbox, the platform **seeds** the user's workspace data into `/workspace/{user_id}`; on `kill`/`finish` it **writes the data back**, and the next sandbox receives it automatically, allowing files to be retrieved across sandboxes. **The only persistent directory is `/workspace/{user_id}`**. Files written elsewhere (`/tmp`, `/root`, custom directories, etc.) are lost when the sandbox is destroyed, so put any results you need to keep in this directory. ⚠️ Whether data persists across sandboxes depends on whether the platform detects a pre-installed `rclone` in the image at creation time: with rclone, seeding/write-back works; without it, those steps are skipped (data is not persisted across sandboxes, but creation still succeeds). If you are unsure whether an image includes rclone, write to `/workspace/{user_id}`, destroy the sandbox and create another to check. For quick tasks that do not rely on shared data, use `--shared-workspace=false` to skip seeding/write-back. |
+**Per-sandbox resource limits**: cpu ≤ 512 / memory ≤ 1024Gi / gpu ≤ 64 / gpuMem ≤ 1024Gi / shmSize ≤ memory. Requests above these limits fail quickly rather than hanging.
+| Extend the lifecycle | `sandbox extend <sandbox_id> --max-life N` — **dynamically extend** a running sandbox's max-life (increase or decrease it; N must exceed the elapsed minutes and be ≤10080; use `kill`/`finish` for early cleanup; sandboxes with `--no-auto-cleanup` do not need renewal). Without `--max-life`, this command reports the current lifecycle (elapsed time, time remaining and expiry); `status` output includes a `data.lifecycle` summary (elapsed time, time remaining and expiry; omitted if the lifecycle endpoint is unavailable). |
+| Connect to a sandbox | `sandbox connect <id>` |
+| View status | `sandbox status <id>` |
+| Finish a sandbox | `sandbox finish <id> [--results '{...}']` |
+| Destroy a sandbox | `sandbox kill <id>` |
+| **Command execution** | |
+| Run a command synchronously (≤60s) | `sandbox run <id> --command "..." [--timeout <seconds>] [--summary/--no-summary] [--artifacts]` |
+| Run a command in the background (>60s) | `sandbox run-bg <id> --command "..." [--timeout <seconds>] [--wait] [--summary/--no-summary] [--artifacts]` |
+| View background logs | `sandbox logs <id> [--execution-id <exec_id>] [--tail N --grep <pattern> --context N] [--stream]` (`--execution-id` is optional; if omitted, query ES by sandbox only; only `--stream` requires it) |
+| Interrupt a background command | `sandbox cancel <id> --execution-id <exec_id>` |
+| **Tunnelling (port exposure)** | |
+| Expose a port publicly | `sandbox expose <id> [--port N]` — expose a service port inside the sandbox to the public internet and return `public_url` (`http://<host>:<remote_port>`, where the server randomly assigns `remote_port` from 20000–29999); **start the service before exposing it** (the server reports “service not ready” if its health check fails); `--port` defaults to 8700 (platform convention) |
+| List active tunnels | `sandbox exposes <id>` — list the public tunnels currently active for this sandbox |
+| Reclaim a tunnel | `sandbox dispose <id> --port N` — explicitly reclaim a single tunnel (stop frpc and release the public port); killing the sandbox also reclaims all its tunnels |
+| **File operations** | |
+| Read a file | `sandbox read <id> --path <path> [--output <local-path> --tail N --grep <pattern> --offset N --limit N --context N --max-bytes N --parse-json]` |
+| Pull a file/directory | `sandbox pull <id> --source <sandbox-path> --target <local-path> [--recursive] [--pattern <glob>]` — pull a single file or recursively pull a directory, with sha1 verification (the reverse of upload: source=remote, target=local) |
+| View the working directory | `sandbox working-directory <id>` (returns `data.path`, such as `/workspace/{user_id}/{sandbox_id}`) |
+| Write a file | `sandbox write <id> --source <filename>` (without `--path`, writes to the working directory by default); a relative `--path <path>` is prefixed with the working directory, while an absolute path is used as given |
+| Write multiple files | `sandbox write-multiple <id> --entry <remote-path>=<local-path> [--entry ...]` |
+| Upload a directory | `sandbox upload <id> --source <local-directory> --target <sandbox-path>` |
+| List a directory | `sandbox ls <id> --path <path>` (defaults to `.`) |
+| File metadata | `sandbox stat <id> --path <path>` |
+| Move/rename | `sandbox mv <id> --entry <src=dest> [--entry ...]` |
+| Replace content | `sandbox replace <id> --path <path> --old <text> --new <text>` |
+| Change permissions | `sandbox chmod <id> --path <path> --mode <octal>` |
+| Delete files | `sandbox rm <id> --path <path> [--path ...]` |
+| Delete directories | `sandbox rmdir <id> --path <path> [--path ...]` |
+| Create directories | `sandbox mkdir <id> --path <path> [--path ...]` |
+| Search files | `sandbox search <id> --path <root-directory> --pattern <glob>` |
+| Upload a directory | `sandbox upload <id> --source <local-directory> --target <sandbox-path>` |
 
-## 完整生命周期
+## Full lifecycle
 
-1. **选择镜像（按需）**：
-   - 算力后端（provider）是内部概念，由系统自动选择，**不需要也不支持用户指定**。
-   - 如果请求里已经明确指定了镜像（例如 `--image-name "PyTorch CUDA13 (GPU)"`，镜像名）和资源（cpu/memory/gpu，以及可选的 `--gpu-type`/`--shm-size`/`--devices`），**直接跳到步骤 2 创建 sandbox**，不要再调 `sandbox images` / `sandbox recommend`。
-   - 只有在用户要求“推荐一个配置”或需要查询可用镜像时，才调用：
-     - `delta-cli sandbox images` — 服务端支持的镜像列表（返回镜像名，隐藏底层镜像标识）
-     - `delta-cli sandbox recommend --cpu N --memory XGi [--gpu N]` — 资源配置推荐
-2. **创建**：`delta-cli sandbox create --image-name <镜像名> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`。**返回的 JSON 信封中是 `data.sandbox_id`，不是 `data.id`；后续所有命令必须使用这个真实的 `sandbox_id`。**（创建后 sandbox 立即可用，无需额外连接）。**响应会回显请求的镜像名/resource（服务端未返回的字段由 CLI 用请求值补齐，服务端返回值优先），可直接核对一遍资源配置，无需额外调 status。**（镜像回显为显示名；`provider` 为内部概念，不再回显）。**同一次任务若已有 `sandbox_id`，禁止再次 create，必须优先复用。**
-    - --max-life 指定 sandbox 最大存活时间（分钟），默认 30。长任务请调高，确保 sandbox 在命令执行期间不被回收。
-    - **`--gpu-mem`（单位 MiB）要匹配实际运行的模型**：模型参数量/精度越大所需显存越大，大模型塞进过小显存会直接 OOM。示例中的 8000（8GiB）只适配小模型，跑 7B/9B/13B 前先评估显存需求并适当调大。**语义：`--gpu-mem` 是【每张卡】的显存 MiB（`--gpu 2 --gpu-mem 8000` = 每卡 8000MiB、总 16000MiB）；`--memory` 是容器 CPU 内存总量。**
-    - **`--gpu-type <型号>`（可选）指定 GPU 型号**：如 `"RTX 4090"`、`H100`，将任务调度到该型号 GPU 上；可用 `sandbox resources` 查看可选型号（`gpu_types[].gpu_name`）。仅在用户明确要求特定型号时使用；不传则由系统自动调度。
-    - **`--shm-size <大小>`（可选）调大容器 `/dev/shm`**：默认只有 **64Mi**，PyTorch `DataLoader(num_workers>0)`、`torch.multiprocessing`/共享内存、Chromium 系内核（Playwright/Selenium）等场景会因共享内存不足报 `No space left on device` / `Bus error`，此时按需调大（如 `--shm-size 4Gi`）。硬约束：**必须带 Gi/Mi 单位**（`4Gi`/`512Mi`；`4G`/`512M` 由 CLI 归一化为 `4Gi`/`512Mi`，裸数字 `4` 会被服务端拒绝并给出明确报错，因为它的语义与服务端不一致），**不得超过 `--memory`**（`/dev/shm` 是内存文件系统，占用计入容器 memory cgroup，写满会 OOMKill），而 `--memory` 默认只有 `1Gi` —— 调大 shm 通常要同时调大 `--memory`（如 `--memory 8Gi --shm-size 4Gi`）。只有私有算力（`private`）会真正应用该参数（第三方算力忽略它）；但单位与上限校验在创建前就会执行、与后端无关，写错的值不会因为“用的是第三方算力”而被放过。create 响应回显生效的 `resource.shmSize`，可据此核对。
-    - **`--devices <令牌>`（可选）申请宿主机设备直通**：逗号分隔令牌（目前支持 `kvm` → 容器内出现 `/dev/kvm`），用于**嵌套虚拟化**（在沙箱里跑 QEMU/KVM、Android 模拟器、Kata 等工作负载）。**它属于权限提升而非普通资源申请**——设备直通会把宿主机设备暴露进容器，所以服务端有显式白名单：运维未开启时创建会被**明确拒绝（不会静默忽略）**，遇到该报错不要重试、不要换写法，应改用不依赖该设备的方案。只有私有算力（`private`）会真正应用该参数（第三方算力忽略它），但白名单校验在创建前就会执行、与后端无关。
-    - `--no-auto-cleanup`：加此 flag 后该 sandbox **不会被自动清理**（服务端超时回收 + 本地周期 cleanup_stale 均跳过），只能通过显式 `sandbox kill`/`finish` 销毁。仅当任务确实需要跨越周期清理长期存活时才使用，任务结束后必须主动销毁，避免资源泄漏。
-    - **禁止在 create 成功后反复调用 `sandbox status` 轮询**。`sandbox create` 返回时 sandbox 已经就绪，直接用它返回的 `data.sandbox_id` 执行 `write`/`run` 即可。多余的轮询会增加工具调用次数且没有任何收益。
-3. **写入代码/数据**：
-   - **单个文件**：`delta-cli sandbox write <id> --source <文件名>` — 不传 `--path`，默认写到该 sandbox 的 working-directory（`/workspace/{user_id}/{sandbox_id}/`，可用 `delta-cli sandbox working-directory <id>` 查询）。`--source` 只传本地文件名（如 `--source train.py`），**禁止**使用 `"$WORKSPACE_ROOT/train.py"` 或 `$(pwd)/train.py` 等 Shell 变量路径。`--source` 让 CLI 自行读取本地文件，不会经过 Shell 展开，是最安全的方式。若需指定路径，`--path <相对路径>` 会自动加 working-directory 前缀，绝对路径原样使用（**不建议**写 `/workspace/<filename>` 这种落在 `{user_id}` 之外的位置，kill 后不持久化）。写入后返回的 `size` 字段是实际磁盘字节数（来自 stat 验证），可对比确认写入完整性。少量配置（<20 行）可用 `--data "..."`，但此时必须带 `--path`。文件路径和扩展名由镜像中的运行时决定。
-   - **批量写入**：`sandbox write-multiple <id> --entry <远程路径>=<本地路径> [--entry ...]`（远程路径在 `=` 左边，本地路径在右边，`--data` 批量写入不可用）
-   - **上传目录**：`sandbox upload <id> --source <本地目录> --target <沙箱路径>` — CLI 将本地目录打包为 tar.gz，通过 multipart/form-data 上传，服务端自动解压到 target 目录。返回每个文件的路径、大小、模式。上传后 CLI 自动对比本地和远程文件清单做完整性校验（大小不匹配、多余文件等会告警）。
-     - **注意**：`--source` 是**本地目录路径**，`--target` 是**沙箱内的目标目录**，target 目录不存在会自动创建。
-     - 支持嵌套目录，空目录也会被创建。
-     - **写后验证（可选）**：`sandbox stat <id> --path <path>` 确认文件存在且 size 符合预期即可。**不要**用 `sandbox ls` + `sandbox read` 把刚写入的文件读回宿主再逐字对比；无异常时不需要读回。
-4. **运行命令**：
-    - **短任务（预计 ≤ 60 秒）**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，命令的 stdout/stderr 通过 SSE **以原始 `data:` 帧逐帧透传到 stdout**（无末尾信封），`exit_code` / `log_file` / `execution_id` 从 `complete` 帧读取。完整 `stdout` 在完成后写入 run envelope 日志文件（`log_file` 字段），需要读全文或提取末尾 JSON 时用 `sandbox read`，**不要**再调用 `sandbox logs`。可通过 `--log-file <路径>` 自定义 run envelope 日志文件路径；默认值为 `/workspace/{user_id}/sandbox_logs/delta-result-{sandbox_id}-{execution_id}.json`（以服务端返回的 `log_file` 字段为准）。脚本经 `sandbox write` 落盘后位于 working-directory，运行命令需用完整路径 `<working-directory>/<文件名>`（先 `sandbox working-directory <id>` 查询）。根据镜像中的运行时构造命令，常见示例（`<wd>` 为 working-directory）：
-     - Python：`python <wd>/train.py`
-     - Node.js：`node <wd>/app.js`
-     - Go：`go run <wd>/main.go`
-     - Shell：`bash <wd>/run.sh`
-   - **长任务（预计 > 60 秒，如下载模型、训练、编译、大规模数据处理）**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> [--log-file <路径>]` 提交后台任务，获得 `execution_id` 后通过以下命令查询：
-       - `delta-cli sandbox logs <id> --execution-id <execution_id> --stream` — SSE 实时跟随，原始 `data:` 帧逐帧透传到 stdout，直到 `complete` 事件（含 `exit_code`/`log_file`），无末尾信封（`--stream` 必须传 `--execution-id`）。
-       - `delta-cli sandbox logs <id> --execution-id <execution_id>` — 快照信封，返回 `stdout_tail`（末尾 800 字节）、`stderr_tail`（末尾 200 字节）、`stdout_size`、`stderr_size`、`cursor`、`running`、`finished`、`exit_code`、`log_file`（完成后）。当 `finished=true` 时认为完成，完整输出需读取 `log_file`。`--execution-id` 可省略：省略时仅按 sandbox 查询，服务端因 sandbox_id / execution_id 未同时传递而自动走 ES 查询，返回按 execution_id 聚合的**数组**。
-           禁止对长任务使用同步 `sandbox run`
+1. **Choose an image (if needed)**:
+   - The compute backend (provider) is an internal detail selected automatically by the system; **users neither need to nor can specify it**.
+   - If the request already specifies the image (for example, the image name in `--image-name "PyTorch CUDA13 (GPU)"`) and resources (cpu/memory/gpu, plus optional `--gpu-type`/`--shm-size`/`--devices`), **go straight to step 2 and create the sandbox**. Do not call `sandbox images` or `sandbox recommend` again.
+   - Call these only when the user asks for “a configuration recommendation” or you need to check which images are available:
+     - `delta-cli sandbox images` — list the images supported by the server (returns image names and hides the underlying image identifiers)
+     - `delta-cli sandbox recommend --cpu N --memory XGi [--gpu N]` — recommend a resource configuration
+2. **Create**: `delta-cli sandbox create --image-name <image-name> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120`. **The returned JSON envelope contains `data.sandbox_id`, not `data.id`; all later commands must use this real `sandbox_id`.** (The sandbox is ready immediately after creation; there is no need to connect.) **The response echoes the requested image name/resources (the CLI fills in fields omitted by the server using the request values, while server values take precedence), so you can verify the resource configuration without calling status.** (The echoed image is its display name; `provider` is an internal detail and is no longer echoed.) **If this task already has a `sandbox_id`, do not create another; reuse it first.**
+    - `--max-life` sets the sandbox's maximum lifetime in minutes; the default is 30. Increase it for long tasks so the sandbox is not reclaimed while a command is running.
+    - **Match `--gpu-mem` (in MiB) to the model being run**: larger models and higher precision need more GPU memory; a large model in too little memory will cause an OOM. The example value 8000 (8GiB) is suitable only for small models. Estimate memory needs and increase it as appropriate before running a 7B/9B/13B model. **Meaning: `--gpu-mem` is GPU memory in MiB per card (`--gpu 2 --gpu-mem 8000` = 8000MiB per card, 16000MiB in total); `--memory` is the container's total CPU memory.**
+    - **`--gpu-type <model>` (optional) selects a GPU model**: for example, `"RTX 4090"` or `H100`. This schedules the task on that GPU model. Use `sandbox resources` to see available models (`gpu_types[].gpu_name`). Specify a model only when the user explicitly requests one; otherwise, the system schedules automatically.
+    - **`--shm-size <size>` (optional) increases the container's `/dev/shm`**: the default is only **64Mi**. Workloads such as PyTorch `DataLoader(num_workers>0)`, `torch.multiprocessing`/shared memory and Chromium-based engines (Playwright/Selenium) may fail with `No space left on device` / `Bus error` when shared memory is insufficient; increase it as needed (for example, `--shm-size 4Gi`). Hard constraints: **include Gi/Mi units** (`4Gi`/`512Mi`; the CLI normalises `4G`/`512M` to `4Gi`/`512Mi`, while the server rejects a bare number such as `4` with a clear error because its meaning differs from the server's); **do not exceed `--memory`** (`/dev/shm` is a memory filesystem counted against the container's memory cgroup; filling it can cause an OOMKill). Since `--memory` defaults to only `1Gi`, increasing shm usually means increasing `--memory` too (for example, `--memory 8Gi --shm-size 4Gi`). This parameter is applied only on private compute (third-party compute ignores it); however, unit and limit checks happen before creation regardless of backend, so invalid values are rejected even when using third-party compute. The create response echoes the effective `resource.shmSize` for verification.
+    - **`--devices <token>` (optional) requests host-device passthrough**: a comma-separated token list (currently `kvm` is supported, which adds `/dev/kvm` inside the container), used for **nested virtualisation** workloads such as QEMU/KVM, Android emulators and Kata inside the sandbox. **This is a privilege escalation, not an ordinary resource request**: device passthrough exposes host devices to the container, so the server uses an explicit allowlist. If operations staff have not enabled it, creation is **explicitly rejected (not silently ignored)**. Do not retry or change the syntax after this error; use an approach that does not require the device. This parameter is applied only on private compute (third-party compute ignores it), but the allowlist check happens before creation regardless of backend.
+    - `--no-auto-cleanup`: when this flag is set, the sandbox **will not be cleaned up automatically** (both server-side timeout reclamation and the local periodic `cleanup_stale` process are skipped). It can be destroyed only by an explicit `sandbox kill`/`finish`. Use this only when the task genuinely needs to survive past periodic cleanup; you must destroy it explicitly when the task is done to avoid leaking resources.
+    - **Do not repeatedly poll with `sandbox status` after a successful create**. The sandbox is ready as soon as `sandbox create` returns; use its returned `data.sandbox_id` directly for `write`/`run`. Extra polling adds tool calls without providing any benefit.
+3. **Write code/data**:
+   - **Single file**: `delta-cli sandbox write <id> --source <filename>` — omit `--path` to write to the sandbox's working directory by default (`/workspace/{user_id}/{sandbox_id}/`; query it with `delta-cli sandbox working-directory <id>`). Pass only a local filename to `--source` (for example, `--source train.py`). **Do not** use shell-variable paths such as `"$WORKSPACE_ROOT/train.py"` or `$(pwd)/train.py`. With `--source`, the CLI reads the local file itself without shell expansion, making this the safest option. If you need a specific path, a relative `--path <relative-path>` is automatically prefixed with the working directory; absolute paths are used as given (**avoid** paths such as `/workspace/<filename>` outside `{user_id}`, as they do not persist after `kill`). The returned `size` field is the actual number of bytes on disk (verified with stat), so you can check that the write is complete. For small configuration files (<20 lines), you may use `--data "..."`, but you must also pass `--path`. File paths and extensions depend on the runtime in the image.
+   - **Write multiple files**: `sandbox write-multiple <id> --entry <remote-path>=<local-path> [--entry ...]` (remote path is on the left of `=`, local path on the right; bulk writes with `--data` are not supported)
+   - **Upload a directory**: `sandbox upload <id> --source <local-directory> --target <sandbox-path>` — the CLI packages the local directory as tar.gz and uploads it using multipart/form-data; the server extracts it into the target directory. The response lists each file's path, size and mode. After upload, the CLI checks the local and remote file lists for integrity and warns about mismatched sizes, extra files and similar issues.
+     - **Note**: `--source` is a **local directory path**; `--target` is the **target directory inside the sandbox**. The target directory is created if it does not exist.
+     - Nested directories are supported, and empty directories are created too.
+     - **Optional post-write check**: use `sandbox stat <id> --path <path>` to confirm that the file exists and its size is as expected. **Do not** use `sandbox ls` plus `sandbox read` to read the just-written file back to the host and compare it character by character; if there is no issue, no read-back is needed.
+4. **Run the command**:
+    - **Short task (expected to take ≤ 60 seconds)**: run synchronously with `delta-cli sandbox run <id> --command "<command>" --timeout <seconds>`. The command's stdout/stderr is passed to stdout over SSE as **raw `data:` frames, one at a time** (with no trailing envelope). Read `exit_code` / `log_file` / `execution_id` from the `complete` frame. After completion, the full `stdout` is written to the run-envelope log file (the `log_file` field); use `sandbox read` to read it in full or extract trailing JSON. **Do not** then call `sandbox logs`. You can customise the run-envelope log path with `--log-file <path>`; the default is `/workspace/{user_id}/sandbox_logs/delta-result-{sandbox_id}-{execution_id}.json` (use the server-returned `log_file` field as authoritative). A script written with `sandbox write` is in the working directory; run it using its full path, `<working-directory>/<filename>` (first query `sandbox working-directory <id>`). Build the command for the runtime in the image. Common examples (where `<wd>` is the working directory):
+     - Python: `python <wd>/train.py`
+     - Node.js: `node <wd>/app.js`
+     - Go: `go run <wd>/main.go`
+     - Shell: `bash <wd>/run.sh`
+    - **Long task (expected to take > 60 seconds, such as a model download, training, compilation or large-scale data processing)**: submit it in the background with `delta-cli sandbox run-bg <id> --command "<command>" --timeout <seconds> [--log-file <path>]`. Once you have the `execution_id`, retrieve the result with one of these commands:
+        - `delta-cli sandbox logs <id> --execution-id <execution_id> --stream` — follow the task in real time over SSE, passing raw `data:` frames through to stdout until the `complete` event (including `exit_code`/`log_file`), with no trailing envelope (`--stream` requires `--execution-id`).
+        - `delta-cli sandbox logs <id> --execution-id <execution_id>` — returns a snapshot envelope with `stdout_tail` (last 800 bytes), `stderr_tail` (last 200 bytes), `stdout_size`, `stderr_size`, `cursor`, `running`, `finished`, `exit_code` and (after completion) `log_file`. Treat it as complete when `finished=true`; read `log_file` for the full output. You may omit `--execution-id`; if omitted, the server queries by sandbox only and automatically uses ES because `sandbox_id`/`execution_id` were not both supplied, returning an **array** aggregated by execution ID.
+            Do not use synchronous `sandbox run` for long tasks.
 
-   **推荐实践**：让 sandbox 脚本在 `stdout` 末尾打印一个独立的结构化 JSON 对象（例如 `{"status":"ok", ...}`）。SSE 路径下 CLI 会检测该末尾 JSON 并直接在 `complete` 帧里带出 `result_summary`，**任务结束后直接复用 complete 帧的 `result_summary` 写入 result.json**，无需再 `sandbox read` log_file 反向扫描。仅当 complete 帧缺失 `result_summary`（末尾无合法 JSON）时，才用 `sandbox read <id> --path <log_file>` 读取并按步骤 5 反向扫描提取，避免让大模型“读整段日志再摘要”。
-5. **生成 result.json**（SSE 首选：直接复用 complete 帧的 `result_summary`；缺失时才从 `log_file` 读取解析）：
-    - **获取 `log_file` 路径**：`run` / `run-bg --wait` 的 SSE `complete` 帧含 `log_file` 字段（CLI 已兜底补全）；`sandbox logs <id> --execution-id <eid>` 快照在 `finished=true` 后同样返回 `log_file`。需要 read 时再按下面方式解析：
-      - `sandbox read` 返回的是 CLI 信封 `{"ok":true,"data":{"content":"..."}}`，真实结果 JSON 在 `data.content` 字段里。
-      - **不要把 CLI 信封或完整长 `stdout` 原样写入本地 `result.json`**；应该解析后生成一份精简的结构化摘要。
-      - **推荐做法（避免 heredoc 引号失败）**：先用 `bash` 把信封写入临时文件，再用 `python3`（或 `python_repl`）读取该文件并生成 `result.json`。**不要**把 `delta-cli sandbox read` 的输出通过管道直接喂给内联 heredoc，管道+heredoc 的组合极易因 Shell 转义/引号问题失败。
-        1. `bash` 保存信封：
+   **Recommended practice**: have the sandbox script print a standalone structured JSON object at the end of `stdout` (for example, `{"status":"ok", ...}`). On the SSE path, the CLI detects this trailing JSON and includes it as `result_summary` in the `complete` frame. **When the task ends, reuse the `result_summary` from the complete frame directly in `result.json`**; there is no need to scan `log_file` again with `sandbox read`. Only if `result_summary` is missing from the complete frame (no valid trailing JSON) should you read `sandbox read <id> --path <log_file>` and scan backwards as described in step 5, avoiding a request for the model to “read the whole log and summarise it”.
+5. **Create result.json** (prefer the SSE path: reuse `result_summary` from the complete frame; only read and parse `log_file` if it is missing):
+    - **Get the `log_file` path**: the SSE `complete` frame from `run` / `run-bg --wait` contains a `log_file` field (the CLI fills it in as a fallback); the `sandbox logs <id> --execution-id <eid>` snapshot also returns `log_file` once `finished=true`. Parse it as below only when you need to read it:
+      - `sandbox read` returns a CLI envelope `{"ok":true,"data":{"content":"..."}}`; the actual result JSON is in the `data.content` field.
+      - **Do not write the CLI envelope or the full, lengthy `stdout` verbatim to local `result.json`**; parse it and create a concise structured summary.
+      - **Recommended approach (to avoid heredoc quoting failures)**: first use the available shell to save the envelope to a temporary file, then use `python3` (or `python_repl`) to read that file and create `result.json`. **Do not** pipe the output of `delta-cli sandbox read` directly into an inline heredoc; combining a pipe and heredoc is very likely to fail due to shell escaping/quoting.
+        1. Save the envelope in the available shell (Bash syntax example):
            ```bash
            delta-cli sandbox read <sandbox_id> --path <log_file> > /tmp/_delta_result_envelope.json
            ```
-        2. `python3` / `python_repl` 生成 `result.json`：
+        2. `python3` / `python_repl` creates `result.json`:
            ```python
            import json, os
 
            env = json.load(open("/tmp/_delta_result_envelope.json", encoding="utf-8"))
            raw = json.loads(env["data"]["content"])
 
-            # 精简到用户关心的极简字段，避免 host read_file 预览截断
+             # Reduce this to the minimal fields the user cares about, to avoid truncation in the host's read_file preview
             concise = {
                 "exit_code": raw.get("exit_code"),
                 "finished": raw.get("finished"),
@@ -237,7 +237,7 @@ required_outputs:
                 "error": raw.get("error"),
             }
 
-           # 优先提取 stdout 末尾的独立 JSON 对象作为 summary
+           # Prefer the standalone JSON object at the end of stdout as the summary
            stdout = raw.get("stdout", "")
            for line in reversed(stdout.strip().splitlines()):
                s = line.strip()
@@ -248,10 +248,10 @@ required_outputs:
                    except Exception:
                        pass
 
-           # 构造 result_summary：一行字符串，最终回答的 RESULT: 行直接用它
+           # Build result_summary as a one-line string and use it directly in the final RESULT: line
            parts = [f"exit_code={concise['exit_code']}", f"finished={concise['finished']}"]
            for key, value in concise["summary"].items():
-               # 避免把长文本塞进 result_summary
+               # Avoid putting long text in result_summary
                if isinstance(value, (str, int, float, bool)) and len(str(value)) < 200:
                    parts.append(f"{key}={value}")
            concise["result_summary"] = ", ".join(parts)
@@ -261,66 +261,66 @@ required_outputs:
                json.dump(concise, f, indent=2, ensure_ascii=False)
            print(concise["result_summary"])
            ```
-        3. 如果当前环境没有 `python3`，用 `jq`、`node` 或任何可解析 JSON 的工具实现**相同逻辑**：1）读取 `/tmp/_delta_result_envelope.json`；2）解开 CLI 信封取 `data.content`；3）解析内部 JSON；4）从 `stdout` 末尾提取 summary JSON；5）生成 `result_summary` 并写入 `result.json`。
-      - 如果 `stdout` 非常大（训练日志、下载日志等），不要把整段 `stdout` 写进 `result.json`；只保留关键指标和 preview。
-      - 完整原始输出仍保留在 sandbox 的 `log_file` 中，必要时可再次 `sandbox read` 获取。
-    - 写入本地副本的目的是让 host 的 deliverable 校验识别到真实的 `.json` 文件；由于校验是“或”语义，`.json` 文件会盖过 `torch.cuda` 等 token 被误判出的 `.cuda` 文件承诺。
-6. **销毁**：`delta-cli sandbox kill <id>`（如需保存结果，用 `sandbox finish --results '{...}'` 替代 kill，finish 会自动销毁 sandbox）
+        3. If `python3` is not available in the current environment, use `jq`, `node` or any JSON-capable tool to implement **the same logic**: 1) read `/tmp/_delta_result_envelope.json`; 2) unwrap the CLI envelope and get `data.content`; 3) parse the inner JSON; 4) extract the summary JSON from the end of `stdout`; 5) build `result_summary` and write `result.json`.
+      - If `stdout` is very large (training or download logs, etc.), do not put all of it in `result.json`; keep only key metrics and a preview.
+      - The complete raw output remains in the sandbox's `log_file` and can be retrieved again with `sandbox read` if needed.
+    - The purpose of writing a local copy is to let the host's deliverable check find an actual `.json` file. Since the check uses OR semantics, a `.json` file takes precedence over a `.cuda` file commitment mistakenly inferred from tokens such as `torch.cuda`.
+6. **Destroy the sandbox**: `delta-cli sandbox kill <id>` (if you need to save results, use `sandbox finish --results '{...}'` instead of kill; finish destroys the sandbox automatically)
 
-详细步骤见 [lifecycle.md](references/lifecycle.md)。
+For the detailed steps, see [lifecycle.md](references/lifecycle.md).
 
-## 内网穿透（端口暴露）
+## Tunnelling (port exposure)
 
-把沙箱内服务端口暴露到公网，让用户通过 `public_url` 直接访问。原理：沙箱内
-frpc 向外拨号到公网 frps，frps 把公网端口（20000-29999 随机分配）的 TCP 流量
-转发回沙箱内服务；**无需在宿主机为每个 sandbox 配置端口**（反向连接）。
+Expose a service port inside the sandbox to the public internet so the user can access it directly through `public_url`. How it works: inside the sandbox,
+`frpc` opens an outbound connection to the public `frps` server, which forwards TCP traffic from a randomly assigned public port (20000–29999)
+back to the service in the sandbox. **No per-sandbox port configuration is needed on the host** (this uses a reverse connection).
 
-可用命令：
+Available commands:
 
-| 命令 | 作用 |
+| Command | Purpose |
 |------|------|
-| `sandbox expose <id> [--port N]` | 暴露端口，返回 `public_url`；`--port` 默认 **8700**（平台约定），不传即可 |
-| `sandbox exposes <id>` | 查询该 sandbox 当前活跃隧道（service_port / remote_port / public_url） |
-| `sandbox dispose <id> --port N` | 显式回收单条隧道（杀 frpc + 释放公网端口） |
+| `sandbox expose <id> [--port N]` | Expose a port and return `public_url`; `--port` defaults to **8700** (platform convention), so you can omit it |
+| `sandbox exposes <id>` | List the tunnels currently active for this sandbox (service_port / remote_port / public_url) |
+| `sandbox dispose <id> --port N` | Explicitly reclaim one tunnel (stop frpc and release the public port) |
 
-必须遵守的顺序与约定：
+Follow this order and these conventions:
 
-1. **先启服务，再暴露**。expose 前服务必须在沙箱内监听（绑定 `0.0.0.0`，不是
-   仅 `127.0.0.1`），且服务端会对 `127.0.0.1:{port}` 探活——**任何 HTTP 响应
-   （含 4xx/5xx）都算存活**，只有连接失败/超时才报「服务未就绪」。
-2. **长驻服务必须前台常驻**：用 `run-bg` 时让服务进程成为任务的前台进程，
-   **禁止** `nohup ... &` 后台化（任务结束时后台进程会被回收，服务随之消失）：
+1. **Start the service before exposing it**. Before running `expose`, the service must be listening inside the sandbox (bound to `0.0.0.0`, not
+   only `127.0.0.1`), and the server checks `127.0.0.1:{port}` for health — **any HTTP response
+   (including 4xx/5xx) counts as alive**; only a connection failure or timeout reports “service not ready”.
+2. **Keep long-running services in the foreground**: with `run-bg`, make the service process the task's foreground process,
+   **Do not** background it with `nohup ... &` (the background process is reclaimed when the task ends, so the service disappears):
 
    ```bash
    delta-cli sandbox run-bg <id> --command "cd <wd> && exec python3 -m http.server 8700 --bind 0.0.0.0" --timeout 3600
-   delta-cli sandbox expose <id>   # --port 默认 8700，无需传
+   delta-cli sandbox expose <id>   # --port defaults to 8700; no need to pass it
    ```
 
-3. **生命周期自动回收**：`kill` sandbox 时服务端钩子自动把隧道记录置 closed，
-   frps 侧公网端口随 frpc 连接断开自动释放；`dispose` 用于不销毁 sandbox 的
-   显式回收。**暴露的端口对公网全开放，业务服务自身必须带鉴权**，不要裸奔端口。
-4. 公网连不上排查顺序：① 沙箱内服务是否监听（`curl 127.0.0.1:{port}`，可先
-   `sandbox run` 验证）→ ② frpc 进程是否存活（`ps aux | grep frpc`）→ ③ frps
-   公网主机连通性 → ④ 安全组是否放行业务端口段 → ⑤ frpc/frps 两端 token 一致。
+3. **Tunnels are reclaimed automatically with the sandbox lifecycle**: when the sandbox is killed, a server hook marks the tunnel record as closed,
+   and frps automatically releases the public port when the frpc connection closes; use `dispose` to reclaim a tunnel without destroying the sandbox.
+   **Exposed ports are fully open to the public internet, so the service itself must require authentication**; do not leave it unprotected.
+4. If the public URL is unreachable, troubleshoot in this order: (1) check whether the service is listening inside the sandbox (`curl 127.0.0.1:{port}`; you can test first with
+   `sandbox run`); (2) check whether the `frpc` process is alive (`ps aux | grep frpc`); (3) check connectivity to the public `frps` host;
+   (4) check whether the security group allows the service port range; (5) confirm that the frpc and frps tokens match.
 
-## 通用结构化输出约定
+## General structured-output convention
 
-本约定适用于**所有** `delta-sandbox` 任务（GPU/CPU、训练/推理/编译/数据处理等），目的是让 Runner 能直接从 `result.json` 读到结论，无需再次解析长日志。
+This convention applies to **all** `delta-sandbox` tasks (GPU/CPU, training/inference/compilation/data processing, etc.). Its purpose is to let the Runner read the result directly from `result.json` without parsing long logs again.
 
-### sandbox 脚本/命令应该输出的内容
+### What sandbox scripts/commands should output
 
-命令执行完毕后，推荐在 `stdout` 末尾打印一行**独立的结构化 JSON**。例如：
+After the command finishes, it is recommended to print a standalone line of **structured JSON** at the end of `stdout`. For example:
 
-- CUDA 检查：`{"status":"ok","torch_version":"2.5.1+cu121","cuda_available":true,"device_name":"NVIDIA H100 80GB HBM3"}`
-- 训练任务：`{"status":"ok","epochs":10,"final_loss":0.12,"final_accuracy":0.94,"model_file":"<wd>/model.pt"}`
-- 数据处理：`{"status":"ok","input_rows":10000,"output_rows":9876,"output_file":"<wd>/output.csv"}`
+- CUDA check: `{"status":"ok","torch_version":"2.5.1+cu121","cuda_available":true,"device_name":"NVIDIA H100 80GB HBM3"}`
+- Training task: `{"status":"ok","epochs":10,"final_loss":0.12,"final_accuracy":0.94,"model_file":"<wd>/model.pt"}`
+- Data processing: `{"status":"ok","input_rows":10000,"output_rows":9876,"output_file":"<wd>/output.csv"}`
 
-这样 SKILL 可以用同一套代码把它提取到 `result.json` 的 `summary` 字段，再生成 `RESULT:` 行。
+This lets the skill extract the result into the `summary` field of `result.json` with the same code, then produce the `RESULT:` line.
 
-- **禁止**在 stdout 中打印 `FINAL_ANSWER: ...` 这类冗余标记行；多余的标记会让 Runner 把普通文本误认为结果字段。
-- `summary` 中**不要**使用 `final_answer` 这类与 schema 重复的关键字。统一用语义字段表示结果，例如推理任务用 `generated_text` / `output` / `result`，训练任务用 `final_loss` / `final_accuracy`，数据处理用 `output_file` / `output_rows`。
+- **Do not** print redundant marker lines such as `FINAL_ANSWER: ...` to stdout; they may cause the Runner to mistake ordinary text for a result field.
+- Do **not** use schema-duplicate keys such as `final_answer` in `summary`. Use fields that describe the result, for example `generated_text`/`output`/`result` for inference, `final_loss`/`final_accuracy` for training, and `output_file`/`output_rows` for data processing.
 
-### 本地 `result.json` 通用 Schema
+### General local `result.json` schema
 
 ```json
 {
@@ -332,57 +332,57 @@ frpc 向外拨号到公网 frps，frps 把公网端口（20000-29999 随机分�
 }
 ```
 
-关键字段：
-- `summary`: 命令输出的结构化结果对象。
-- `result_summary`: **一行字符串**，与最终回答的 `RESULT:` 行内容一致，方便 Runner 直接读取。
-- `error`: 命令失败时的错误信息；成功时一般为 `null`。
-- **不要把完整 `stdout` 塞进来**。完整日志仍保留在 sandbox 的 `log_file` 中。
+Key fields:
+- `summary`: the structured result object printed by the command.
+- `result_summary`: a **one-line string** matching the final answer's `RESULT:` line, so the Runner can read it directly.
+- `error`: error information when the command fails; usually `null` on success.
+- **Do not include the full `stdout`**. The complete log remains in the sandbox's `log_file`.
 
-## 输出阅读与最终回答格式
+## Reading output and final-answer format
 
-1. **SSE 路径下 `sandbox run` / `run-bg --wait` 的 complete 帧直接带 `result_summary`**（CLI 检测 stdout 末尾 JSON 注入）以及 `stdout` / `stderr` / `log_file`（CLI 兜底补全）。`exit_code` / `log_file` / `execution_id` 从 complete 帧读取；命令失败时 complete 帧后追加 `error.type: command_failed` 信封（进程退出码 8）。`log_file` 路径也可从 `sandbox logs <id> --execution-id <eid>` 快照（`finished=true` 后）获得。
-2. **提取摘要**：首选直接复用 complete 帧的 `result_summary`；缺失时用 `sandbox read <id> --path <log_file>` 读取 run envelope 日志文件并解析，反向扫描 stdout 末尾 JSON 生成 `result_summary`（见“完整生命周期”步骤 5）。
-   - run envelope 日志文件包含完整 `stdout`、`stderr`、`exit_code`、`finished`、`command`、`error`。
-3. **生成本地精简 `result.json`**（见“完整生命周期”步骤 5 和“通用结构化输出约定”）。本地副本只应包含关键字段和摘要，**不应包含完整长 `stdout`**。
-4. **最终回答必须且只能是 `RESULT:` 开头的一行。**
-   - 优先直接复用 `result.json` 里的 `result_summary` 字段：
+1. **On the SSE path, the `complete` frame from `sandbox run` / `run-bg --wait` includes `result_summary`** (injected by the CLI when it detects trailing JSON) and `stdout` / `stderr` / `log_file` (filled in by the CLI as a fallback). Read `exit_code` / `log_file` / `execution_id` from the complete frame. On command failure, an `error.type: command_failed` envelope is appended after the complete frame (process exit code 8). The `log_file` path can also be obtained from a `sandbox logs <id> --execution-id <eid>` snapshot after `finished=true`.
+2. **Extract the summary**: prefer reusing `result_summary` from the complete frame directly. If it is missing, read the run-envelope log file with `sandbox read <id> --path <log_file>`, parse it and scan backwards through trailing stdout JSON to produce `result_summary` (see step 5 in “Full lifecycle”).
+   - The run-envelope log file contains the full `stdout`, `stderr`, `exit_code`, `finished`, `command` and `error`.
+3. **Create a concise local `result.json`** (see step 5 in “Full lifecycle” and “General structured-output convention”). The local copy should contain only key fields and a summary, **not the full, lengthy `stdout`**.
+4. **The final answer must be a single line beginning with `RESULT:`.**
+   - Prefer reusing the `result_summary` field in `result.json` directly:
      ```text
-     RESULT: <result.json 中的 result_summary>
+     RESULT: <result_summary from result.json>
      ```
-   - 如果 `result_summary` 缺失，则从 `summary` 对象构造一行，例如：
+   - If `result_summary` is missing, build one line from the `summary` object, for example:
      ```text
      RESULT: exit_code=0, status=ok, torch_version=2.7.0+cu128, cuda_available=True, device_name=NVIDIA GeForce RTX 3090.
      ```
-5. **`final_response` 必须以 `RESULT:` 开头**
-   - **首位字符必须是 `R`，紧接 `ESULT:` 前缀**，整串只有 `RESULT: <result_summary>` 一行，不允许任何前置自然语言、空行、过渡句或过程汇报。
-   - 原因：host Runner 与下游 LLM 默认只识别 `RESULT:` 开头的 `final_response` 并把其后内容作为任务结论转述给用户。任何前置文字——包括"沙箱已销毁"、"任务完成"、"完整的生命周期已完成"等中性过程汇报——都会让 Runner 把 `final_response` 当作过程摘录而非最终结论，转而向用户输出"未包含具体内容"等失败回复，让真实结论丢失。
-   - 正确：`RESULT: exit_code=0, cuda_available=True, torch_version=2.5.1+cu121, device_name=NVIDIA H100 80GB HBM3`
-   - 错误（前缀污染，真实案例）：`沙箱已成功销毁。完整的生命周期已完成：创建 → 写入 → 运行 → 生成 result.json → 销毁。\n\nRESULT: torch_version=2.5.1+cu121, cuda_available=True, ...` —— Runner 读到"沙箱已成功销毁..."前缀后已放弃读取后段 `RESULT:`，用户最终看到"未包含 result.json 的具体内容"的失败回复。
-   - 错误：`Sandbox killed successfully. Final answer with result summary. RESULT: ...`
-   - 错误：`Sandbox killed. Task done. Need final answer exactly RESULT: line from result_summary. RESULT: ...`
-   - 错误：`The user wants me to verify CUDA... RESULT: ...`
-   - 错误：`Summary: ... RESULT: ...`
-   - 错误：在 `RESULT:` 后追加 `Let me know if you need anything else.` 等多余句子。
-6. **不要依赖或被截断的 `stdout`/`stderr` 字段**，关键结论必须来自 `result.json` 的 `summary` / `result_summary`。
-7. **`sandbox kill` 成功后不再调用任何工具**。kill 命令返回 `{ok:true}` 即表示任务已收尾，**下一回合的 `final_response` 必须严格遵守 RULE 5 的 `RESULT:` 开头格式**。禁止在 `RESULT:` 之前插入"沙箱已成功销毁"、"完整的生命周期已完成"、"任务完成"、"Sandbox killed" 等任何过渡句或过程汇报——这些信息 Runner 不需要，且会把 `RESULT:` 挤到 `final_response` 后段，触发 RULE 5 所述的结论丢失问题。也禁止再调 `bash`/`read_file`/`ls` 等工具，禁止以 "Need final answer exactly..." 等内心独白开头。
+5. **`final_response` must begin with `RESULT:`**
+   - **The first character must be `R`, immediately followed by the `ESULT:` prefix**; the entire response must be a single line, `RESULT: <result_summary>`, with no preceding natural language, blank lines, transition or progress report.
+   - Reason: the host Runner and downstream LLM recognise a `final_response` beginning with `RESULT:` by default, then pass the content after it to the user as the task result. Any preceding text—including neutral status updates such as “Sandbox destroyed”, “Task complete” or “Full lifecycle complete”—makes the Runner treat `final_response` as a process extract rather than the final result. It may then show a failure message such as “No specific result.json content was included” and lose the actual result.
+   - Correct: `RESULT: exit_code=0, cuda_available=True, torch_version=2.5.1+cu121, device_name=NVIDIA H100 80GB HBM3`
+   - Incorrect (prefix contamination; a real example): `Sandbox destroyed successfully. The full lifecycle is complete: create → write → run → generate result.json → destroy.\n\nRESULT: torch_version=2.5.1+cu121, cuda_available=True, ...` — after seeing the “Sandbox destroyed successfully...” prefix, the Runner stopped reading before the later `RESULT:` line, and the user saw “No specific result.json content was included”.
+   - Incorrect: `Sandbox killed successfully. Final answer with result summary. RESULT: ...`
+   - Incorrect: `Sandbox killed. Task done. Need final answer exactly RESULT: line from result_summary. RESULT: ...`
+   - Incorrect: `The user wants me to verify CUDA... RESULT: ...`
+   - Incorrect: `Summary: ... RESULT: ...`
+   - Incorrect: adding extra sentences after `RESULT:`, such as `Let me know if you need anything else.`
+6. **Do not rely on `stdout`/`stderr` fields that may be truncated**; key conclusions must come from `summary` / `result_summary` in `result.json`.
+7. **Do not call any more tools after `sandbox kill` succeeds**. A kill response of `{ok:true}` means the task is finished; the **next turn's `final_response` must strictly follow rule 5 and begin with `RESULT:`**. Do not put any transition or progress report before `RESULT:`, including “Sandbox destroyed successfully”, “Full lifecycle complete”, “Task complete” or “Sandbox killed”; the Runner does not need these details, and they would push `RESULT:` later in `final_response`, risking the lost-result problem described in rule 5. Do not call any shell, `read_file` or `ls` tool again, and do not start with an internal monologue such as “Need final answer exactly...”.
 
-## 宿主 / Planner 调用提示
+## Host / Planner call guidance
 
-本 skill 设计成“结论自包含”：执行结束后，**`result.json` 的 `result_summary` 与 `final_response` 已经包含最终面向用户的结论**。因此：
+This skill is designed to make the conclusion self-contained: when execution ends, **`result.json`'s `result_summary` and `final_response` already contain the user-facing conclusion**. Therefore:
 
-- **Planner** 调用本 skill 的 plan step 时，`required_outputs` 必须声明 `.json`（见上方“请求措辞约定”）。
-- **宿主（host / Runner / finalize 阶段）** 在收到 skill 返回后，应直接把 `final_response` 或 `result.json` 里的 `result_summary` 作为最终答案，**不要再让大模型去读取 result.json、验证文件内容或重新推理**。
-- 如果宿主担心内容不可信，可以读取 `result.json` 核对，但**最终输出仍必须是 `RESULT:` 开头的一行**，不允许把“我需要先读取文件验证”、“Wait, I don't have...”等思考过程暴露给用户。
+- When the **Planner** calls this skill in a plan step, `required_outputs` must include `.json` (see “Request wording conventions” above).
+- After receiving the skill result, the **host (host / Runner / finalize stage)** should use `final_response` or `result_summary` in `result.json` directly as the final answer. **Do not ask the model to read `result.json`, verify its contents or reason again.**
+- If the host is concerned that the content may be untrusted, it may inspect `result.json`, but the **final output must still be a single line beginning with `RESULT:`**. Do not expose reasoning such as “I need to read the file to verify it” or “Wait, I don't have...” to the user.
 
-## 常见恢复
+## Common recovery
 
-| 错误 / 现象 | 恢复动作 |
+| Error / symptom | Recovery action |
 |-------------|----------|
-| `error.type: not_found` | 检查 sandbox_id 是否正确，是否已被 kill |
-| `error.type: network` | 检查 base_url 和网络连通性 |
-| `error.type: validation` | 检查参数格式和必填 flag |
-| `error.type: auth / permission` | 参考 delta-shared 的权限不足处理 |
-| `error.type: api`（5xx） | 服务端错误，检查 API 服务状态 |
-| 命令执行失败（exit_code ≠ 0） | 查看 `run` 返回的 stdout/stderr |
-| 命令超时 | 增加 `--timeout` 或使用 `run-bg` |
-| `error.type: internal` | 客户端内部错误，检查 delta-cli 版本或联系维护者 |
+| `error.type: not_found` | Check whether `sandbox_id` is correct and whether the sandbox has been killed |
+| `error.type: network` | Check `base_url` and network connectivity |
+| `error.type: validation` | Check parameter formats and required flags |
+| `error.type: auth / permission` | Follow the permission-denied guidance in delta-shared |
+| `error.type: api` (5xx) | Server error; check the API service status |
+| Command execution failed (`exit_code ≠ 0`) | Check stdout/stderr returned by `run` |
+| Command timed out | Increase `--timeout` or use `run-bg` |
+| `error.type: internal` | Client-side internal error; check the delta-cli version or contact the maintainer |
