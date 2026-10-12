@@ -1,25 +1,27 @@
-# PubChem 详细规则
+# PubChem reference
 
-只能通过 `delta-cli science invoke` 调用。本文件中的业务响应位于 CLI 顶层 `data`；
-只按本文件说明读取字段，不得递归搜索。本文件中的 URL 只用于说明 endpoint schema，
-不授权直接 HTTP。普通名称基础查询只调用一次 `compound-summary`；多个名称
-只调用一次 `compound-batch-summary`，默认 body 仅包含 `identifiers` 和
-`namespace:"name"`，不得先调用 health/schema。
+Call this tool only through `delta-cli science invoke`. Business responses are in the top-level
+CLI `data`; read only the fields described here and do not search recursively. URLs in this file
+explain the endpoint schema and do not authorise direct HTTP access. For a basic lookup by a
+single common name, call `compound-summary` once. For multiple names, call
+`compound-batch-summary` once with a default body containing only `identifiers` and
+`namespace:"name"`; do not call health or schema first.
 
-结果直接从 `data` 投影。批量记录位于 `data.results[*]`，原始标签在 `input`，
-属性在嵌套 `properties`。SMILES 回退顺序固定为
-`CanonicalSMILES -> ConnectivitySMILES -> SMILES -> IsomericSMILES`。
-PubChem `XLogP` 与 RDKit `MolLogP` 不得互换；not_found 不得用本地计算补值。
+Project results directly from `data`. Batch records are in `data.results[*]`, the original label
+is in `input`, and properties are nested under `properties`. Use this fixed SMILES fallback
+order: `CanonicalSMILES -> ConnectivitySMILES -> SMILES -> IsomericSMILES`. Do not treat PubChem
+`XLogP` and RDKit `MolLogP` as interchangeable; do not fill a `not_found` result with local
+calculations.
 
 Namespaces: `cid`, `name`, `smiles`, `inchi`, `inchikey`, `formula`.
 
 ## Health
 
-operation：`health`，无 body。
+Operation: `health`; no request body.
 
 ## Resolve CIDs
 
-operation：`compound-resolve-cids`。
+Operation: `compound-resolve-cids`.
 
 ```json
 {"identifier": "aspirin", "namespace": "name", "max_records": 20}
@@ -29,7 +31,7 @@ operation：`compound-resolve-cids`。
 
 ## Properties
 
-operation：`compound-properties`。
+Operation: `compound-properties`.
 
 ```json
 {
@@ -49,7 +51,7 @@ Allowed properties include `MolecularFormula`, `MolecularWeight`,
 
 ## Synonyms
 
-operation：`compound-synonyms`。
+Operation: `compound-synonyms`.
 
 ```json
 {"identifier": "2244", "namespace": "cid", "max_synonyms": 50}
@@ -59,7 +61,7 @@ operation：`compound-synonyms`。
 
 ## Summary
 
-operation：`compound-summary`。
+Operation: `compound-summary`.
 
 ```json
 {
@@ -80,7 +82,7 @@ an equivalent key such as `ConnectivitySMILES`.
 
 ## Batch Summary
 
-operation：`compound-batch-summary`。
+Operation: `compound-batch-summary`.
 
 ```json
 {
