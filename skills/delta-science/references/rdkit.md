@@ -1,23 +1,26 @@
-# RDKit 详细规则
+# RDKit reference
 
-只能通过 `delta-cli science invoke` 调用。以下业务响应位于 CLI 顶层 `data`；只按本文件
-说明读取字段，不得递归搜索。这里只记录 operation schema，不授权直接 HTTP。
+Call this tool only through `delta-cli science invoke`. Business responses are in the top-level
+CLI `data`; read only the fields described here and do not search recursively. This document
+records operation schemas and does not authorise direct HTTP access.
 
-一个请求只执行完成目标所需的最少调用。同时校验、规范化并计算基础描述符时使用一次
-`batch-parse-describe`，payload 使用 `molecules:[{id,smiles}]`，不得拆成 parse 和
-descriptors。多个分子的全对相似度使用一次 `similarity-matrix`；排名字段固定为
-`a`、`b`、`similarity`，不是 `i`、`j`、`score`。
+Make only the calls needed to meet the request. To validate, canonicalise and calculate basic
+descriptors in one request, use `batch-parse-describe` with the `molecules:[{id,smiles}]` payload;
+do not split it into parse and descriptors calls. For all-pairs similarity across multiple
+molecules, use one `similarity-matrix` call. Its fixed ranking fields are `a`, `b` and
+`similarity`, not `i`, `j` or `score`.
 
-只报告业务响应实际存在的描述符。渲染 PNG 时只解码文档指定字段，并验证字节以
-`89 50 4e 47 0d 0a 1a 0a` 开头；不得把 JSON envelope 保存成图片。
+Report only descriptors actually present in the business response. When rendering a PNG, decode
+only the field specified in the documentation and verify that the bytes begin with
+`89 50 4e 47 0d 0a 1a 0a`; do not save a JSON envelope as an image.
 
 ## Health
 
-operation：`health`，无 body。
+Operation: `health`; no request body.
 
 ## Parse
 
-operation：`parse`。
+Operation: `parse`.
 
 ```json
 {"input": "CCO", "format": "smiles", "sanitize": true}
@@ -31,7 +34,7 @@ Key response fields in `data`: `valid`, `canonical_smiles`, `formula`,
 
 ## Descriptors
 
-operation：`descriptors`。
+Operation: `descriptors`.
 
 ```json
 {"smiles": "CCO", "descriptor_set": "basic", "sanitize": true}
@@ -44,7 +47,7 @@ operation：`descriptors`。
 
 ## Batch Descriptors
 
-operation：`batch-descriptors`。
+Operation: `batch-descriptors`.
 
 ```json
 {"smiles": ["CCO", "c1ccccc1"], "descriptor_set": "basic", "sanitize": true}
@@ -54,7 +57,7 @@ Limits: 1-500 SMILES.
 
 ## Batch Parse Describe
 
-operation：`batch-parse-describe`。
+Operation: `batch-parse-describe`.
 
 ```json
 {
@@ -74,7 +77,7 @@ fields, `descriptors`, optional `fingerprint_metadata`, `on_bits`, `bit_count`,
 
 ## Render
 
-operation：`render`。
+Operation: `render`.
 
 ```json
 {"smiles": "CCO", "image_format": "svg", "width": 450, "height": 320}
@@ -85,7 +88,7 @@ Width/height range: 150-2000.
 
 ## Fingerprint
 
-operation：`fingerprint`。
+Operation: `fingerprint`.
 
 ```json
 {"smiles": "CCO", "radius": 2, "n_bits": 2048}
@@ -95,7 +98,7 @@ Morgan fingerprint parameters: `radius` 1-6, `n_bits` 128-8192.
 
 ## Similarity
 
-operation：`similarity`。
+Operation: `similarity`.
 
 ```json
 {"query_smiles": "CCO", "target_smiles": "CCCO", "radius": 2, "n_bits": 2048}
@@ -105,7 +108,7 @@ Returns Tanimoto similarity.
 
 ## Similarity Matrix
 
-operation：`similarity-matrix`。
+Operation: `similarity-matrix`.
 
 ```json
 {
@@ -129,7 +132,7 @@ Do not expect `i`, `j`, or `score` fields.
 
 ## Substructure
 
-operation：`substructure`。
+Operation: `substructure`.
 
 ```json
 {"query_smarts": "c1ccccc1", "target_smiles": ["c1ccccc1", "CCO"]}
