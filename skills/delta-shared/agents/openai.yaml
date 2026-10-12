@@ -1,4 +1,4 @@
 interface:
-  display_name: "Delta CLI 共享规则"
-  short_description: "处理 Delta CLI 的配置、认证、错误与安全边界"
-  default_prompt: "使用 $delta-shared 检查并处理 Delta CLI 的配置或认证问题。"
+  display_name: "Delta CLI Shared Rules"
+  short_description: "Handle Delta CLI configuration, authentication, errors and security boundaries"
+  default_prompt: "Use $delta-shared to check and resolve Delta CLI configuration or authentication issues."
