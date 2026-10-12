@@ -1,38 +1,41 @@
-# STRBO 详细规则
+# STRBO reference
 
-STRBO 用于服务端固定 **KRAS G12D** 靶点的小分子生成式多目标优化。目标顺序固定为
-`[vina, activity]`：vina 越低越好，activity 越高越好。`task` 只引导候选生成，
-不会更换靶点；不得声称支持用户自定义受体。
+STRBO performs generative multi-objective optimisation for the server-fixed **KRAS G12D**
+target. The objective order is fixed as `[vina, activity]`: lower Vina is better and higher
+activity is better. `task` guides candidate generation but does not change the target; do not
+claim that user-defined receptors are supported.
 
-所有调用均使用 `tool="strbo"`。生成、建议、评估和提交 job 都会消耗远端资源，只在
-用户确实要求执行相应科研任务时调用；请求结果未知或超时时不得重试。
+Use `tool="strbo"` for every call. Generation, suggestion, evaluation and job submission consume
+remote resources, so call them only when the user actually asks for the relevant research task.
+Do not retry if the outcome is unknown or the request times out.
 
-## 初始化
+## Initialisation
 
-- 同步 operation：`molecules-init`
-- 异步 operation：`molecules-init-job`
-- 仅校验 operation：`molecules-init-validate`
+- Synchronous operation: `molecules-init`
+- Asynchronous operation: `molecules-init-job`
+- Validation-only operation: `molecules-init-validate`
 
 ```json
 {
-  "task": "为 KRAS G12D 生成兼顾结合与活性的候选小分子",
+  "task": "Generate candidate small molecules for KRAS G12D that balance binding and activity",
   "num_initial": 3,
   "seed": 42
 }
 ```
 
-只需检查参数时使用 validate；正式执行不要先 validate 再提交，避免无必要调用。
-成功结果应包含与 `num_initial` 数量一致的候选 SMILES。
+Use validate only when you need to check parameters. For a full run, do not validate before
+submitting; that would make an unnecessary call. A successful result should contain the same
+number of candidate SMILES as `num_initial`.
 
-## 建议下一批候选
+## Suggest the next batch of candidates
 
-- 同步 operation：`molecules-suggest`
-- 异步 operation：`molecules-suggest-job`（重型任务优先）
-- 仅校验 operation：`molecules-suggest-validate`
+- Synchronous operation: `molecules-suggest`
+- Asynchronous operation: `molecules-suggest-job` (prefer it for heavy tasks)
+- Validation-only operation: `molecules-suggest-validate`
 
 ```json
 {
-  "task": "继续改善 KRAS G12D 的结合与活性",
+  "task": "Continue improving binding and activity for KRAS G12D",
   "history_xs": ["CCO", "CCN", "CCC"],
   "history_ys": [
     [-6.8, 0.31],
@@ -44,14 +47,14 @@ STRBO 用于服务端固定 **KRAS G12D** 靶点的小分子生成式多目标�
 }
 ```
 
-`history_xs` 与 `history_ys` 必须等长；每个 `history_ys` 元素必须是两个有限数值，
-顺序严格为 `[vina, activity]`。不得把预测值伪装成湿实验结果。
+`history_xs` and `history_ys` must have the same length. Each `history_ys` item must contain two
+finite numbers in the exact order `[vina, activity]`. Do not present predictions as wet-lab results.
 
-## 评估候选
+## Evaluate candidates
 
-- 同步 operation：`molecules-evaluate`
-- 异步 operation：`molecules-evaluate-job`
-- 仅校验 operation：`molecules-evaluate-validate`
+- Synchronous operation: `molecules-evaluate`
+- Asynchronous operation: `molecules-evaluate-job`
+- Validation-only operation: `molecules-evaluate-validate`
 
 ```json
 {
@@ -59,29 +62,34 @@ STRBO 用于服务端固定 **KRAS G12D** 靶点的小分子生成式多目标�
 }
 ```
 
-成功结果中的 score 数量必须与 designs 一致，每行必须恰好有两个有限数值。任一 item
-明确失败时，本轮整体按失败处理，不得只报告成功子集。
+The number of scores in a successful result must match the number of designs, with exactly two
+finite numbers per row. If any item explicitly fails, treat the entire run as failed; do not
+report only the successful subset.
 
-## 异步作业
+## Asynchronous jobs
 
-提交异步 operation 后，从当前业务响应读取非空 `job_id`，再轮询：
+After submitting an asynchronous operation, read a non-empty `job_id` from the current business
+response, then poll:
 
 ```text
 delta-cli science invoke --tool strbo --endpoint job-status --params JSON
 ```
 
-只有状态变为 `succeeded` 后才读取：
+Read the result only once the status changes to `succeeded`:
 
 ```text
 delta-cli science invoke --tool strbo --endpoint job-result --params JSON
 ```
 
-`queued` 或 `running` 不是完成；`failed` 立即结束。状态查询可按 5 秒左右间隔重复，
-但提交 operation 绝不重复。单次用户任务的总等待上限为 15 分钟；超限后报告作业仍
-未完成并保留 job_id，不得声称远端已取消。
+`queued` and `running` do not mean the job is complete; stop immediately on `failed`. Status
+queries may be repeated at intervals of about five seconds, but never repeat the submission
+operation. The total wait for one user task is limited to 15 minutes. If that limit is reached,
+report that the job is still incomplete and retain its `job_id`; do not claim it was cancelled
+remotely.
 
-## 完整科研流程
+## Complete research workflow
 
-用户明确要求完整迭代时按 `初始化 → 评估 → 建议 → 评估` 串行执行。每一步只使用本次
-调用已验证的业务响应作为下一步输入。用户只要求生成初始候选或评估给定 SMILES 时，
-不得擅自扩展为完整循环。
+When the user explicitly asks for a complete iteration, run `initialise → evaluate → suggest →
+evaluate` sequentially. Use only verified business responses from the current calls as inputs to
+the next step. If the user asks only for initial candidates or evaluation of supplied SMILES, do
+not expand the task into a full loop.
