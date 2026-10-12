@@ -1,81 +1,89 @@
-# XRD Cloud Compute 详细规则
+# XRD Cloud Compute reference
 
-`xrd` 是通过 Science 工具代理访问 XRD cloud compute 的真实工具。所有调用必须经由
-`delta-cli`，禁止使用 broker URL、`curl`、`requests`、`httpx`、浏览器或本地 XRD
-科学库绕过 CLI。本文是 `delta-science` 的工具 reference，不是第二套 HTTP 客户端。
+`xrd` is a real tool for accessing XRD cloud compute through the Science tool proxy. Route every
+call through `delta-cli`; do not bypass the CLI with broker URLs, `curl`, `requests`, `httpx`, a
+browser or local XRD libraries. This is a tool reference for `delta-science`, not a second HTTP
+client.
 
-## 工具与 endpoint
+## Tool and endpoints
 
-执行前使用实时目录确认当前环境中的 canonical 名称和启用状态：
+Before execution, use the live catalogue to confirm the canonical names and enabled status in the
+current environment:
 
 ```text
 delta-cli science list
 delta-cli science endpoints list xrd
 ```
 
-`xrd` endpoint 名称必须逐字取自第二条命令的结果。当前 reference 覆盖以下稳定契约：
+Copy `xrd` endpoint names exactly from the output of the second command. This reference covers
+the following stable contracts:
 
-| endpoint | 方法/用途 | 请求类型 |
+| endpoint | Method/purpose | Request type |
 | --- | --- | --- |
-| `healthz`、`readyz`、`capabilities`、`xmatcher-status` | 就绪、能力和数据库状态 | 只读 JSON |
-| `xmatcher-artifacts` | 上传观测曲线、模型输入、CIF 或仪器参数 | `invoke --file` |
-| `xmatcher-artifact`、`xmatcher-artifact-content` | 查询/读取 artifact | `invoke --path-params` |
-| `xqueryer-predictions` | XQueryer 单相候选预测 | JSON |
-| `xmatcher-detect-peaks`、`xmatcher-match` | 峰检测和单相匹配 | JSON |
-| `xmatcher-multiphase-match`、`xdecomposer-predictions` | 多相匹配和相分解 | JSON |
-| `xmatcher-cif-xrd`、`xmatcher-pdf-peaks-xlsx` | CIF 模拟及 PDF 峰表导出 | JSON/二进制 |
-| `xmatcher-refinement-patterns` | 生成精修输入和 provenance manifest | JSON |
-| `refinement-fullprof`、`refinement-gsasii`、`refinement-wpem` | 提交对应后端精修作业 | JSON + header |
-| `refinement-job`、`refinement-job-events`、`refinement-job-artifacts` | 查询精修作业 | `invoke --path-params` |
-| `refinement-job-cancel` | 请求取消精修作业 | `invoke --path-params` |
-| `mp500-cif-exports` | MP500 结构导出为 CIF | JSON |
+| `healthz`, `readyz`, `capabilities`, `xmatcher-status` | Readiness, capabilities and database status | Read-only JSON |
+| `xmatcher-artifacts` | Upload an observed pattern, model input, CIF or instrument parameters | `invoke --file` |
+| `xmatcher-artifact`, `xmatcher-artifact-content` | Query/read an artifact | `invoke --path-params` |
+| `xqueryer-predictions` | XQueryer single-phase candidate prediction | JSON |
+| `xmatcher-detect-peaks`, `xmatcher-match` | Peak detection and single-phase matching | JSON |
+| `xmatcher-multiphase-match`, `xdecomposer-predictions` | Multiphase matching and phase decomposition | JSON |
+| `xmatcher-cif-xrd`, `xmatcher-pdf-peaks-xlsx` | CIF simulation and PDF peak-table export | JSON/binary |
+| `xmatcher-refinement-patterns` | Generate refinement inputs and a provenance manifest | JSON |
+| `refinement-fullprof`, `refinement-gsasii`, `refinement-wpem` | Submit a refinement job to the corresponding backend | JSON + header |
+| `refinement-job`, `refinement-job-events`, `refinement-job-artifacts` | Query a refinement job | `invoke --path-params` |
+| `refinement-job-cancel` | Request refinement-job cancellation | `invoke --path-params` |
+| `mp500-cif-exports` | Export an MP500 structure as CIF | JSON |
 
-目录是最终权威。若 endpoint 不在实时目录中，停止并报告配置问题，不改名重试。
+The live catalogue is authoritative. If an endpoint is absent from it, stop and report a
+configuration issue; do not retry under a different name.
 
-## CLI 参数映射
+## CLI argument mapping
 
 ```text
---data          上游 JSON body
---params        上游 URL query 参数
---path-params   替换 endpoint path 中的 {artifact_id}/{job_id}
---headers       额外上游请求头，例如 Idempotency-Key
---file          将本地文件通过 file_base64 传给工具代理
---content-type  file 的原始 MIME 类型
+--data          Upstream JSON body
+--params        Upstream URL query parameters
+--path-params   Replace {artifact_id}/{job_id} in the endpoint path
+--headers       Additional upstream headers, such as Idempotency-Key
+--file          Send a local file to the tool proxy via file_base64
+--content-type  The file's original MIME type
 ```
 
-`--params` 不能替代 `--path-params`。不要把本地路径、base64、路径参数或幂等键塞进
-普通业务 `--data`。`science file` 是 QE/Materials Design 等独立文件接口；XRD 的
-`xmatcher-artifacts` 属于工具代理 endpoint，应使用 `science invoke --file`。
+`--params` cannot replace `--path-params`. Do not put local paths, base64, path parameters or
+idempotency keys in ordinary business `--data`. `science file` is a separate file interface for
+tools such as QE and Materials Design. XRD's `xmatcher-artifacts` is a tool-proxy endpoint; use
+`science invoke --file` for it.
 
-## 调用顺序
+## Call sequence
 
-1. 用户明确要求诊断或执行时，先读取 `healthz`；需要选择后端时再读取
-   `capabilities`。
-2. 通过 `xmatcher-artifacts` 上传真实文件，保存返回的 `artifact_id` 和 `sha256`。
-3. 观测数据使用 `xmatcher-match`、`xmatcher-multiphase-match` 或
-   `xdecomposer-predictions`；XQueryer 使用 `model_input_pattern`。
-4. CIF 模拟使用 `xmatcher-cif-xrd`；精修先调用 `xmatcher-refinement-patterns`，再选择
-   与 `data.backends` 一致的 refinement endpoint。
-5. 精修提交后用 `refinement-job`、`refinement-job-events` 和
-   `refinement-job-artifacts` 读取状态和产物。
+1. When the user explicitly asks for a diagnosis or execution, read `healthz` first; read
+   `capabilities` only when you need to select a backend.
+2. Upload real files through `xmatcher-artifacts` and save the returned `artifact_id` and `sha256`.
+3. Use `xmatcher-match`, `xmatcher-multiphase-match` or `xdecomposer-predictions` for observed
+   data; XQueryer uses `model_input_pattern`.
+4. Use `xmatcher-cif-xrd` for CIF simulation. For refinement, call
+   `xmatcher-refinement-patterns` first, then choose a refinement endpoint matching
+   `data.backends`.
+5. After submitting a refinement job, read its status and artifacts with `refinement-job`,
+   `refinement-job-events` and `refinement-job-artifacts`.
 
-不要把服务返回的 queued、scheduler completed 或 backend success 直接描述成科学结论。
-精修至少分开报告传输/作业终态、后端执行状态和科学接受状态。
+Do not present a returned `queued` state, scheduler completion or backend success as a scientific
+conclusion. For refinement, report the transport/job final state, backend execution state and
+scientific acceptance state separately.
 
-## 就绪检查
+## Readiness checks
 
 ```text
 delta-cli science invoke --tool xrd --endpoint healthz
 delta-cli science invoke --tool xrd --endpoint capabilities
 ```
 
-只有需要诊断或用户明确要求时才额外调用 readiness/status。能力结果中的每个所需组件
-都必须满足 `available`；生产任务还应检查 `asset_release_approved`、checksum 字段和
-warnings。`auto` 不代表实际使用 GPU，只有结果明确返回 GPU backend 才能这样报告。
+Call readiness/status additionally only when diagnosis requires it or the user explicitly asks.
+Every required component in the capabilities result must have `available` status. For production
+jobs, also check `asset_release_approved`, checksum fields and warnings. `auto` does not prove GPU
+use; report GPU use only when the result explicitly returns a GPU backend.
 
-## Artifact 上传与身份
+## Artifact upload and identity
 
-上传观测曲线：
+Upload an observed pattern:
 
 ```text
 delta-cli science invoke --tool xrd --endpoint xmatcher-artifacts `
@@ -84,71 +92,72 @@ delta-cli science invoke --tool xrd --endpoint xmatcher-artifacts `
   --content-type application/octet-stream
 ```
 
-允许的 `kind` 为：`observed_pattern`、`model_input_pattern`、`cif`、
-`instrument_parameters`。成功响应中的 `artifact_id` 和 `sha256` 必须成对保存并原样
-传给下游。模式文件会在服务端标准化，返回的 digest 是标准化 artifact 的 digest，
-不是一定等于本地上传字节的 digest。
+Allowed `kind` values are `observed_pattern`, `model_input_pattern`, `cif` and
+`instrument_parameters`. Save the successful response's `artifact_id` and `sha256` together and
+pass them to downstream calls unchanged. Pattern files are normalised by the server, so the
+returned digest identifies the normalised artifact and may differ from the digest of the local
+upload bytes.
 
-查询 artifact 时使用路径参数：
+Use path parameters to query an artifact:
 
 ```text
 delta-cli science invoke --tool xrd --endpoint xmatcher-artifact `
   --path-params '{"artifact_id":"art_<returned-id>"}'
 ```
 
-二进制内容响应可能返回 `data._binary=true`、`content_base64`、`media_type` 和
-`content_length`。只有用户要求保存或工作流需要时才解码，并按服务返回的 SHA-256
-校验；不要凭文件名猜测格式。
+Binary-content responses may return `data._binary=true`, `content_base64`, `media_type` and
+`content_length`. Decode only when the user asks to save the content or the workflow requires it,
+and verify it against the SHA-256 returned by the service. Do not infer the format from the filename.
 
-## 相识别与匹配
+## Phase identification and matching
 
-XQueryer 的 `model_input_pattern` 必须正好包含 3500 个样本，覆盖 10 到 90 度 2theta，
-强度不超过服务能力限制：
+XQueryer's `model_input_pattern` must contain exactly 3,500 samples over 10 to 90 degrees 2theta,
+with intensities within the service's capability limits:
 
 ```text
 delta-cli science invoke --tool xrd --endpoint xqueryer-predictions `
   --data '{"schema_version":1,"pattern":{"artifact_id":"art_<model>","sha256":"<sha>"},"top_k":10,"radiation_profile":"CuKa"}'
 ```
 
-XMatcher 观测曲线：
+XMatcher observed pattern:
 
 ```text
 delta-cli science invoke --tool xrd --endpoint xmatcher-match `
   --data '{"schema_version":1,"pattern":{"artifact_id":"art_<observed>","sha256":"<sha>"},"top_n":10,"element_filter_mode":"contains"}'
 ```
 
-多相匹配：
+Multiphase matching:
 
 ```text
 delta-cli science invoke --tool xrd --endpoint xmatcher-multiphase-match `
   --data '{"schema_version":1,"pattern":{"artifact_id":"art_<observed>","sha256":"<sha>"},"max_phases":3,"candidate_pool":8}'
 ```
 
-`xqueryer-predictions` 的 `score` 是 softmax probability；XMatcher 的 `score` 是
-`raw_score / 100`。两者不可直接平均或当作同一校准概率。
+The `score` from `xqueryer-predictions` is a softmax probability; the XMatcher `score` is
+`raw_score / 100`. Do not average them directly or treat them as the same calibrated probability.
 
-## CIF 模拟与峰表
+## CIF simulation and peak tables
 
-`cifs` 中的每个 artifact 都必须同时提供 `artifact_id` 和 `sha256`：
+Each artifact in `cifs` must provide both `artifact_id` and `sha256`:
 
 ```text
 delta-cli science invoke --tool xrd --endpoint xmatcher-cif-xrd `
   --data '{"schema_version":1,"cifs":[{"artifact":{"artifact_id":"art_<cif>","sha256":"<sha>"},"name":"phase"}],"two_theta_range":[5.0,90.0],"wavelength":"CuKa"}'
 ```
 
-`xmatcher-pdf-peaks-xlsx` 返回二进制 XLSX；只有用户要求导出时才读取和保存它。
+`xmatcher-pdf-peaks-xlsx` returns a binary XLSX file; read and save it only when the user asks for an export.
 
-## 精修作业
+## Refinement jobs
 
-先生成校正曲线和 provenance manifest：
+First generate the corrected pattern and provenance manifest:
 
 ```text
 delta-cli science invoke --tool xrd --endpoint xmatcher-refinement-patterns `
   --data '{"schema_version":1,"source_pattern":{"artifact_id":"art_<observed>","sha256":"<sha>"}}'
 ```
 
-然后使用与 `data.backends` 匹配的 endpoint。示例结构如下，所有 artifact 身份必须来自
-当前调用链：
+Then use the endpoint matching `data.backends`. The example below shows the structure; every
+artifact identity must come from the current call chain:
 
 ```text
 delta-cli science invoke --tool xrd --endpoint refinement-gsasii `
@@ -156,12 +165,13 @@ delta-cli science invoke --tool xrd --endpoint refinement-gsasii `
   --headers '{"Idempotency-Key":"<stable-unique-key>"}'
 ```
 
-`refinement-fullprof`、`refinement-gsasii`、`refinement-wpem` 选择计费/后端入口；不要
-因为它们映射到同一路径就互换 endpoint 名或 `backends`。提交、取消、重试和审核是
-远端变更，必须得到用户明确授权；超时或连接中断时不要盲目重试，先查询是否已经创建
-作业。
+`refinement-fullprof`, `refinement-gsasii` and `refinement-wpem` select the billing/backend
+entry point. Do not interchange endpoint names or `backends` merely because they map to the same
+path. Submission, cancellation, retry and review are remote mutations and require the user's
+explicit authorisation. After a timeout or disconnection, do not retry blindly; first check
+whether a job has already been created.
 
-查询作业时：
+To query a job:
 
 ```text
 delta-cli science invoke --tool xrd --endpoint refinement-job `
@@ -171,16 +181,17 @@ delta-cli science invoke --tool xrd --endpoint refinement-job-events `
   --path-params '{"job_id":"refjob_<returned-id>"}'
 ```
 
-## 结果与错误
+## Results and errors
 
-- 只有 CLI 退出码为 0 且顶层 JSON `ok` 为 `true` 才算调用成功。
-- 原样保留服务返回的 `data`、warnings、错误 detail 和稳定错误码。
-- `202`、`queued` 或 `running` 只代表作业接收/执行状态，不代表 solver 收敛或科学接受。
-- `TIER_CONCURRENCY_EXCEEDED`、`Endpoint is disabled`、`ARTIFACT_MISSING`、
-  `MP500_IDENTITY_MISMATCH` 等错误应停止当前调用链并报告原始 detail；不要换 endpoint、
-  改名、猜参数或用本地算法替代。
-- 付费 endpoint 的价格和可用状态以实时目录为准；执行前确认用户确实要求该业务调用。
+- A call succeeds only when the CLI exits with code 0 and the top-level JSON `ok` is `true`.
+- Preserve the returned `data`, warnings, error detail and stable error codes exactly as returned.
+- `202`, `queued` and `running` describe job acceptance/execution state only; they do not mean the solver converged or the result was scientifically accepted.
+- `TIER_CONCURRENCY_EXCEEDED`, `Endpoint is disabled`, `ARTIFACT_MISSING`,
+  `MP500_IDENTITY_MISMATCH` and similar errors should stop the current call chain; report the
+  original detail and do not switch endpoints, rename them, guess parameters or substitute a
+  local algorithm.
+- Use the live catalogue as the authority for paid endpoint prices and availability; before execution, confirm that the user actually requested the business call.
 
-证据边界：仅限当前 Delta CLI `data` 中的业务结果。
-调用链：`delta-cli`。
-禁止补充未返回内容：是。
+Evidence boundary: business results in the current Delta CLI `data` only.
+Call chain: `delta-cli`.
+Do not add information absent from the response: yes.
