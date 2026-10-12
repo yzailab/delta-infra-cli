@@ -1,27 +1,28 @@
-# LAMMPS 详细规则
+# LAMMPS reference
 
-所有调用直接使用 `delta-cli science invoke`。LAMMPS 不从化学式、CIF 或 POSCAR 自动推断 data、原子
-类型、势函数与边界条件。成功执行不表示物理收敛或生产可用。
+Make all calls with `delta-cli science invoke`. LAMMPS does not infer data files, atom types,
+potentials or boundary conditions from a formula, CIF or POSCAR. Successful execution does not
+establish physical convergence or production readiness.
 
 ## Health
 
-operation：`health`，无 body。
+Operation: `health`; no request body.
 
 Key response fields in `data`: `status`, `service`, `lammps_available`,
 `metadata`, and `limits`.
 
-只有用户明确要求健康检查时才调用；不要在模拟前自动增加 health。
+Call this only when the user explicitly asks for a health check; do not add a health call automatically before simulation.
 
 ## Built-In Lennard-Jones Example
 
-operation：`lj-melt-example`。
+Operation: `lj-melt-example`.
 
 Returns a complete `request` payload for the `run` operation, plus workflow notes
 showing where pymatgen and GSAS-II fit around LAMMPS.
 
 ## Run
 
-operation：`run`。
+Operation: `run`.
 
 ```json
 {
@@ -60,7 +61,8 @@ Notes:
 - Force-field choice is caller responsibility. The service executes explicit
   LAMMPS input and does not infer potentials from formulas or structures.
 
-最终只复制当前业务响应的 `last_thermo`、final step/temperature/total energy、
-warnings 和用户要求的输出文件摘要。禁止把总能量除以原子数、替换步数、换算单位或
-推测收敛性、稳定性。最小示例必须先调用 `lj-melt-example`，再把其
-当前业务响应的 `request` 原样交给 `run`；不得传 CLI 外层 envelope。
+In the final reply, include only `last_thermo`, the final step/temperature/total energy,
+warnings, and a summary of output files requested by the user from the current business response.
+Do not divide total energy by the atom count, substitute steps, convert units, or infer
+convergence or stability. For the minimal example, call `lj-melt-example` first, then pass its
+`request` from the current business response to `run` unchanged; do not pass the outer CLI envelope.
