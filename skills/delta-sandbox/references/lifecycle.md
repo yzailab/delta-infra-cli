@@ -1,100 +1,100 @@
-> **前置条件：** 先阅读 [`../delta-shared/SKILL.md`](../delta-shared/SKILL.md) 了解认证、配置和通用错误处理。
+> **Prerequisite:** Read [`../../delta-shared/SKILL.md`](../../delta-shared/SKILL.md) first for authentication, configuration and general error handling.
 
-# Delta Sandbox 生命周期
+# Delta Sandbox lifecycle
 
-## 完整流程
+## Complete workflow
 
-1. **查看可用镜像** `delta-cli sandbox images` — 查询服务端支持的镜像列表。镜像决定了容器内的语言运行时（Python / Node.js / Go / Java / Rust 等），根据用户的技术栈和 GPU/CPU 需求匹配。
-2. **列出现有 sandbox（可选）** `delta-cli sandbox list` — 查看当前用户已创建的活跃 sandbox，避免重复创建
-3. **创建** `delta-cli sandbox create --image-name <镜像名> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120 [--gpu-type <型号>] [--shm-size XGi] [--devices kvm]`（创建后立即可用，无需连接；--memory/--gpu-mem 支持 g/m/G/M 格式（如 1G/512M，小写亦可），CLI 自动转换为 Gi/Mi；--max-life 指定 sandbox 最大存活时间（分钟），默认 30。`--no-auto-cleanup` 可让 sandbox 不被自动清理，仅显式 kill/finish 可销毁。`--image-name` 用镜像名，如 `"PyTorch CUDA13 (GPU)"`；算力后端为内部概念，自动选择，无需指定。`--gpu-type`（可选）指定 GPU 型号，如 `"RTX 4090"`、`H100`，服务端映射为 HAMi use-gputype 注解按型号调度，可选型号查 `sandbox resources`（`third_party` 分组 `gpu_types[].gpu_name`），不传则自动调度。`--shm-size`（可选）调大容器 `/dev/shm`（**默认仅 64Mi**）——PyTorch `DataLoader(num_workers>0)`/`multiprocessing`、Chromium 系内核等场景报 `No space left on device`/`Bus error` 时必调；**必须带 Gi/Mi 单位**（`4G`/`512M` 由 CLI 归一化，裸数字会被服务端拒绝）、**不得超过 `--memory`**（内存文件系统，写满 OOMKill；`--memory` 默认只有 1Gi，调大 shm 时通常要同步调大 memory，如 `--memory 8Gi --shm-size 4Gi`）；仅私有算力（`private`）会真正应用该参数（第三方算力忽略），但单位/上限校验与后端无关、在创建前就会拒绝写错的值。`--devices`（可选）申请宿主机设备直通，逗号分隔令牌（如 `--devices kvm` → 容器内出现 `/dev/kvm`，用于嵌套虚拟化）；属权限提升，服务端白名单未开启时创建被**明确拒绝**（不静默忽略，且校验与后端无关），遇到该报错不要重试，改用不依赖该设备的方案；仅私有算力会真正应用该参数。**单沙箱资源上限**：cpu ≤ 512、memory ≤ 1024Gi、gpu ≤ 64、gpuMem ≤ 1024Gi、shmSize ≤ memory，超出会在请求阶段快速返回校验错误而非挂起。）
-4. **写入代码/数据** `delta-cli sandbox write <id> --source <文件名>` — 将本地文件直接写入 sandbox，**不传 `--path` 默认写到该 sandbox 的 working-directory**（`/workspace/{user_id}/{sandbox_id}/<文件名>`，在 OSS 同步范围内，kill 后文件不会丢）。写前可用 `delta-cli sandbox working-directory <id>` 确认路径。**必须**使用相对源路径（如 `--source infer.py`），禁止使用 `"$WORKSPACE_ROOT/<filename>"` 或 `$(pwd)/...`。相对 `--path` 也会拼到 working-directory 下；仅绝对 `--path` 原样使用（`/workspace/<filename>` 根路径不在 OSS 同步范围，不推荐）。也可用 `--data "..."` 写入少量内联内容（需显式 `--path`），`--mode 755` 可设置文件权限。写入后返回的 `size` 字段是 stat 验证后的实际磁盘字节数，可确认写入完整。批量写入用 `write-multiple`。文件路径和扩展名由镜像中的运行时决定。
-5. **运行命令** — 先 `delta-cli sandbox working-directory <id>` 查询 `<wd>`，再根据镜像中的运行时构造命令，常见示例：`python <wd>/train.py`（Python）、`node <wd>/app.js`（Node.js）、`go run <wd>/main.go`（Go）、`bash <wd>/run.sh`（Shell）
-   - **短任务 ≤60s**：`delta-cli sandbox run <id> --command "<命令>" --timeout <秒>` 同步执行，SSE 原始 `data:` 帧透传到 stdout（无末尾信封），`exit_code`/`log_file` 从 `complete` 帧读取，完整 stdout 写入 log_file
-   - **长任务 >60s**：`delta-cli sandbox run-bg <id> --command "<命令>" --timeout <秒> --wait` 后台执行（推荐），或 `run-bg` + `logs` 手动轮询 (run-bg --wait 默认带 --summary；不加 --wait 立即返回 {execution_id, sandbox_id})
-6. **读取结果** `delta-cli sandbox read <id> --path <wd>/result.json`（`<wd>` 为 working-directory，可用 `delta-cli sandbox working-directory <id>` 查询） — 返回 `content`（内容）、`size`（磁盘字节，来自 stat）、`content_length`（字符数）。读不存在的文件返回 error 而非空内容。
-7. **销毁** `delta-cli sandbox kill <id>`（如需保存结果用 finish，finish 会自动销毁）
+1. **Check available images** `delta-cli sandbox images` — list the images supported by the server. The image determines which language runtimes are available in the container (Python / Node.js / Go / Java / Rust, etc.); choose one that fits the user's technology stack and GPU/CPU requirements.
+2. **List existing sandboxes (optional)** `delta-cli sandbox list` — check the active sandboxes already created by the current user to avoid creating duplicates.
+3. **Create** `delta-cli sandbox create --image-name <image-name> --cpu 4 --memory 16Gi --gpu 1 --gpu-mem 8000 --max-life 120 [--gpu-type <model>] [--shm-size XGi] [--devices kvm]` (the sandbox is ready to use immediately; no connection step is needed. `--memory`/`--gpu-mem` accept g/m/G/M formats (for example, 1G/512M; lowercase is also accepted), which the CLI converts to Gi/Mi. `--max-life` sets the sandbox's maximum lifetime in minutes; the default is 30. `--no-auto-cleanup` prevents automatic cleanup; the sandbox can then be destroyed only with an explicit kill/finish. `--image-name` takes an image name, such as `"PyTorch CUDA13 (GPU)"`; compute backend selection is automatic and does not need to be specified. `--gpu-type` (optional) selects a GPU model, such as `"RTX 4090"` or `H100`; the server maps this to the HAMi use-gputype annotation for model-based scheduling. To see available models, check `sandbox resources` (the `third_party` group's `gpu_types[].gpu_name`); if omitted, scheduling is automatic. `--shm-size` (optional) increases the container's `/dev/shm` (the **default is only 64Mi**)—it must be increased when PyTorch `DataLoader(num_workers>0)`/`multiprocessing`, Chromium-based engines or similar report `No space left on device`/`Bus error`; **a Gi/Mi unit is required** (`4G`/`512M` are normalised by the CLI; the server rejects a bare number), and it **must not exceed `--memory`** (it is a memory filesystem and filling it causes OOMKill; `--memory` defaults to only 1Gi, so increasing shm usually requires increasing memory too, for example, `--memory 8Gi --shm-size 4Gi`). Only private compute (`private`) applies this setting (third-party compute ignores it), but unit/limit validation is backend-independent and rejects invalid values before creation. `--devices` (optional) requests host-device passthrough using comma-separated tokens (for example, `--devices kvm` makes `/dev/kvm` available inside the container for nested virtualisation); this raises privileges, and if the server allowlist is not enabled, creation is **explicitly rejected** (not silently ignored; validation is backend-independent). If this error occurs, do not retry; use an approach that does not depend on that device. Only private compute applies this setting. **Resource limits per sandbox**: cpu ≤ 512, memory ≤ 1024Gi, gpu ≤ 64, gpuMem ≤ 1024Gi, shmSize ≤ memory. Exceeding a limit returns a validation error promptly at request time rather than hanging.)
+4. **Write code/data** `delta-cli sandbox write <id> --source <filename>` — write a local file directly to the sandbox. If `--path` is omitted, the file is written to that sandbox's working directory by default (`/workspace/{user_id}/{sandbox_id}/<filename>`, which is within the OSS sync scope, so the file persists after kill). Before writing, use `delta-cli sandbox working-directory <id>` to confirm the path. **You must** use a relative source path (for example, `--source infer.py`); do not use `"$WORKSPACE_ROOT/<filename>"` or `$(pwd)/...`. A relative `--path` is also resolved under the working directory; an absolute `--path` is used as-is (`/workspace/<filename>` is outside the OSS sync scope and is not recommended). You can also use `--data "..."` to write a small amount of inline content (requires an explicit `--path`), and `--mode 755` to set file permissions. The returned `size` field is the actual on-disk byte count verified with stat, so it can confirm that the write completed. Use `write-multiple` to write several files at once. File paths and extensions depend on the runtimes in the image.
+5. **Run a command** — first use `delta-cli sandbox working-directory <id>` to get `<wd>`, then construct a command for a runtime in the image. Common examples: `python <wd>/train.py` (Python), `node <wd>/app.js` (Node.js), `go run <wd>/main.go` (Go), `bash <wd>/run.sh` (Shell).
+   - **Short tasks ≤60s**: `delta-cli sandbox run <id> --command "<command>" --timeout <seconds>` runs synchronously; raw SSE `data:` frames are passed through to stdout (with no trailing envelope), `exit_code`/`log_file` are read from the `complete` frame, and full stdout is written to the log_file.
+   - **Long tasks >60s**: run `delta-cli sandbox run-bg <id> --command "<command>" --timeout <seconds> --wait` in the background (recommended), or use `run-bg` + `logs` for manual polling (`run-bg --wait` includes `--summary` by default; without `--wait`, it returns `{execution_id, sandbox_id}` immediately).
+6. **Read the results** `delta-cli sandbox read <id> --path <wd>/result.json` (`<wd>` is the working directory; use `delta-cli sandbox working-directory <id>` to find it) — returns `content` (contents), `size` (disk bytes, from stat) and `content_length` (character count). Reading a non-existent file returns an error rather than empty content.
+7. **Destroy the sandbox** `delta-cli sandbox kill <id>` (if you need to save results, use finish; finish destroys the sandbox automatically).
 
-> **注意**：server 端没有 sandbox 的自动过期或 TTL 机制，不 kill 会永久占用 GPU 资源。请务必在任务结束后销毁。
+> **Note:** The server has no automatic sandbox expiry or TTL mechanism. If you do not kill a sandbox, it will occupy GPU resources indefinitely. Always destroy it when the task is complete.
 
-## 后台任务
+## Background tasks
 
-对于长时间运行的任务（>60 秒，如训练、编译、数据处理），使用 `run-bg` 在后台异步执行：
+For long-running tasks (>60 seconds, such as training, compilation or data processing), run `run-bg` asynchronously in the background:
 
-### 方式一（推荐）：`--wait` 一次性等待完成
+### Method 1 (recommended): wait for completion with `--wait`
 
 ```bash
-delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200 --wait
+delta-cli sandbox run-bg <id> --command "<command>" --timeout 7200 --wait
 ```
-CLI 通过 SSE 实时流（`/logs/stream`）跟随输出，把原始 SSE 帧（`data: {...}`）**逐帧透传到 stdout**，收到 `complete` 帧即命令结束。**CLI 会在 complete 帧里补全字段**：除服务端给的 `exit_code`/`execution_id`/`error` 外，还注入流内累计的 `stdout`/`stderr`、兜底恢复的 `log_file`，以及检测到的末尾 JSON `result_summary`（stdout 末尾 50 行内若有合法 JSON 对象）。命令非零退出或报错时，CLI **追加一个 `error.type: command_failed` 信封并以非零码退出**（进程退出码 8），便于 `&&` 链和 agent 分支；成功则不追加信封。只消耗 **1 次 tool call**，适合不关心中间进度的场景。
+The CLI follows the live SSE stream (`/logs/stream`) and passes raw SSE frames (`data: {...}`) through to stdout one by one; the command ends when a `complete` frame arrives. **The CLI fills in fields in the complete frame**: in addition to the server-provided `exit_code`/`execution_id`/`error`, it adds the `stdout`/`stderr` accumulated from the stream, a recovered `log_file` if needed, and a detected trailing JSON `result_summary` (a valid JSON object found within the last 50 lines of stdout). If the command exits non-zero or errors, the CLI **appends an `error.type: command_failed` envelope and exits non-zero** (process exit code 8), which is useful for `&&` chains and agent branching; on success, no envelope is appended. This uses only **1 tool call**, making it suitable when intermediate progress is not needed.
 
-> `--wait` 的 SSE 路径 **complete 帧直接带 `result_summary`**（末尾 JSON 检测到即附上），无需再 `sandbox read <id> --path <log_file>` 反向扫描。仅当末尾没有合法 JSON 时才需手动读 log_file。`--summary`/`--artifacts` 富化（含 hints）仍仅旧服务器回退路径生效。
+> On the SSE path, `--wait` puts `result_summary` directly in the **complete frame** (if trailing JSON is detected), so there is no need to scan backwards with `sandbox read <id> --path <log_file>`. Read the log_file manually only if no valid JSON is found at the end. `--summary`/`--artifacts` enrichment (including hints) still takes effect only on the legacy-server fallback path.
 
-> **输出契约（SSE 路径）**：`run-bg --wait` 命令成功时 stdout 只有原始 SSE 帧，**没有末尾信封**；命令失败时在 complete 帧后追加 `{"ok":false,"error":{"type":"command_failed",...}}` 信封；`--timeout` 内未结束则追加一个 `finished=false` 的 `CommandLogsResult` 快照信封；旧服务器（无 `/logs/stream` 端点）回退到 5s 轮询并输出 `CommandResult` 信封（`finished` 键始终存在，`finished=true` 时带 `result_summary`/`hints` 富化）。
+> **Output contract (SSE path):** On success, `run-bg --wait` writes only raw SSE frames to stdout, with **no trailing envelope**. On command failure, it appends an `{"ok":false,"error":{"type":"command_failed",...}}` envelope after the complete frame. If the command has not finished within `--timeout`, it appends a `finished=false` `CommandLogsResult` snapshot envelope. For an older server (without the `/logs/stream` endpoint), the CLI falls back to polling every 5s and outputs a `CommandResult` envelope (the `finished` key is always present; when `finished=true`, it includes `result_summary`/`hints` enrichment).
 
-### 方式二：手动轮询（需要看实时输出时）
+### Method 2: poll manually (when you need to see live output)
 
 ```bash
-# 1. 启动后台命令
-delta-cli sandbox run-bg <id> --command "<命令>" --timeout 7200
-# ↑ 返回 execution_id
+# 1. Start the background command
+delta-cli sandbox run-bg <id> --command "<command>" --timeout 7200
+# ↑ Returns execution_id
 
-# 2a. 实时跟随（SSE，推荐）：
+# 2a. Follow the live stream (SSE, recommended):
 delta-cli sandbox logs <id> --execution-id <exec_id> --stream
-# ↑ 原始 data: 帧逐帧透传到 stdout，直到 complete 事件，无末尾信封（--stream 必须传 --execution-id）
+# ↑ Raw data: frames pass through to stdout one by one until the complete event, with no trailing envelope (--stream requires --execution-id)
 
-# 2b. 手动轮询快照（可用 --tail N / --grep <pattern> 过滤大输出）
+# 2b. Poll a snapshot manually (use --tail N / --grep <pattern> to filter large output)
 delta-cli sandbox logs <id> --execution-id <exec_id>
-# ↑ 返回 {sandbox_id, execution_id, stderr_tail, stderr_size, cursor, running, finished, exit_code, log_file?}
-#   --execution-id 可省略：省略时仅按 sandbox 查询，服务端因 sandbox_id/execution_id 未同时传递而自动走 ES；
-#   此时返回的是按 execution_id 聚合的**数组**（每项含 execution_id/stdout/stderr/exit_code/command/finished/error/log_file），
-#   而非单个快照对象，CLI 对每个元素同样做 800/200 字节 tail 裁剪与 --tail/--grep/--context 过滤
+# ↑ Returns {sandbox_id, execution_id, stderr_tail, stderr_size, cursor, running, finished, exit_code, log_file?}
+#   --execution-id may be omitted: if omitted, the query is by sandbox only; because sandbox_id and execution_id are not both passed, the server automatically uses ES;
+#   the response is then an **array** grouped by execution_id (each item contains execution_id/stdout/stderr/exit_code/command/finished/error/log_file),
+#   rather than a single snapshot object; the CLI also applies 800/200-byte tail trimming and --tail/--grep/--context filters to each item
 
-# 3. 完成后销毁
+# 3. Destroy after completion
 delta-cli sandbox kill <id>
 ```
 
-### 轮询判断逻辑
+### How to interpret polling results
 
-`sandbox logs` 返回的数据结构为：
+The data structure returned by `sandbox logs` looks like this:
 
 ```json
 {"ok":true,"data":{"sandbox_id":"...","execution_id":"...","stdout_tail":"...","stderr_tail":"...","stdout_size":1234,"stderr_size":1234,"cursor":5,"running":false,"finished":true,"exit_code":0,"log_file":"/workspace/{user_id}/sandbox_logs/delta-result-{sandbox_id}-{execution_id}.json"}}
 ```
 
-字段说明：
-- `sandbox_id` / `execution_id` — 与请求一致；省略 `--execution-id` 时走 ES 按 sandbox 查询，该字段为空
-- `stdout_tail` — CLI 默认保留的 **最后 800 字节** stdout 片段，避免上下文爆炸
-- `stderr_tail` — CLI 默认保留的 **最后 200 字节** stderr 片段（CLI 硬编码 `tailString(s, n)` 按字节截取；ASCII 等同 n 字符，多字节 UTF-8 可能被截断），避免上下文爆炸。不传任何 range flag 时，CLI 会把原始 `stdout`/`stderr` 字段清空，只暴露 `stdout_tail`/`stderr_tail` 和 `stdout_size`/`stderr_size`
-- `stdout_size` — 原始 stdout 字节数（CLI 端计算）
-- `stderr_size` — 原始 stderr 字节数（CLI 端计算）
-- `cursor` — 服务端 stderr 行计数器；**该字段无 `omitempty`，永远出现在响应中**（即使为 0）。`cursor=0` 通常意味着服务端从 provider 还没读到任何 stderr 行；**仅凭 cursor 判断停滞不可靠**（纯 stdout 或静默任务 cursor 恒为 0），停滞检测应以 `last_updated` 为主
-- `last_updated` — 最近活动时间（RFC3339）。SSE 流式路径由 CLI 填最后 data 帧到达时间；快照轮询路径由服务端填（当前服务端可能缺省），缺失时判断停滞退化用 `cursor`/`stdout_tail` 变化
-- `running` — 命令是否仍在运行
-- `finished` — 命令是否已完成（`finished = not running`）
-- `exit_code` — 退出码（完成后才有值，运行中字段省略）
-- `log_file` — 仅 `finished=true` 时出现，是 run envelope 日志文件路径（含完整 stdout + stderr + exit_code + finished + command + error），需读它用 `delta-cli sandbox read <id> --path <log_file>`；SSE 路径下 CLI 已在 complete 帧里兜底补全该字段
+Field descriptions:
+- `sandbox_id` / `execution_id` — match the request; if `--execution-id` is omitted, the server queries ES by sandbox and this field is empty.
+- `stdout_tail` — the last **800 bytes** of stdout, retained by default by the CLI to keep context small.
+- `stderr_tail` — the last **200 bytes** of stderr, retained by default by the CLI (the CLI hard-codes `tailString(s, n)` to slice by byte; for ASCII, this is n characters, while multibyte UTF-8 may be truncated). This keeps context small. If no range flag is passed, the CLI clears the raw `stdout`/`stderr` fields and exposes only `stdout_tail`/`stderr_tail` and `stdout_size`/`stderr_size`.
+- `stdout_size` — number of bytes in the original stdout (calculated by the CLI).
+- `stderr_size` — number of bytes in the original stderr (calculated by the CLI).
+- `cursor` — server-side stderr line counter; **this field has no `omitempty` and is always present in the response**, even when 0. `cursor=0` usually means the server has not yet read any stderr lines from the provider. **A cursor alone is not a reliable way to detect a stall** (`cursor` stays at 0 for stdout-only or silent tasks); use `last_updated` as the primary signal when detecting stalls.
+- `last_updated` — most recent activity time (RFC3339). On the SSE streaming path, the CLI sets this to the arrival time of the last data frame. On the snapshot polling path, it is supplied by the server (which may currently omit it); if missing, fall back to changes in `cursor`/`stdout_tail` when checking for a stall.
+- `running` — whether the command is still running.
+- `finished` — whether the command has completed (`finished = not running`).
+- `exit_code` — exit code (available only after completion; omitted while running).
+- `log_file` — present only when `finished=true`; path to the run-envelope log file (containing full stdout + stderr + exit_code + finished + command + error). Read it with `delta-cli sandbox read <id> --path <log_file>`. On the SSE path, the CLI fills in this field in the complete frame if needed.
 
-**stdout 路径说明**：`sandbox logs` 默认返回 stdout 末尾 800 字节（`stdout_tail`）提供实时中间进度预览，完整 stdout 仍在命令结束时被写入沙箱内的 `log_file`，需全文时用 `sandbox read` 读。SSE 路径下 CLI 已在 complete 帧里带 `stdout`（全文）与 `result_summary`（末尾 JSON 检测到即附上），`--summary` 富化（含 hints）仅旧服务器回退路径生效。
+**stdout routing:** By default, `sandbox logs` returns the last 800 bytes of stdout (`stdout_tail`) as a preview of live progress. Full stdout is written to the sandbox's `log_file` when the command ends; use `sandbox read` to read it all. On the SSE path, the CLI includes full `stdout` and `result_summary` in the complete frame (the latter is included when trailing JSON is detected). `--summary` enrichment (including hints) takes effect only on the legacy-server fallback path.
 
-要用 `--tail/--grep/--context` 自定义切片：传任意一个 flag 时，CLI 会把过滤后的 stdout 和 stderr 分别写回 `stdout`/`stderr` 字段并更新 `stdout_size`/`stderr_size`；不传则保持 `stdout=""` + `stdout_tail` 末尾 800 字节预览 + `stderr=""` + `stderr_tail` 末尾 200 字节预览（总计约 1KB）。
+To customise the output slice with `--tail`/`--grep`/`--context`, pass any one of these flags. The CLI writes filtered stdout and stderr back to the `stdout`/`stderr` fields and updates `stdout_size`/`stderr_size`. Without these flags, it keeps `stdout=""` + the last 800 bytes in `stdout_tail` + `stderr=""` + the last 200 bytes in `stderr_tail` (about 1 KB total).
 
 ```bash
-# 看最后 50 行 stdout 和 stderr
+# Show the last 50 lines of stdout and stderr
 delta-cli sandbox logs <id> --execution-id <eid> --tail 50
-# 过滤 ERROR/warning 行（同时作用于 stdout 和 stderr）
+# Filter ERROR/warning lines (applies to both stdout and stderr)
 delta-cli sandbox logs <id> --execution-id <eid> --grep "ERROR|warning" --context 2
 ```
 
-判断任务状态的规则（按优先顺序）：
+Interpret task status using these rules, in order:
 
-1. **`finished=true` + `exit_code=0`** → 正常完成，可以读取结果并销毁 sandbox
-2. **`finished=true` + `exit_code≠0`** → 命令执行失败，查看 stderr/error 信息
-3. **`running=true`** → 任务仍在运行，继续等待（建议每 15-30 秒查询一次）
-4. **连续 3 次 `running=true` 且输出无变化且距离提交超过 60 秒** → 任务可能挂起或无输出，用 `sandbox status <id>` 检查 sandbox 是否存活。判断「输出无变化」：快照里有 `last_updated` 时，直接比较它与当前时间是否持续滞后；缺 `last_updated` 时才退化为 `stderr_tail`/`cursor` 无变化（注意 `cursor` 只反映 stderr 行数，纯 stdout 任务会恒为 0，勿据此误判挂起）
-5. **`sandbox status` 返回正常但 logs 仍然无变化** → 用 `sandbox run <id> --command "ps aux | grep <进程名>" --timeout 15` 在容器内检查命令是否还在运行
+1. **`finished=true` + `exit_code=0`** → completed successfully; read the results and destroy the sandbox.
+2. **`finished=true` + `exit_code≠0`** → command failed; check stderr/error details.
+3. **`running=true`** → the task is still running; keep waiting (poll every 15–30 seconds is recommended).
+4. **`running=true` for 3 consecutive polls, with no output changes and more than 60 seconds since submission** → the task may be stalled or producing no output; use `sandbox status <id>` to check whether the sandbox is alive. To judge whether output has changed: if the snapshot has `last_updated`, compare it directly with the current time and check whether it remains consistently stale. Only if `last_updated` is missing should you fall back to changes in `stderr_tail`/`cursor` (note that `cursor` reflects stderr lines only and stays at 0 for stdout-only tasks; do not use it alone to misdiagnose a hang).
+5. **`sandbox status` is normal but logs still have not changed** → use `sandbox run <id> --command "ps aux | grep <process-name>" --timeout 15` to check inside the container whether the command is still running.
 
-**注意**：
-- `sandbox logs` 只应配合 `sandbox run-bg` 使用；同步 `sandbox run` 的结果直接返回，不能也不应该调用 `logs`。
-- `sandbox run-bg` 不加 `--wait` 时，HTTP 请求本身会快速返回 `{execution_id, sandbox_id}`；命令若超时会以非零退出码结束，需后续通过 `logs` 拿 `exit_code`。
-- `sandbox run-bg --wait` 模式下，`--timeout` **同时**充当服务端命令执行超时和客户端等待 deadline（默认 300s）；CLI 通过 SSE 实时流（`/logs/stream`）跟随，原始 `data:` 帧透传到 stdout，收到 `complete` 即结束（无末尾信封），超时则追加 `finished=false` 快照信封；初始 `/run-background` POST 有独立的 60s HTTP timeout。
-- 后台命令可跨 tool call 轮次查询：保存 `sandbox_id` 和 `execution_id`，后续轮次通过 `sandbox status` / `sandbox logs` 获取结果。
+**Notes:**
+- Use `sandbox logs` only with `sandbox run-bg`; synchronous `sandbox run` returns its result directly, so `logs` cannot and should not be called for it.
+- Without `--wait`, the `sandbox run-bg` HTTP request itself returns quickly with `{execution_id, sandbox_id}`. If the command times out, it exits with a non-zero code; retrieve `exit_code` later with `logs`.
+- In `sandbox run-bg --wait` mode, `--timeout` serves **both** as the server-side command timeout and the client-side waiting deadline (default 300s). The CLI follows the live SSE stream (`/logs/stream`), passes raw `data:` frames through to stdout and ends when `complete` arrives (with no trailing envelope); on timeout, it appends a `finished=false` snapshot envelope. The initial `/run-background` POST has its own 60s HTTP timeout.
+- Background commands can be queried across tool-call turns: save `sandbox_id` and `execution_id`, then retrieve results in later turns with `sandbox status` / `sandbox logs`.
