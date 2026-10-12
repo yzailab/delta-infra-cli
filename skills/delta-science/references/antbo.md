@@ -1,80 +1,84 @@
-# AntBO 详细规则
+# AntBO reference
 
-直接用 `delta-cli science invoke` 设置 `endpoint`、`data`、`params`。按本文件定义的
-CLI 服务响应字段读取业务结果。标为“变更”的 operation 只有用户明确授权时才能执行，且不得重试。
+Use `delta-cli science invoke` with `endpoint`, `data` and `params`. Read business results
+from the CLI response fields defined in this document. Run operations marked as mutating only
+with the user's explicit authorisation, and never retry them.
 
-抗体/CDRH3 场景即使出现 “LDM” 也不得改用小分子 LDM-BO 或 STRBO。当前 catalog
-同时暴露 CDRH3 生成/建议/评估接口和传统 AntBO 作业管理接口。
+For antibody/CDRH3 tasks, do not switch to small-molecule LDM-BO or STRBO even if the user
+mentions “LDM”. The current catalogue exposes both CDRH3 generation, suggestion and evaluation
+operations and the traditional AntBO job-management operations.
 
-## health（只读）
+## health (read-only)
 
-- 情景：检查远程 AntBO 环境是否可用。
-- 代码：`endpoint="health"; data=None; params=None`
-- 投影：status、antbo_available、metadata、limits、warnings。
+- Use case: Check whether the remote AntBO environment is available.
+- Request: `endpoint="health"; data=None; params=None`
+- Read from the response: `status`, `antbo_available`, `metadata`, `limits` and `warnings`.
 
-## run-default-job（变更）
+## run-default-job (mutating)
 
-- 情景：用户明确要求启动标准后台续跑任务。
-- 代码：`endpoint="run-default-job"; data=None; params={"log_name":"antbo_<唯一时间戳>.log","append":False,"timeout_seconds":86400}`
-- 投影：started、pid、log_name/log_path、timeout_seconds；未知结果禁止重试。
+- Use case: The user explicitly asks to start the standard background continuation job.
+- Request: `endpoint="run-default-job"; data=None; params={"log_name":"antbo_<unique-timestamp>.log","append":False,"timeout_seconds":86400}`
+- Read from the response: `started`, `pid`, `log_name` or `log_path`, and `timeout_seconds`. Do not retry if the outcome is unknown.
 
-只有同一次业务响应同时包含 `started=true`、非空 `pid` 以及 `log_name` 或
-`log_path` 时，才能声称作业已启动；字段缺失时标记为未验证，不得重复提交。
+Report the job as started only when the same business response contains `started=true`, a
+non-empty `pid`, and either `log_name` or `log_path`. If any field is missing, mark the start
+as unverified and do not submit again.
 
-## run（重型变更）
+## run (heavy, mutating)
 
-- 情景：用户明确给出受限 AntBO 脚本、配置、抗原文件并要求同步执行。
-- 代码：`endpoint="run"; data={"script_path":"./bo/main.py","config_path":"./bo/config.yaml","n_trials":1,"seed":42,"antigens_file":"<项目根内路径>","extra_args":[],"timeout_seconds":86400,"cuda_visible_devices":"0","conda_env":"DGM","log_name":"antbo_custom.log","append":False}; params=None`
-- 投影：ok、returncode、timed_out、log_path、日志截断状态；不在最终答复展开完整日志。
+- Use case: The user explicitly supplies an approved AntBO script, configuration and antigen file, and asks for synchronous execution.
+- Request: `endpoint="run"; data={"script_path":"./bo/main.py","config_path":"./bo/config.yaml","n_trials":1,"seed":42,"antigens_file":"<path within project root>","extra_args":[],"timeout_seconds":86400,"cuda_visible_devices":"0","conda_env":"DGM","log_name":"antbo_custom.log","append":False}; params=None`
+- Read from the response: `ok`, `returncode`, `timed_out`, `log_path` and whether the log was truncated. Do not include the full log in the final reply.
 
-## log（只读）
+## log (read-only)
 
-- 情景：用户提供已知 log_name 并要求查看尾部日志。
-- 代码：`endpoint="log"; data=None; params={"log_name":"antbo_run.log"}`
-- 投影：log_name、log、log_truncated；长日志只给有界尾部摘要。
+- Use case: The user provides a known `log_name` and asks to inspect the end of the log.
+- Request: `endpoint="log"; data=None; params={"log_name":"antbo_run.log"}`
+- Read from the response: `log_name`, `log` and `log_truncated`. For long logs, provide only a bounded summary of the tail.
 
-## jobs（只读）
+## jobs (read-only)
 
-- 情景：查看当前 service 容器登记的活动作业。
-- 代码：`endpoint="jobs"; data=None; params=None`
-- 投影：jobs 中 pid、running、returncode、log_name、log_path。
+- Use case: List the active jobs registered by the current service container.
+- Request: `endpoint="jobs"; data=None; params=None`
+- Read `pid`, `running`, `returncode`, `log_name` and `log_path` from each item in `jobs`.
 
-## stop（变更）
+## stop (mutating)
 
-- 情景：用户明确要求停止已确认 PID 的任务。
-- 代码：`endpoint="stop"; data=None; params={"pid":12345}`
-- 投影：stopped、pid、message；不得盲目重试或在多任务时无参数调用。
+- Use case: The user explicitly asks to stop a job with a confirmed PID.
+- Request: `endpoint="stop"; data=None; params={"pid":12345}`
+- Read from the response: `stopped`, `pid` and `message`. Do not retry blindly or call without parameters when multiple jobs exist.
 
-## CDRH3 生成与优化
+## CDRH3 generation and optimisation
 
-服务端支持的抗原由 health 的 `supported_antigens` 决定；不得猜测或把任意蛋白文件
-路径当成 antigen。部署通常支持 `1ADQ_A`、`1FBI_X`、`1H0D_C`、`1NSN_S`、
-`1OB1_C`，但执行前以当前服务响应和用户选择为准。
+The server's supported antigens are defined by `supported_antigens` in the health response.
+Do not guess or treat an arbitrary protein-file path as an antigen. Deployments commonly support
+`1ADQ_A`, `1FBI_X`, `1H0D_C`, `1NSN_S` and `1OB1_C`, but use the current service response
+and the user's choice before execution.
 
-### ldm-health（只读）
+### ldm-health (read-only)
 
-- 代码：`endpoint="ldm-health"; data=None; params=None`
-- 投影：supported_antigens、cdrh3_length、objective、Absolut/模型真实性字段。
+- Request: `endpoint="ldm-health"; data=None; params=None`
+- Read from the response: `supported_antigens`, `cdrh3_length`, `objective`, and fields describing Absolut/model provenance.
 
 ### ldm-init / ldm-init-validate
 
 ```json
 {
-  "task": "为指定抗原生成初始 CDRH3 候选",
+  "task": "Generate initial CDRH3 candidates for the specified antigen",
   "num_initial": 3,
   "antigen": "1ADQ_A",
   "seed": 42
 }
 ```
 
-只校验参数时使用 `ldm-init-validate`；正式生成使用 `ldm-init`。成功候选必须是服务
-返回的 CDRH3 序列，不得由模型自行编造。
+Use `ldm-init-validate` only to validate parameters; use `ldm-init` for generation. Successful
+candidates must be CDRH3 sequences returned by the service. Do not invent candidates.
 
 ### ldm-suggest / ldm-suggest-validate
 
 ```json
 {
-  "task": "继续降低抗原结合能",
+  "task": "Continue reducing antigen binding energy",
   "history_xs": ["ARVGYSLYAMD", "AKYGGYDYAMD"],
   "history_ys": [-18.2, -17.4],
   "num_suggestions": 2,
@@ -83,9 +87,9 @@ CLI 服务响应字段读取业务结果。标为“变更”的 operation 只�
 }
 ```
 
-AntBO 是单目标，`history_ys` 必须是一维有限数值数组，并与 `history_xs` 等长。
-每条 CDRH3 必须是 11 个标准氨基酸字符；以 `ldm-health` 当前返回的
-`cdrh3_length` 为最终约束。
+AntBO is single-objective. `history_ys` must be a one-dimensional array of finite numbers and
+have the same length as `history_xs`. Each CDRH3 must contain 11 standard amino-acid characters;
+use the current `cdrh3_length` returned by `ldm-health` as the final constraint.
 
 ### evaluate / evaluate-validate
 
@@ -96,5 +100,6 @@ AntBO 是单目标，`history_ys` 必须是一维有限数值数组，并与 `hi
 }
 ```
 
-成功 score 数量必须与 designs 一致；结合能越低越好。生成、建议和评估均为远端重型
-调用，结果未知或超时时不得重试，也不得用本地随机分数补全。
+The number of returned scores must match the number of designs; lower binding energy is better.
+Generation, suggestion and evaluation are all heavy remote calls. Do not retry if the outcome is
+unknown or times out, and do not fill in results with locally generated random scores.
