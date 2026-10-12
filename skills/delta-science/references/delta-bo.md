@@ -1,23 +1,24 @@
-# Delta-BO 详细规则
+# Delta-BO reference
 
-所有在线调用直接使用 `delta-cli science invoke`，tool 固定为 `delta-bo`。当前 CLI catalog 只暴露
-`commands` 和 `generate`；禁止根据旧 HTTP 文档猜测或直连 stateful command API。
+Make all online calls with `delta-cli science invoke`; the tool is always `delta-bo`. The current
+CLI catalogue exposes only `commands` and `generate`. Do not infer operations from old HTTP
+documentation or call the stateful command API directly.
 
 ## commands
 
-情景：用户要求查看当前部署支持的 Delta-BO 命令。
+Use case: The user asks which Delta-BO commands are supported by the current deployment.
 
 ```text
 delta-cli science invoke --tool delta-bo --endpoint commands
 ```
 
-无 body。只报告当前业务响应中的命令列表，不从历史文档补全。
+No request body. Report only the command list in the current business response; do not fill it in from historical documentation.
 
 ## generate
 
-情景：针对数值、整数或分类实验变量生成随机搜索或贝叶斯优化建议。
+Use case: Generate random-search or Bayesian-optimisation suggestions for numeric, integer or categorical experimental variables.
 
-无真实历史，或历史少于 5 条且用户没有明确要求 BO 时，使用有界随机搜索：
+When there is no real history, or fewer than five historical observations and the user has not explicitly requested BO, use bounded random search:
 
 ```json
 {
@@ -30,7 +31,7 @@ delta-cli science invoke --tool delta-bo --endpoint commands
 }
 ```
 
-有真实历史且用户明确要求 BO 时，可以使用：
+When real history is available and the user explicitly requests BO, you may use:
 
 ```json
 {
@@ -58,10 +59,11 @@ delta-cli science invoke --tool delta-bo --endpoint commands
 }
 ```
 
-参数类型仅支持 `numeric`、`integer`、`categorical`。优先使用 object-form history，
-避免数组列顺序歧义。不得编造 observation、目标值或所谓最优点。
+Supported parameter types are `numeric`, `integer` and `categorical`. Prefer object-form history
+to avoid ambiguity about the order of array columns. Do not invent observations, objective values
+or purported optima.
 
-可选去重与约束：
+Optional deduplication and constraints:
 
 ```json
 {
@@ -77,13 +79,14 @@ delta-cli science invoke --tool delta-bo --endpoint commands
 }
 ```
 
-只报告业务响应的 `suggestions`、`suggestion_metadata`、`warnings`、
-`generated_candidate_count` 和 `diversity` 中实际存在的字段。空 suggestions 或失败
-不得用本地 GP、UCB 或随机数替代。
+Report only fields actually present in the business response: `suggestions`,
+`suggestion_metadata`, `warnings`, `generated_candidate_count` and `diversity`. Do not replace
+empty suggestions or a failure with local GP, UCB or random-number results.
 
-## 已知但未暴露的旧能力
+## Known legacy capabilities that are not exposed
 
-旧服务曾包含 session、space、objective、policy、suggest、observe、loop、status、
-best 等有状态命令，但它们不是当前 Delta CLI operation。本 Skill 只保留这条能力
-边界，不保留 URL 或 curl 示例，也不执行这些操作。需要扩展时，先由 Science Server
-暴露 operation 和请求 schema，再更新本 reference。
+The old service included stateful commands such as session, space, objective, policy, suggest,
+observe, loop, status and best, but they are not current Delta CLI operations. This Skill records
+only that capability boundary: it includes no URL or curl examples and does not run those
+operations. To extend the interface, first expose the operation and request schema through Science
+Server, then update this reference.
