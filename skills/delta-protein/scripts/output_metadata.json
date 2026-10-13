@@ -1,0 +1,275 @@
+{
+  "zero_shot_mutant_candidates": {
+    "provenance": "derived",
+    "project": "Mutant candidate summary: mutation (keep the tool's original notation), source model, score/confidence, recommendation/rationale; positions overlapping the active site are marked as not recommended",
+    "form": "Markdown table; score column names restated in natural language, not raw JSON key names",
+    "downstream": "result_files list -> summarize_result; ConSurf conservation / EasIFA active site / PubMed literature are annotations only, not recommendation criteria",
+    "output_template": "- Title: **Zero-shot mutant candidate prediction result**\n- Markdown table: `| Mutation | Source model | Score/confidence | Recommendation/rationale |`, keeping the tool's original mutation/model notation; column names adjustable per resultjson\n- Positions overlapping the active site -> mark as \"Overlaps active site, not recommended\"; conservation is only a note in the rationale column\n- If PubMed reports the mutation: note the PMID and distinguish \"reported hotspot\" / \"new target not yet reported\"\n- Never invent evidence not present in the data; do not use raw JSON key names as body text"
+  },
+  "structure_to_sequence": {
+    "provenance": "derived",
+    "project": "Protein sequence extracted from PDB/CIF",
+    "form": "Sequence shown as inline code",
+    "downstream": "sequence can be used as protein_sequence for downstream mutation/design/annotation endpoints (e.g. consensus_mutation, interpro_analyze)",
+    "output_template": "- Title: **Structure-to-sequence extraction result**\n- Lead with the conclusion: extracted protein sequence for chain=<chain> (length N aa)\n- Show the sequence as inline code; no download needed"
+  },
+  "fasta_to_sequence": {
+    "provenance": "derived",
+    "project": "Protein sequence extracted from FASTA",
+    "form": "Sequence shown as inline code",
+    "downstream": "sequence can be used as downstream protein_sequence input",
+    "output_template": "- Title: **FASTA sequence parsing result**\n- Lead with the conclusion: parsed sequence id/length\n- Show the sequence as inline code"
+  },
+  "protein_design": {
+    "provenance": "derived",
+    "project": "Designed sequences with scores, download_url (design results), zip_download_url",
+    "form": "Download link list; structure files given as `[name](full URL)` per format",
+    "downstream": "terminal artifact",
+    "output_template": "- Title: **Protein design result (RFdiffusion3 + MPNN)**\n- Lead with the conclusion: number of designed sequences / scores\n- Add design-result and scaffold-file links to the \"Result files & downloads\" section: `[Design result file](download_url)`, `[ZIP](zip_download_url)`"
+  },
+  "rfd3_design": {
+    "provenance": "derived",
+    "project": "structure_links (best ≤5 scaffold PDBs sorted by sample_score) with structures overview (chain/length/sequence/sample_score/quality metrics)",
+    "form": "Scaffold PDB link list; quality metrics include insertion RMSD, clashes, chain breaks, secondary structure",
+    "downstream": "scaffolds can feed mpnn_design_sequence / protein_design for sequence design",
+    "output_template": "- Title: **RFdiffusion3 protein scaffold design result**\n- Lead with the conclusion: number of scaffolds generated (best ≤5), sample_score range\n- Add scaffold PDB links to the \"Result files & downloads\" section; summarize quality metrics in text (insertion RMSD/clashes/chain breaks/secondary structure)"
+  },
+  "protenix": {
+    "provenance": "tested",
+    "project": "Predicted structure download_url (.cif/.pdb) with confidence: plddt, ptm, gpde, num_recycles, has_clash",
+    "form": "Structure file link + confidence text",
+    "downstream": "structure can serve as downstream structure_file, or extract the sequence first via structure_to_sequence and use as protein_sequence",
+    "output_template": "- Title: **Protenix structure prediction result**\n- Lead with the conclusion: prediction done + confidence (plddt/ptm/gpde), num_recycles, clash status\n- Add the structure file link to the \"Result files & downloads\" section: `[Protenix structure prediction result file](download_url)`"
+  },
+  "multievolve": {
+    "provenance": "derived",
+    "project": "Multi-site combinatorial mutation activity score topk (download_url)",
+    "form": "Ranking text/table + download link",
+    "downstream": "-",
+    "output_template": "- Title: **Multi-site mutation activity prediction result**\n- Lead with the conclusion: recommended combinatorial mutations and activity-score trend (topk)\n- Add the full ranking to the \"Result files & downloads\" section"
+  },
+  "ephod_predict_protein": {
+    "provenance": "derived",
+    "project": "Optimal pH for each protein (download_url)",
+    "form": "Text/table",
+    "downstream": "-",
+    "output_template": "- Title: **Protein optimal pH prediction result**\n- Lead with the conclusion: optimal pH range per protein\n- Add details to the \"Result files & downloads\" section"
+  },
+  "ephod_predict_mutation": {
+    "provenance": "derived",
+    "project": "Optimal pH per mutant and its change (download_url)",
+    "form": "Text/table",
+    "downstream": "-",
+    "output_template": "- Title: **Mutant optimal pH prediction result**\n- Lead with the conclusion: optimal pH per mutant and differences vs wild type\n- Add details to the \"Result files & downloads\" section"
+  },
+  "protein_sol_predict_protein": {
+    "provenance": "derived",
+    "project": "Protein solubility and isoelectric point pI (download_url)",
+    "form": "Text",
+    "downstream": "-",
+    "output_template": "- Title: **Protein solubility prediction result**\n- Lead with the conclusion: predicted solubility trend and pI\n- Add details to the \"Result files & downloads\" section"
+  },
+  "protein_sol_predict_mutation": {
+    "provenance": "derived",
+    "project": "Solubility score per mutant and change trend; flag mutations likely to affect solubility",
+    "form": "Text/table",
+    "downstream": "-",
+    "output_template": "- Title: **Mutant solubility prediction result**\n- Lead with the conclusion: solubility score/change trend, flagging mutations likely to affect solubility\n- Add details to the \"Result files & downloads\" section"
+  },
+  "summarize_result": {
+    "provenance": "derived",
+    "project": "Multi-model summarized ranking (topk) with all rows retained; restated as a table with the tool's original fields, prompting download of the full file when too long",
+    "form": "Full Markdown table (≤100 rows); better for filtering/sorting",
+    "downstream": "final step of the mutation-prediction chain (terminal)",
+    "output_template": "- Title: **Multi-model result summary**\n- Show the full summary table (≤100 rows, no truncation), column names restated in natural language\n- Lead with the conclusion: positions where models agree/disagree; base final recommendations on the summary rather than restating single-model raw tables\n- When more than 100 rows, prompt downloading the full file"
+  },
+  "protein_evolution": {
+    "provenance": "derived",
+    "project": "Activity score topk for specified n-site/multi-site mutations (download_url)",
+    "form": "Text/table + download link",
+    "downstream": "-",
+    "output_template": "- Title: **Protein n-site mutation activity prediction result**\n- Lead with the conclusion: n-site/multi-site mutation activity prediction results (topk)\n- Add details to the \"Result files & downloads\" section"
+  },
+  "protrek_search": {
+    "provenance": "derived",
+    "project": "Hit protein entries, similarity and functional information",
+    "form": "Hit list text/table",
+    "downstream": "for known targets with metadata use uniprot_query; this endpoint is for open-ended retrieval",
+    "output_template": "- Title: **ProTrek database search result**\n- Lead with the conclusion: number of hit protein entries; list similarity per hit (score vs query) and functional information\n- For structure/sequence search, state the retrieval mode (query_type/input_type)"
+  },
+  "catpred_predict": {
+    "provenance": "derived",
+    "project": "kcat, Km, kcat/Km predictions (restate resultjson per the actual keys returned)",
+    "form": "Text",
+    "downstream": "-",
+    "output_template": "- Title: **Enzyme kinetic parameter prediction result (CatPred)**\n- Lead with the conclusion: predicted kcat, Km, kcat/Km and trends\n- Restate key parameters in natural language or a small table"
+  },
+  "easifa_predict_active_site": {
+    "provenance": "derived",
+    "project": "Enzyme active-site/binding-site residues, positions and confidence; positions overlapping zero-shot mutant results are marked as not recommended for engineering",
+    "form": "Text/table",
+    "downstream": "site information cross-annotated with zero_shot_mutant_candidates overlap",
+    "output_template": "- Title: **Enzyme active-site/binding-site prediction result (EasIFA)**\n- Lead with the conclusion: active-site residues, positions, confidence\n- When zero-shot mutant results exist, mark overlapping positions (overlaps not recommended for engineering)"
+  },
+  "foldseek": {
+    "provenance": "derived",
+    "project": "Extracted Foldseek/SaProt combined sequence, download_url (FASTA)",
+    "form": "Sequence inline code + FASTA link",
+    "downstream": "sequence can serve as downstream protein_sequence input",
+    "output_template": "- Title: **Foldseek structure search result**\n- Lead with the conclusion: sequence extraction summary (length)\n- Add sequence inline code + FASTA link to the \"Result files & downloads\" section"
+  },
+  "generate_msa": {
+    "provenance": "derived",
+    "project": "Homolog MSA (A3M), download_url",
+    "form": "Download link; note MSA can be used for homology/conservation inference",
+    "downstream": "download_url -> msa_file for consensus_mutation / evcouplings_mutation / zero_shot_mutant_candidates",
+    "output_template": "- Title: **Multiple sequence alignment (MSA) result**\n- Lead with the conclusion: MSA computed, usable for homology and conservation inference\n- Add the MSA file link to the \"Result files & downloads\" section and note it can serve as downstream msa_file"
+  },
+  "mpnn_design_sequence": {
+    "provenance": "derived",
+    "project": "Number of designed sequences, scores/confidence, download_url",
+    "form": "Text + download link",
+    "downstream": "-",
+    "output_template": "- Title: **MPNN sequence design result**\n- Lead with the conclusion: number of designed sequences and scores/confidence\n- Add the design-result file link to the \"Result files & downloads\" section"
+  },
+  "catapro_predict": {
+    "provenance": "derived",
+    "project": "Enzyme kinetic parameters kcat, Km, kcat/Km predictions",
+    "form": "Text",
+    "downstream": "-",
+    "output_template": "- Title: **Enzyme kinetic parameter prediction result (CataPro)**\n- Lead with the conclusion: predicted kcat, Km, kcat/Km (may include trends)"
+  },
+  "esmfold2_predict": {
+    "provenance": "tested",
+    "project": "Complex structure download_url (.cif, composition when protein+DNA/RNA/ligand) with confidence: plddt_mean, ptm, iptm, sequence_length",
+    "form": "Structure file link + confidence text",
+    "downstream": "structure can serve as downstream structure_file",
+    "output_template": "- Title: **ESMFold2 structure prediction result**\n- Lead with the conclusion: prediction done (complex composition, e.g. protein(47aa)+dna(12nt)) and confidence (plddt_mean/ptm/iptm), sequence_length\n- Add the structure CIF link to the \"Result files & downloads\" section"
+  },
+  "consurf_predict": {
+    "provenance": "tested",
+    "project": "Conserved residue count and list (pos/seq/conserved_rank/conserved_score); presented grouped by conservation level",
+    "form": "Residue list; interpretation: lower conserved_score = more conserved, larger conserved_rank = more conserved",
+    "downstream": "conservation is only a reference annotation for the zero_shot_mutant_candidates recommendation rationale, not a recommendation criterion",
+    "output_template": "- Title: **Residue conservation analysis result (ConSurf)**\n- Interpretation: larger conserved_rank = more conserved (7/8/9 conserved, 1/2/3 variable); lower conserved_score = more conserved\n- List positions grouped as conserved/variable (pos/residue/rank/score), explaining the functional or engineering significance of conserved/variable regions\n- May provide conservation reference notes for the \"Recommendation/rationale\" column of zero_shot_mutant_candidates (annotation only, not a recommendation criterion)"
+  },
+  "interpro_analyze": {
+    "provenance": "derived",
+    "project": "Domain, family, GO annotation summary + Excel (download_url)",
+    "form": "Annotation summary text + Excel download link",
+    "downstream": "-",
+    "output_template": "- Title: **InterProScan domain and function annotation result**\n- Lead with the conclusion: key domain/family/GO annotation entries\n- Add the Excel detail file to the \"Result files & downloads\" section"
+  },
+  "dock": {
+    "provenance": "tested",
+    "project": "affinity per pose (binding energy, kcal/mol), rmsd_lb/rmsd_ub, associated pocket; rank-1 carries pdb_url (clean complex); best score read from message or the minimal affinity",
+    "form": "Pose list text (affinity & RMSD) + multi-conformer PDB download link",
+    "downstream": "rank-1 pdb_url -> plip_analyze structure_file",
+    "output_template": "- Title: **Molecular docking result**\n- Lead with the conclusion: best score (best affinity, kcal/mol) and the associated pocket\n- List poses sorted by score (affinity/rmsd_lb/rmsd_ub, mark the pocket when multiple pockets)\n- Add the multi-conformer PDB to the \"Result files & downloads\" section; give rank-1 pdb_url separately (usable as PLIP input)"
+  },
+  "caver_tunnel_analyze": {
+    "provenance": "derived",
+    "project": "Tunnel/channel location, length, bottleneck residues + visualization/download links",
+    "form": "Text/table + links",
+    "downstream": "-",
+    "output_template": "- Title: **Protein tunnel/channel analysis result (CAVER)**\n- Lead with the conclusion: tunnel/channel location, length, bottleneck residues\n- Add visualization outputs to the \"Result files & downloads\" section"
+  },
+  "bfitter": {
+    "provenance": "derived",
+    "project": "Distribution of high/low B-factor positions and engineering implications",
+    "form": "Residue list + text",
+    "downstream": "flexible positions can be annotated as site-directed mutagenesis/directed-evolution candidates",
+    "output_template": "- Title: **Protein flexibility analysis result (B-FITTER)**\n- Lead with the conclusion: distribution of high (flexible) / low (rigid) B-factor positions\n- Explain what flexible regions imply for site-directed mutagenesis / directed evolution"
+  },
+  "pubmed_search": {
+    "provenance": "derived",
+    "project": "extracted_papers and summary; table grouped by PMID (protein name, mutation (original notation), key finding, source reference)",
+    "form": "Markdown table; keep original mutation notation (e.g. Y126A/Y206F); site-level comparison only when zero-shot mutant results exist and the literature contains those mutations",
+    "downstream": "literature evidence can be cross-checked with zero_shot_mutant_candidates positions (note the PMID, distinguish reported hotspots/new targets)",
+    "output_template": "- Title: **PubMed literature search result**\n- Lead with a review summary: 4-6 bullet points depending on focus (mutation/engineering vs application/mechanism)\n- Table grouped by PMID with the source reference in the last column (`PMID: XXXXXXXX`, fall back to the title when missing); keep original mutation notation\n- Papers with empty mutations do not show mutation-related columns; site-level comparison only when zero-shot mutant results exist and the literature contains those mutations"
+  },
+  "pubchem_search": {
+    "provenance": "tested",
+    "project": "Compound entries: name, synonyms, molecular_formula, molecular_weight, canonical_smiles, inchi, inchikey, cid, pubchem_url",
+    "form": "Text (formula/weight/name/SMILES) + entry URL",
+    "downstream": "canonical_smiles -> smiles / primary_smiles for catpred_predict / catapro_predict",
+    "output_template": "- Title: **PubChem compound search**\n- Lead with the conclusion: compound name, molecular formula, molecular weight\n- Also give: canonical_smiles / InChIKey, cid, `[PubChem entry](pubchem_url)` (URL in a safe form)\n- Avoid listing every JSON key"
+  },
+  "pisa_query": {
+    "provenance": "tested",
+    "project": "n_interfaces and per interface: interface_id, interface_area, solvation_energy, stabilization_energy, p_value, hydrogen_bonds, salt_bridges, n_interface_residues, key interface residues",
+    "form": "Interface summary text/table + full JSON download link",
+    "downstream": "key interface residues can be used for interaction annotation",
+    "output_template": "- Title: **PISA protein interface analysis result**\n- Lead with the conclusion: number of interfaces (n_interfaces) and stability (p_value/stabilization energy)\n- Per interface give interface_area, solvation/stabilization energy, p_value, hydrogen bond/salt bridge counts, n_interface_residues, key interface residues\n- Add the full interface JSON to the \"Result files & downloads\" section"
+  },
+  "plip_analyze": {
+    "provenance": "derived",
+    "project": "Protein-ligand interactions: hydrogen bonds, hydrophobic contacts, salt bridges, pi-pi stacking etc. + summary + download_url",
+    "form": "Interaction-category text/table + links",
+    "downstream": "input is often the rank-1 pdb_url returned by dock",
+    "output_template": "- Title: **PLIP protein-ligand interaction analysis result**\n- Lead with the conclusion: detected interaction categories (hydrogen bond/hydrophobic/salt bridge/pi-pi/halogen/metal coordination) and key residues\n- Add result files and visualizations to the \"Result files & downloads\" section; note the source structure when the input came from dock"
+  },
+  "uniprot_query": {
+    "provenance": "derived",
+    "project": "protein_name, organism, sequence_length, sequence, structure_links, function-related fields",
+    "form": "Metadata summary (name/species/length) + sequence inline code + structure links",
+    "downstream": "sequence -> protein_sequence for interpro_analyze / consensus_mutation",
+    "output_template": "- Title: **UniProt query result**\n- Lead with the conclusion: protein name, species, sequence length, function annotation and key regions (summarized, not raw JSON key names)\n- Show the full sequence as inline code; structure_links as `[name](full URL)`\n- Note the sequence can serve as downstream protein_sequence input"
+  },
+  "uniprot_batch_query": {
+    "provenance": "derived",
+    "project": "Metadata per query id (uniprotkb/uniparc, name, species, sequence length, structure_links)",
+    "form": "Entry list/table for easy selection",
+    "downstream": "sequence of the selected entry can be used as downstream input",
+    "output_template": "- Title: **UniProt candidate match result**\n- One row per candidate entry: Entry/protein name/species/sequence identity/sequence length (table or list)\n- Prompt the user to confirm the selection"
+  },
+  "pocket_prediction": {
+    "provenance": "tested",
+    "project": "n_pockets and pockets list (rank/name/score/probability/center/residue_ids/n_residues) + cropped pocket PDB download_url",
+    "form": "Pocket list + link; n_pockets=0 is a valid result (p2rank found no pocket), not a failure",
+    "downstream": "cropped pocket PDB (download_url) -> structure_file for rfd3_design",
+    "output_template": "- Title: **Binding pocket prediction result**\n- Lead with the conclusion: number of pockets, per-pocket score/probability, location of the top ones (center and residues)\n- Add the cropped pocket PDB to the \"Result files & downloads\" section and note it can feed rfd3_design\n- Report n_pockets=0 truthfully (p2rank found no pocket), not a failure"
+  },
+  "consensus_mutation": {
+    "provenance": "derived",
+    "project": "Consensus mutation residues, support level and recommendation grade",
+    "form": "Text/table",
+    "downstream": "-",
+    "output_template": "- Title: **Consensus mutation analysis result**\n- Lead with the conclusion: positions jointly recommended by multiple models/homolog sequences, support level and overall recommendation grade"
+  },
+  "evcouplings_mutation": {
+    "provenance": "derived",
+    "project": "Single-site mutation statistical energy scores (Excel download_url) + zip_download_url (.model and coupling parameters)",
+    "form": "Energy score summary + Excel/ZIP links",
+    "downstream": "-",
+    "output_template": "- Title: **EVcouplings coevolutionary mutation analysis result**\n- Lead with the conclusion: TOP positions by single-site statistical energy score\n- Add the Excel and ZIP (with .model/coupling parameters) to the \"Result files & downloads\" section"
+  },
+  "crop_sequence": {
+    "provenance": "derived",
+    "project": "cropped_results: name/start/end/length/sequence per region + merged FASTA download_url",
+    "form": "Sequence inline code + FASTA link",
+    "downstream": "-",
+    "output_template": "- Title: **Protein sequence cropping result**\n- One entry per region: range (start-end) and cropped sequence (inline code)\n- Add the merged FASTA to the \"Result files & downloads\" section"
+  },
+  "dock_score": {
+    "provenance": "tested",
+    "project": "best_score (total binding energy kcal/mol), per-term energy breakdown, box_size/center, mode=score_only",
+    "form": "Text (total binding energy + energy breakdown)",
+    "downstream": "-",
+    "output_template": "- Title: **Vina single-pose scoring result**\n- Lead with the conclusion: best_score (kcal/mol) and the box used (center/box_size)\n- Give the energy breakdown (gauss/hydrophobic/hbond etc., restated per returned keys)"
+  },
+  "surface_charge": {
+    "provenance": "tested",
+    "project": "Charge summary: negative_surface / positive_surface / net_surface_charge / surface_residues / patch_count / patches; residues[] details (sasa/pka/charge_type/is_surface)",
+    "form": "Text/table; when APBS is unavailable status=partial — report only ProCaliper results and explain why; download_url is the .dx grid (when APBS available)",
+    "downstream": "-",
+    "output_template": "- Title: **Surface residue charge analysis result (ProCaliper + APBS)**\n- Lead with the conclusion: net charge (positive/negative/net_surface_charge), surface residue count, charge patch count\n- List key surface positive/negative-charge residues (with pKa/sasa)\n- When APBS is unavailable (status=partial) state plainly that electrostatics were not solved and report only ProCaliper results; add the .dx grid (if any) to the \"Result files & downloads\" section"
+  },
+  "reap_design_primer": {
+    "provenance": "derived",
+    "project": "Primer design table (mutation id, forward/reverse primer sequences, Tm) + Excel download_url + ZIP zip_download_url",
+    "form": "Markdown table + Excel/ZIP download links",
+    "downstream": "-",
+    "output_template": "- Title: **Single-site mutation primer design result (REAP Step 7)**\n- Markdown table: `| Mutation ID | Forward primer | Reverse primer | Tm |`\n- Add the Excel and ZIP to the \"Result files & downloads\" section"
+  }
+}

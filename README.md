@@ -2,6 +2,13 @@
 
 Delta Agent Cloud 的命令行工具，用于管理 Delta Sandbox GPU/CPU 计算任务和调用 Science 工具。
 
+## v1.1.19 Release Notes
+
+- `feat(config)`: `delta-cli config init` 与安装向导自动写入默认 `base_url`，移除首次使用的人工配置步骤。
+- 新增 `delta-protein` skills：蛋白质结构预测/设计/分析等 40+ 工具 reference 与跨工具工作流。
+- 更新 `xrd` science reference（云端 XRD 相识别、artifact、CIF 模拟与精修契约）。
+- 内部：GitHub 公共仓库同步与发布管线优化（sync 规划器及单元测试）。
+
 ## v1.1.18 Release Notes
 
 - Translate the three active agent skills (`delta-shared`, `delta-sandbox`, and `delta-science`) and their maintained references into English.
@@ -20,7 +27,7 @@ npx @delta-infra/cli@latest install
 1. **全局安装** `@delta-infra/cli`（含 Go 二进制）
 2. **选择 AI 工具平台**（可多选）：通用 Agent 目录 `~/.agents/skills/`（Codex/Cursor/OpenCode）、Claude Code `~/.claude/skills/`、OpenCode 原生 `~/.config/opencode/skills/`、Cursor `~/.cursor/skills/`、Memento-S 开发模式 `~/memento_s/skills/`
 3. **安装 AI Skills** 到所选平台的 skills 目录
-4. **初始化配置** `delta-cli config init`（交互式，非 TTY 跳过）
+4. **初始化配置** 自动写入默认服务端地址（无需人工填写 base_url）
 5. **身份认证** `delta-cli auth login`（交互式，非 TTY 跳过）
 
 AI Agent 也可以直接使用以下指令完成安装：
@@ -141,9 +148,9 @@ go install github.com/delta-infra/delta-infra-cli/cmd/delta-cli@latest
 delta-cli config init
 ```
 
-执行时会交互式提示输入服务端地址（默认：`https://delta-infra-nacos.yangtzeailab.com`）以及 Bearer Token（可选，也可后续用 `auth login` 配置）。
+服务端地址无需人工填写：默认使用 `https://delta-infra-nacos.yangtzeailab.com`（已有配置则沿用其中的 base_url），仅交互式提示 Bearer Token（可选，也可后续用 `auth login` 配置）。
 
-非交互式环境（如 CI）会直接使用默认值，也可以通过 flag 或环境变量一次性指定：
+如需指向自建服务器，可通过 flag 或环境变量一次性指定：
 
 ```bash
 # 通过 flag
@@ -456,7 +463,7 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.1.18
+./release.sh v1.1.19
 ```
 
 脚本执行步骤：

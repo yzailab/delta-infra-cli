@@ -129,9 +129,7 @@ const messages = {
     step2Skip:      "已安装，跳过",
     step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g",
     step3:          "正在初始化配置...",
-    step3BaseUrl:   "Delta Agent Cloud 服务器地址",
-    step3Skip:      "跳过配置初始化",
-    step3Done:      "配置已初始化",
+    step3Done:      "配置已初始化 (Server: %s)",
     step3Fail:      "配置初始化失败。运行以下命令重试: delta-cli config init",
     step4:          "身份认证",
     step4Confirm:   "是否进行身份认证？",
@@ -142,7 +140,7 @@ const messages = {
     step4Fail:      "认证失败。运行以下命令重试: delta-cli auth login",
     done:           "安装完成！\n现在可以让你的 AI 工具使用 delta-cli 管理 Delta Sandbox 资源或调用 Science 工具。",
     cancelled:      "安装已取消",
-    nonTtyHint:     "要完成配置，请在终端中运行：\n  delta-cli config init\n  delta-cli auth login\n若还没有 API Key，请先在网页端生成：\n  %s",
+    nonTtyHint:     "要完成配置，请在终端中运行：\n  delta-cli auth login\n若还没有 API Key，请先在网页端生成：\n  %s",
     uninstallConfirm: "将移除全局包、AI Skills 和配置文件。是否继续？",
     uninstallCancelled: "卸载已取消",
     uninstallDone:  "卸载完成",
@@ -164,9 +162,7 @@ const messages = {
     step2Skip:      "Already installed. Skipped",
     step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g",
     step3:          "Initializing config...",
-    step3BaseUrl:   "Delta Agent Cloud server URL",
-    step3Skip:      "Skipped config initialization",
-    step3Done:      "Config initialized",
+    step3Done:      "Config initialized (Server: %s)",
     step3Fail:      "Failed to init config. Run manually: delta-cli config init",
     step4:          "Authorization",
     step4Confirm:   "Would you like to authenticate now?",
@@ -177,7 +173,7 @@ const messages = {
     step4Fail:      "Failed to authorize. Run delta-cli auth login to retry",
     done:           "You are all set!\nYour AI tool can now use delta-cli to manage Delta Sandbox resources or invoke Science tools.",
     cancelled:      "Installation cancelled",
-    nonTtyHint:     "To complete setup, run interactively:\n  delta-cli config init\n  delta-cli auth login\nIf you don't have an API key yet, generate one first:\n  %s",
+    nonTtyHint:     "To complete setup, run interactively:\n  delta-cli auth login\nIf you don't have an API key yet, generate one first:\n  %s",
     uninstallConfirm: "This will remove the global package, AI Skills and config. Continue?",
     uninstallCancelled: "Uninstall cancelled",
     uninstallDone:  "Uninstall complete",
@@ -510,32 +506,14 @@ async function stepConfigInit(msg) {
   s.start(msg.step3);
 
   const existingConfig = getExistingConfig();
+  // 服务器地址无需人工配置：沿用已有值，否则直接用内置默认值。
+  const baseUrl = (existingConfig && existingConfig.base_url) || DEFAULT_BASE_URL;
+
   s.stop(msg.step3);
-
-  if (existingConfig && existingConfig.base_url) {
-    const reuse = await p.confirm({
-      message: `发现已有配置 (Server: ${existingConfig.base_url})，继续使用？`,
-    });
-    if (p.isCancel(reuse)) {
-      handleCancel(reuse, msg);
-      return;
-    }
-    if (reuse) {
-      p.log.info(msg.step3Skip);
-      return;
-    }
-  }
-
-  const baseUrl = handleCancel(await p.text({
-    message: msg.step3BaseUrl,
-    initialValue: existingConfig && existingConfig.base_url
-      ? existingConfig.base_url
-      : DEFAULT_BASE_URL,
-  }), msg);
 
   try {
     writeConfig({ baseUrl, existing: existingConfig });
-    p.log.success(msg.step3Done);
+    p.log.success(fmt(msg.step3Done, baseUrl));
   } catch (e) {
     p.log.error(e.message || String(e));
     p.log.error(msg.step3Fail);
@@ -654,7 +632,16 @@ async function doInstall() {
     const platforms = ["agents"];
     await stepInstallSkills(msg, platforms);
     const existing = getExistingConfig();
-    console.log(fmt(msg.nonTtyHint, dashboardAPIKeysUrl(existing && existing.base_url)));
+    // 非交互安装同样预置默认服务器地址，免去后续人工配置 config init。
+    try {
+      writeConfig({
+        baseUrl: (existing && existing.base_url) || DEFAULT_BASE_URL,
+        existing,
+      });
+    } catch (e) {
+      p.log.error(e.message || String(e));
+    }
+    console.log(fmt(msg.nonTtyHint, dashboardAPIKeysUrl(getExistingConfig() && getExistingConfig().base_url)));
   }
 }
 

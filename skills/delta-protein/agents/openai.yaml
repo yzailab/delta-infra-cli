@@ -1,0 +1,4 @@
+interface:
+  display_name: "Delta Protein"
+  short_description: "Unified access to Huada protein analysis tools through the Delta CLI"
+  default_prompt: "Use $delta-protein to analyze protein research goals: pick the right endpoint and complete the task by calling huada_protein_tools through the Delta CLI."
