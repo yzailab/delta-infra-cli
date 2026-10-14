@@ -1,4 +1,10 @@
-# XRD Cloud Compute API Reference
+# XRD reference
+
+Make all online XRD calls with
+`delta-cli science invoke --tool xrd --endpoint <operation>`.
+Use the CLI's configured authentication and service address. Do not
+call registry, gateway, or compute-service URLs directly, or follow returned
+`content_url` and job `links` outside the CLI.
 
 The OpenAPI contract version is `1.2.0`. Business requests and responses use
 `schema_version: 1`.
@@ -8,110 +14,73 @@ sequences, refinement jobs, quality assessment, and error handling. Replace
 `art_<...>`, `<sha256>`, and `refjob_<...>` placeholders with values returned by
 the service in the same workflow.
 
-## 1. Tool and endpoints
+## 1. Tool and operations
 
-The registered tool is `xrd`, tool ID `30`. The
-[tool record](http://8.141.101.94:8001/api/v1/tools/30) and
-[endpoint catalogue](http://8.141.101.94:8001/api/v1/tools/30/endpoints)
-identify 27 registered endpoints, all enabled. The catalogue server is a tool
-registry and invocation proxy; it is not the compute service base URL.
-
-Catalogue APIs, relative to `http://8.141.101.94:8001`:
-
-| Method and path | Purpose |
-| --- | --- |
-| `GET /api/v1/tools/30` | Tool identity and configuration |
-| `GET /api/v1/tools/30/endpoints` | All registered XRD endpoints |
-| `GET /api/v1/tools/30/endpoints?status=true` | Enabled XRD endpoints |
-| `GET /api/v1/tools/name/xrd/endpoints` | Endpoint lookup by tool name |
-
-Catalogue responses use `code`, `message`, and `data`; `code=0` indicates success.
-Endpoint records include `id`, `tool_id`, `name`, `path`, `method`, `price`,
-`featurekey`, and `status`. Registration and enabled status do not establish
-backend readiness. Recheck availability and prices before execution:
+The CLI tool is `xrd`. Pass the operation names below exactly as `--endpoint`;
+they are server catalogue contracts, not aliases. This table documents the
+operations used by this reference, not a live inventory or price list.
+When diagnosing availability, checking prices, or resolving a missing or
+inconsistent contract, use CLI discovery:
 
 ```text
 delta-cli science list
 delta-cli science endpoints list xrd
 ```
 
-Use endpoint names exactly as registered. HTTP paths below are relative to the
-registered upstream compute service. Price values are the catalogue's `price`
-field; they do not specify a currency. All listed records have `status=true`.
+Registration and enabled status do not establish backend readiness. Do not add
+catalogue or health calls to an ordinary workflow unless needed for the task.
 
-| Endpoint ID | CLI endpoint | HTTP method and path | Purpose / response | Price |
-| --- | --- | --- | --- | --- |
-| 128 | `healthz` | `GET /healthz` | Process liveness, JSON | 0 |
-| 129 | `readyz` | `GET /readyz` | Service readiness, JSON | 0 |
-| 130 | `capabilities` | `GET /v1/capabilities` | Components, versions, verification, modes, and limits | 0 |
-| 131 | `xqueryer-predictions` | `POST /v1/xqueryer/predictions` | Single-phase model predictions | 3 |
-| 132 | `xmatcher-detect-peaks` | `POST /v1/xmatcher/detect-peaks` | Observed peak detection | 4 |
-| 133 | `xmatcher-match` | `POST /v1/xmatcher/match` | Single-phase matching | 4 |
-| 134 | `xmatcher-multiphase-match` | `POST /v1/xmatcher/multiphase-match` | Multiphase candidate matching | 4 |
-| 135 | `xmatcher-cif-xrd` | `POST /v1/xmatcher/cif-xrd` | Theoretical XRD simulation from CIFs | 4 |
-| 136 | `xmatcher-pdf-peaks-xlsx` | `POST /v1/xmatcher/pdf-peaks-xlsx` | Theoretical peak tables, binary XLSX | 8 |
-| 137 | `xmatcher-status` | `GET /v1/xmatcher/status` | XMatcher database status | 0 |
-| 138 | `xdecomposer-predictions` | `POST /v1/xdecomposer/predictions` | Multiphase model decomposition | 2 |
-| 139 | `xmatcher-refinement-patterns` | `POST /v1/xmatcher/refinement-patterns` | Corrected pattern and provenance manifest | 0 |
-| 140 | `mp500-cif-exports` | `POST /v1/mp500/cif-exports` | Export a CIF by database identity | 0 |
-| 141 | `xmatcher-artifacts` | `POST /v1/artifacts` | Upload file bytes and return an artifact reference | 0 |
-| 143 | `xmatcher-artifact` | `GET /v1/artifacts/{artifact_id}` | Artifact metadata | 0 |
-| 144 | `xmatcher-artifact-content` | `GET /v1/artifacts/{artifact_id}/content` | Artifact content, binary | 0 |
-| 145 | `refinement-job` | `GET /v1/refinement-jobs/{job_id}` | Job status and results | 0 |
-| 146 | `refinement-job-cancel` | `POST /v1/refinement-jobs/{job_id}/cancel` | Request cancellation | 0 |
-| 147 | `refinement-job-events` | `GET /v1/refinement-jobs/{job_id}/events` | Paginated job events | 0 |
-| 148 | `refinement-job-artifacts` | `GET /v1/refinement-jobs/{job_id}/artifacts` | Public job artifacts | 0 |
-| 149 | `refinement-fullprof` | `POST /v1/refinement-jobs` | Submit a FullProf job, HTTP 202 | 15 |
-| 150 | `refinement-gsasii` | `POST /v1/refinement-jobs` | Submit a GSAS-II job, HTTP 202 | 12 |
-| 151 | `refinement-wpem` | `POST /v1/refinement-jobs` | Submit a PyXplore/WPEM job, HTTP 202 | 10 |
-| 160 | `simulation-cif-parse` | `POST /v1/simulation/cif-parse` | Parse CIF data blocks | 1 |
-| 161 | `simulation-cif-peaks` | `POST /v1/simulation/cif-peaks` | Simulate reflections for a selected block and wavelength | 1 |
-| 162 | `pdfreporter-analyses` | `POST /v1/pdfreporter/analyses` | Multiphase peak assignments and charts | 8 |
-| 163 | `pdfreporter-assignments` | `POST /v1/pdfreporter/analyses/assignments` | Recompute analysis with manual assignments | 8 |
+| Operation (`--endpoint`) | Purpose / response |
+| --- | --- |
+| `healthz` | Process liveness, JSON |
+| `readyz` | Service readiness, JSON |
+| `capabilities` | Components, versions, verification, modes, and limits |
+| `xqueryer-predictions` | Single-phase model predictions |
+| `xmatcher-detect-peaks` | Observed peak detection |
+| `xmatcher-match` | Single-phase matching |
+| `xmatcher-multiphase-match` | Multiphase candidate matching |
+| `xmatcher-cif-xrd` | Theoretical XRD simulation from CIFs |
+| `xmatcher-pdf-peaks-xlsx` | Theoretical peak tables, binary XLSX |
+| `xmatcher-status` | XMatcher database status |
+| `xdecomposer-predictions` | Multiphase model decomposition |
+| `xmatcher-refinement-patterns` | Corrected pattern and provenance manifest |
+| `mp500-cif-exports` | Export a CIF by database identity |
+| `xmatcher-artifacts` | Upload file bytes and return an artifact reference |
+| `xmatcher-artifact` | Artifact metadata |
+| `xmatcher-artifact-content` | Artifact content, binary |
+| `refinement-job` | Job status and results |
+| `refinement-job-cancel` | Request cancellation |
+| `refinement-job-events` | Paginated job events |
+| `refinement-job-artifacts` | Public job artifacts |
+| `refinement-fullprof` | Submit a FullProf job |
+| `refinement-gsasii` | Submit a GSAS-II job |
+| `refinement-wpem` | Submit a PyXplore/WPEM job |
+| `simulation-cif-parse` | Parse CIF data blocks |
+| `simulation-cif-peaks` | Simulate reflections for a selected block and wavelength |
+| `pdfreporter-analyses` | Multiphase peak assignments and charts |
+| `pdfreporter-assignments` | Recompute analysis with manual assignments |
 
-The three refinement CLI endpoints select backend and billing entries in the
-proxy. The compute service exposes one job submission route. HTTP `backends`
+The refinement operations select backend and billing entries. Request `backends`
 values are `pyxplore`, `fullprof`, and `gsasii`; `refinement-wpem` corresponds to
-PyXplore/WPEM. Match the CLI endpoint and requested backends to the proxy configuration.
-
-### Chemistry gateway
-
-The Chemistry gateway prefix is `/api/v1/chem/xrd`. Allowed business routes are
-exposed as `/api/v1/chem/xrd/v1/...`. The gateway injects an upstream service token,
-rewrites `Location`, `content_url`, and job `links`, and preserves business HTTP
-status codes and download headers.
-
-- `GET /api/v1/chem/xrd/health` calls compute `/readyz`.
-  This aggregate health endpoint uses the gateway's `BaseResponse` envelope.
-- The gateway allowlist excludes `/v1/xdecomposer/predictions`, both
-  `/v1/simulation/...` routes, and both `/v1/pdfreporter/...` routes. Requests to
-  these paths through this Chemistry gateway return 404. They are implemented by
-  the compute service; access through other proxies depends on their configuration.
-- `/v1/identification/predictions`, `/v1/structures/cif-exports`, and
-  `/v1/identification-jobs/...` appear in the gateway allowlist but have no
-  corresponding routes in this compute service implementation.
+PyXplore/WPEM. Match the operation and requested backends to the catalogue contract.
 
 ## 2. Request conventions and CLI argument mapping
 
-Compute `/v1/...` endpoints require `Authorization: Bearer <token>`, except in
-explicitly configured isolated environments with authentication disabled.
-`/healthz` and `/readyz` have no Bearer dependency.
+Pass business JSON through `--data`. For file uploads, pass local bytes through
+`--file` and set `--content-type application/octet-stream`; uploads are not
+multipart requests. Authentication is handled by the CLI, not business JSON or
+manually supplied service tokens. Business request models reject unknown fields.
 
-JSON requests use `Content-Type: application/json`. File uploads use
-`Content-Type: application/octet-stream` with raw file bytes in the body.
-Uploads are not multipart requests.
+An optional `X-Request-ID` in `--headers` accepts 1–128 characters from letters,
+digits, and `._:-`. Preserve the returned request ID for diagnostics.
 
-The optional `X-Request-ID` header accepts 1–128 characters from letters, digits,
-and `._:-`. Responses also return this header. Business request models reject
-unknown fields.
-
-| CLI argument | Upstream meaning |
+| CLI argument | Meaning for XRD calls |
 | --- | --- |
 | `--data` | JSON request body |
 | `--params` | URL query parameters, including upload metadata and event pagination |
-| `--path-params` | Replace `{artifact_id}` and `{job_id}` in paths |
+| `--path-params` | Artifact or job identity: `artifact_id` or `job_id` |
 | `--headers` | Additional headers, such as `Idempotency-Key` and `X-Content-SHA256` |
-| `--file` | Upload a local file through the tool proxy |
+| `--file` | Upload a local file through the CLI |
 | `--content-type` | Upload body Content-Type; use `application/octet-stream` |
 
 `--params` cannot replace `--path-params`. Keep local paths, base64 content, and
@@ -119,17 +88,23 @@ idempotency keys out of business JSON. Use `science invoke --file` for XRD uploa
 The `media_type` query parameter describes the stored file format separately
 from the upload body Content-Type.
 
-The registry proxy exposes `POST /api/v1/tools/invoke` with required
-`tool_name` and `endpoint_name` fields. Optional fields are `data`, `params`,
-`path_params`, `headers`, `file_base64`, and `content_type`. A supplied
-file_base64 is decoded and forwarded as raw bytes, taking precedence over data;
-content_type defaults to application/octet-stream. Delta CLI maps its invocation
-arguments to these proxy fields. Tool ID 30 is used for catalogue lookup;
-invocation selects `tool_name="xrd"` and a registered endpoint name.
+All operations in this reference, including uploads, binary responses, and XRD
+refinement jobs, use `science invoke`. The `science file` and `science task`
+adapters documented for QE/Materials Design do not replace these XRD operations.
+
+```text
+delta-cli science invoke --tool xrd --endpoint <operation> `
+  [--data JSON] [--params JSON] [--path-params JSON] [--headers JSON]
+```
+
+Pass each JSON object as one safely quoted argument. The examples below use
+PowerShell continuation syntax. A call succeeds only when the CLI exits with
+code 0 and its top-level JSON has `ok:true`; read business fields from `data`.
 
 ## 3. Call sequence
 
-1. Inspect the CLI catalogue and check readiness and required capabilities.
+1. Select the documented operation; inspect the CLI catalogue, readiness, or
+   required capabilities only when the task or diagnosis requires it.
 2. Upload observed patterns, model inputs, CIFs, or instrument files. Save the
    returned `artifact_id` and `sha256` together.
 3. Use XMatcher or XDecomposer for observed data. XQueryer requires a prepared
@@ -149,13 +124,17 @@ invocation selects `tool_name="xrd"` and a registered endpoint name.
 delta-cli science invoke --tool xrd --endpoint healthz
 delta-cli science invoke --tool xrd --endpoint readyz
 delta-cli science invoke --tool xrd --endpoint capabilities
+delta-cli science invoke --tool xrd --endpoint xmatcher-status
 ```
 
-`GET /healthz` returns `200 {"ok":true}` for process liveness.
-`GET /readyz` checks authentication configuration and required components;
-an unready service returns `503 {"ok":false}`.
+`healthz` returns business `{"ok":true}` for process liveness.
+`readyz` checks authentication configuration and required components;
+an unready service fails the call. Keep probe business `ok` distinct from the
+CLI envelope's top-level `ok`.
 
-`GET /v1/capabilities` returns `components.<name>.available`, component `details`,
+`xmatcher-status` queries XMatcher database status without a request body.
+
+`capabilities` returns `components.<name>.available`, component `details`,
 `limits`, and build information. Check the components required for the workflow,
 checksums, asset release approval, and mode availability. Report GPU use only when
 the returned device or backend explicitly supports that conclusion.
@@ -176,16 +155,17 @@ described in its detailed contract; consult the deployed capability for its limi
 
 ### Upload
 
-`POST /v1/artifacts` returns HTTP 201, an `ArtifactRef`, and a metadata query
-URL in the `Location` header.
+Operation: `xmatcher-artifacts`. Pass the local file with `--file`; read the
+returned `ArtifactRef` from CLI `data`. Query its identity with
+`xmatcher-artifact` and `--path-params`, rather than a returned URL.
 
-| Parameter | Location | Requirement |
+| Parameter | CLI argument | Requirement |
 | --- | --- | --- |
-| `filename` | Query | Required; 1–255 characters; no `/` or `\` |
-| `kind` | Query | Required; accepted kinds are listed below |
-| `media_type` | Query | Required; 1–255 characters; no line breaks |
-| `preserve_source` | Query | Default false; preserve original observed text pattern bytes |
-| `X-Content-SHA256` | Header | Optional; 64 lowercase hexadecimal characters, hashing the upload bytes |
+| `filename` | `--params` | Required; 1–255 characters; no `/` or `\` |
+| `kind` | `--params` | Required; accepted kinds are listed below |
+| `media_type` | `--params` | Required; 1–255 characters; no line breaks |
+| `preserve_source` | `--params` | Default false; preserve original observed text pattern bytes |
+| `X-Content-SHA256` | `--headers` | Optional; 64 lowercase hexadecimal characters, hashing the upload bytes |
 
 | Accepted upload kind | File and processing rules |
 | --- | --- |
@@ -239,14 +219,15 @@ delta-cli science invoke --tool xrd --endpoint xmatcher-artifact-content `
   --path-params '{"artifact_id":"art_<returned-id>"}'
 ```
 
-The HTTP content response contains file bytes with `ETag` and
-`X-Artifact-SHA256` headers. A CLI proxy may wrap binary data with `data._binary`,
-`content_base64`, `media_type`, and `content_length`. Verify saved content against
-the returned SHA-256, and determine its format from the media type and content.
+Read binary content from the documented CLI response fields. The tool proxy may
+wrap it as `data._binary`, `data.content_base64`, `data.media_type`, and
+`data.content_length`. Decode `content_base64` only when the response declares
+that representation. Verify saved content against the artifact's returned
+SHA-256, and determine its format from the media type and content.
 
 ## 6. Phase identification and matching
 
-### XQueryer: `POST /v1/xqueryer/predictions`
+### XQueryer: `xqueryer-predictions`
 
 `pattern` must reference a `model_input_pattern` containing exactly 3,500 points
 on a uniform 10–90° 2theta grid. Maximum grid error is `1e-6`. Intensities must be
@@ -270,7 +251,7 @@ softmax probability.
 
 ### Peak detection and single-phase XMatcher
 
-`POST /v1/xmatcher/detect-peaks` accepts `schema_version`, `pattern`, `params`,
+`xmatcher-detect-peaks` accepts `schema_version`, `pattern`, `params`,
 and optional `expected_xmatcher_database_sha256`. XMatcher accepts
 `observed_pattern` or `model_input_pattern` artifacts.
 
@@ -293,7 +274,7 @@ peak_match_score values and include calibration_adjusted_score. Interpret ranks
 using `ranking` and `effective_settings`. Learned mode explicitly reports
 `score_is_probability=false`; do not average these scores with XQueryer probabilities.
 
-### Multiphase XMatcher: `POST /v1/xmatcher/multiphase-match`
+### Multiphase XMatcher: `xmatcher-multiphase-match`
 
 ```text
 delta-cli science invoke --tool xrd --endpoint xmatcher-multiphase-match `
@@ -337,7 +318,7 @@ effective settings.
 | `multiphase_missing_peak_weight` / `multiphase_phase_penalty` | 0.5 / 3.0 | ≥0 |
 | `multiphase_minimum_phase_contribution_percent` | 8.0 | [0,100) |
 
-### XDecomposer: `POST /v1/xdecomposer/predictions`
+### XDecomposer: `xdecomposer-predictions`
 
 ```text
 delta-cli science invoke --tool xrd --endpoint xdecomposer-predictions `
@@ -354,7 +335,7 @@ map them to unique indices in 1–3 when constructing refinement requests.
 
 ### XMatcher simulation and XLSX export
 
-`POST /v1/xmatcher/cif-xrd` and `/v1/xmatcher/pdf-peaks-xlsx` share a request model.
+Operations: `xmatcher-cif-xrd` and `xmatcher-pdf-peaks-xlsx`; they share a request model.
 
 ```text
 delta-cli science invoke --tool xrd --endpoint xmatcher-cif-xrd `
@@ -365,14 +346,16 @@ delta-cli science invoke --tool xrd --endpoint xmatcher-cif-xrd `
 nonnegative weight defaulting to 1. `two_theta_range` must be finite and
 increasing. `min_intensity` defaults to 0 and must be nonnegative; fwhm and step
 must be positive. `wavelength` is a string, separate from the numeric `lambda`
-field in the simulation API below. `expected_xmatcher_database_sha256` is optional.
+field in `simulation-cif-peaks` below. `expected_xmatcher_database_sha256` is optional.
 
-The peak-table endpoint returns XLSX bytes with media type
-`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+For peak-table export, use the same `--data` shape with
+`--endpoint xmatcher-pdf-peaks-xlsx`. The response contains XLSX bytes with media
+type `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`; decode
+the CLI binary response as described in section 5.
 
 ### MP500, RRUFF, and OPXRD CIF export
 
-`POST /v1/mp500/cif-exports` requires both the candidate entry_id and its identity:
+Operation: `mp500-cif-exports`. It requires both the candidate entry_id and its identity:
 
 ```text
 delta-cli science invoke --tool xrd --endpoint mp500-cif-exports `
@@ -391,7 +374,7 @@ MP500 or RRUFF mismatch errors; do not substitute guessed identifiers.
 
 ### CIF block parsing and reflection simulation
 
-CLI endpoint: `simulation-cif-parse`. Request for `POST /v1/simulation/cif-parse`:
+Operation: `simulation-cif-parse`. Pass this request through `--data`:
 
 ```json
 {"schema_version":1,"cif":{"artifact_id":"art_<cif>","sha256":"<sha256>"}}
@@ -404,10 +387,10 @@ delta-cli science invoke --tool xrd --endpoint simulation-cif-parse `
 
 The response contains `blocks[]`. Successful blocks include block_index,
 block_name, formula, cell, volume, site_count, spacegroup, and warnings. Failed
-blocks include block_index and error. Inspect individual blocks even when HTTP
-status is 200.
+blocks include block_index and error. Inspect individual blocks even when the
+CLI invocation succeeds.
 
-CLI endpoint: `simulation-cif-peaks`. Request for `POST /v1/simulation/cif-peaks`:
+Operation: `simulation-cif-peaks`. Pass this request through `--data`:
 
 ```json
 {"schema_version":1,"cif":{"artifact_id":"art_<cif>","sha256":"<sha256>"},"block":0,"lambda":1.5406,"min_angle":5.0,"max_angle":90.0}
@@ -427,7 +410,7 @@ Neither simulation endpoint depends on XMatcher search assets.
 
 ## 8. PDF Reporter peak assignments
 
-CLI endpoint: `pdfreporter-analyses`. Request for `POST /v1/pdfreporter/analyses`:
+Operation: `pdfreporter-analyses`. Pass this request through `--data`:
 
 ```json
 {
@@ -462,9 +445,8 @@ The response includes per-phase theory tables in `phases`, flattened theory in
 rasterization dependencies are unavailable.
 Peak statuses are `unmatched`, `unique`, `ambiguous`, and `manual`.
 
-CLI endpoint: `pdfreporter-assignments`. For
-`POST /v1/pdfreporter/analyses/assignments`, resubmit the complete analysis input
-and add this field:
+Operation: `pdfreporter-assignments`. Resubmit the complete analysis input through
+`--data` and add this field:
 
 ```json
 {"selections":{"38.45|0":"0:0","30.05|0":"none"}}
@@ -500,7 +482,11 @@ processing settings, not additional request fields.
 
 ### Basic job submission
 
-`POST /v1/refinement-jobs` requires `Idempotency-Key` with 8–200 characters:
+Operations: `refinement-fullprof`, `refinement-gsasii`, or `refinement-wpem`.
+Pass `Idempotency-Key` through `--headers`, with 8–200 characters. The example
+submits GSAS-II; select the corresponding operation and explicit `backends`
+value for FullProf or PyXplore. Submission and cancellation require the user's
+authorisation for that action.
 
 ```text
 delta-cli science invoke --tool xrd --endpoint refinement-gsasii `
@@ -568,24 +554,20 @@ in `summary.wpem_evidence`.
 preserve_source=true. This mode prohibits corrected_pattern,
 provenance_manifest, and basic-mode cycles/refine switches.
 
-Request for `POST /v1/refinement-jobs`, with an idempotency header:
+Submit with `--endpoint refinement-gsasii`, business JSON in `--data`, and the
+idempotency key in `--headers`:
 
-```json
-{
-  "schema_version":1,
-  "radiation_profile":"CuKa",
-  "refinement_pattern":{"observed_pattern":{"artifact_id":"art_<original>","sha256":"<sha256>"}},
-  "phases":[{"phase_index":1,"name":"phase","cif":{"artifact_id":"art_<cif>","sha256":"<sha256>"}}],
-  "wavelengths_angstrom":[1.540593,1.544414],
-  "backends":["gsasii"],
-  "options":{"timeout_seconds":900,"gsasii":{"workflow_mode":"gsas-report-initial-v1"}}
-}
+```text
+delta-cli science invoke --tool xrd --endpoint refinement-gsasii `
+  --data '{"schema_version":1,"radiation_profile":"CuKa","refinement_pattern":{"observed_pattern":{"artifact_id":"art_<original>","sha256":"<sha256>"}},"phases":[{"phase_index":1,"name":"phase","cif":{"artifact_id":"art_<cif>","sha256":"<sha256>"}}],"wavelengths_angstrom":[1.540593,1.544414],"backends":["gsasii"],"options":{"timeout_seconds":900,"gsasii":{"workflow_mode":"gsas-report-initial-v1"}}}' `
+  --headers '{"Idempotency-Key":"<stable-unique-key>"}'
 ```
 
 Optional `recipe` controls single-phase baseline/candidates, multiphase baseline,
 physical bounds, selection rules, and residual peak definitions. Omission uses
-the backend default recipe. Complete recipe types are defined in OpenAPI and
-the GSAS reference. The official scoring implementation is pinned by version
+the backend default recipe. Only supply a custom recipe when the current
+service schema defines its fields; do not guess nested recipe fields.
+The official scoring implementation is pinned by version
 and module SHA-256; callers cannot replace it.
 
 Report mode accepts a finite nonnegative `ka2_ka1_intensity_ratio` for doublets.
@@ -608,12 +590,13 @@ establish calibration.
 
 ### Acceptance, queries, and cancellation
 
-Successful submission returns HTTP 202 with schema_version, job_id,
-status=queued, submitted_at, and links.self/events/artifacts. Location points
-to the job query route.
+Successful submission returns business `schema_version`, `job_id`,
+`status=queued`, `submitted_at`, and `links.self/events/artifacts` in CLI `data`.
+This means accepted/queued, not convergence or scientific acceptance. Use the
+returned `job_id` with CLI query operations; do not follow the link URLs directly.
 
 The same idempotency key and canonical request reuse the original job.
-The same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+The same key with a different request returns IDEMPOTENCY_CONFLICT.
 Use a new key for an intentional new calculation. After a timeout or disconnect,
 retain the original key and investigate whether a job exists before resubmitting.
 
@@ -635,7 +618,8 @@ delta-cli science invoke --tool xrd --endpoint refinement-job-cancel `
 Job IDs contain `refjob_` followed by 32 lowercase hexadecimal characters.
 Event after_seq defaults to 0 and must be nonnegative; limit defaults to 100
 and accepts 1–500. Pass response next_after_seq for the next page.
-Artifact lists are deduplicated by artifact_id; download through the content API.
+Artifact lists are deduplicated by artifact_id; download through
+`xmatcher-artifact-content` with `--path-params '{"artifact_id":"art_<returned-id>"}'`.
 
 Cancellation returns the job's current state. Continue querying until a terminal
 state is reached. Cancelling completed or failed jobs returns JOB_STATE_CONFLICT.
@@ -653,14 +637,14 @@ validity, or scientific acceptance. Preserve null or unknown values for unavaila
 
 ## 10. Responses and errors
 
-Compute endpoints generally return business JSON directly, without a common
-top-level `ok` or `data` success envelope. Health probes, CLI responses, and
-gateway aggregate health endpoints each use their own response conventions.
+A successful Delta CLI invocation requires exit code 0 and top-level `ok:true`;
+business results are in `data`. XRD business JSON generally has no additional
+common `ok`/`data` envelope. Read the fields documented for the selected operation;
+health probes have their own business `ok`. Decode binary responses using the
+CLI representation and returned media type described in section 5.
 
-A successful Delta CLI invocation requires exit code 0 and top-level ok=true;
-business results are in data. Decode binary responses according to Content-Type.
-
-Compute error response:
+The CLI reports failures in its top-level `error`. Native business-error details,
+when exposed by the CLI, may have this shape:
 
 ```json
 {
@@ -670,7 +654,9 @@ Compute error response:
 }
 ```
 
-Gateway-generated errors include error and request_id but may omit schema_version.
+Gateway-generated business errors may omit schema_version. Preserve the CLI's
+error classification and any returned native details; do not infer success from
+a nested field or bypass the CLI to retrieve an upstream response.
 
 | Common error | Meaning / action |
 | --- | --- |
@@ -683,22 +669,20 @@ Gateway-generated errors include error and request_id but may omit schema_versio
 | REFINEMENT_LINEAGE_INVALID / INSTRUMENT_INVALID | Invalid provenance, source preservation, or instrument data |
 | IDEMPOTENCY_CONFLICT / JOB_NOT_FOUND / JOB_STATE_CONFLICT | Conflicting key, missing job, or operation incompatible with job state |
 | REDIS_UNAVAILABLE / XMATCHER_TIMEOUT | Queue unavailable or matching wait timeout |
-| UPSTREAM_UNAVAILABLE / NOT_FOUND | Chemistry gateway connection failure or route not exposed |
+| UPSTREAM_UNAVAILABLE / NOT_FOUND | Upstream unavailable or operation not exposed; report the original CLI error |
 
-HTTP 429 responses may include Retry-After. Proxy errors such as Endpoint is
+Rate-limit failures may include Retry-After. Proxy errors such as Endpoint is
 disabled and TIER_CONCURRENCY_EXCEEDED are separate from native compute errors.
 Preserve returned code, message, details, warnings, and request_id. Do not switch
 endpoints, guess parameters, or replace failed business results with local algorithms.
 
-## 11. Contracts and references
+## 11. Contract discovery
 
-- [Registered XRD tool](http://8.141.101.94:8001/api/v1/tools/30)
-- [Registered XRD endpoint catalogue](http://8.141.101.94:8001/api/v1/tools/30/endpoints)
-- [Registry proxy OpenAPI](http://8.141.101.94:8001/openapi.json)
-- [Compute OpenAPI](xrd-cloud-compute-handoff/contracts/openapi.yaml)
-- [Compute routes](xrd-cloud-compute-handoff/src/xrd_cloud_compute/api.py)
-- [Compute request and response models](xrd-cloud-compute-handoff/src/xrd_cloud_compute/models.py)
-- [Compute runtime and input validation](xrd-cloud-compute-handoff/src/xrd_cloud_compute/runtime.py)
-- [Chemistry gateway allowlist](delta-sandbox-server/api_server/api/chem_xrd.py) and [forwarding implementation](delta-sandbox-server/api_server/server/xrd_service_client.py)
-- [GSAS-II reference](xrd-cloud-compute-handoff/docs/GSASII_REFINEMENT_API_20261012.md)
-- [PyXplore reference](xrd-cloud-compute-handoff/docs/PYXPLORE_API_20261010.md)
+Use `delta-cli science endpoints list xrd` when this reference is missing an
+operation or conflicts with the deployed catalogue. Use only exact returned
+names. If the catalogue does not provide enough schema to construct a request,
+report the missing contract rather than guessing parameters or service paths.
+
+See [Delta Science](../SKILL.md) for shared CLI authentication, response,
+retry, and cross-tool rules. The direct `gsasii` tool is a separate contract;
+its operation names must not be substituted for `xrd` refinement operations.

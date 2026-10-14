@@ -2,19 +2,6 @@
 
 Delta Agent Cloud 的命令行工具，用于管理 Delta Sandbox GPU/CPU 计算任务和调用 Science 工具。
 
-## v1.1.19 Release Notes
-
-- `feat(config)`: `delta-cli config init` 与安装向导自动写入默认 `base_url`，移除首次使用的人工配置步骤。
-- 新增 `delta-protein` skills：蛋白质结构预测/设计/分析等 40+ 工具 reference 与跨工具工作流。
-- 更新 `xrd` science reference（云端 XRD 相识别、artifact、CIF 模拟与精修契约）。
-- 内部：GitHub 公共仓库同步与发布管线优化（sync 规划器及单元测试）。
-
-## v1.1.18 Release Notes
-
-- Translate the three active agent skills (`delta-shared`, `delta-sandbox`, and `delta-science`) and their maintained references into English.
-- Validate representative agent workflows for authentication-state reporting, sandbox resource discovery, live Science catalogue discovery, and safe handling of tools without a request schema.
-- Include all three skill directories in the source release commit and regenerate platform binary checksums as part of the release.
-
 ## 安装
 
 ### 方式一：npx 一键安装（推荐）

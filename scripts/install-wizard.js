@@ -233,12 +233,13 @@ function fmt(template, ...values) {
 }
 
 // Choose the API-key management page for a base URL: the production dashboard
-// for the main host, the test dashboard otherwise.
+// for the main host, the overseas dashboard for laddery hosts, otherwise the
+// test dashboard.
 function dashboardAPIKeysUrl(baseUrl) {
-  const mainHost = "delta-infra-nacos.yangtzeailab.com";
-  const mainDashboard = "https://delta-infra-dashboard.yangtzeailab.com/dashboard/api-keys";
-  const testDashboard = "https://delta-infra-dashboard-test.yangtzeailab.com/dashboard/api-keys";
-  return String(baseUrl || "").includes(mainHost) ? mainDashboard : testDashboard;
+  const url = String(baseUrl || "");
+  if (url.includes("laddery.uk")) return "https://delta-infra-dashboard.laddery.uk/dashboard/api-keys";
+  if (url.includes("delta-infra-nacos.yangtzeailab.com")) return "https://delta-infra-dashboard.yangtzeailab.com/dashboard/api-keys";
+  return "https://delta-infra-dashboard-test.yangtzeailab.com/dashboard/api-keys";
 }
 
 function formatExecErr(err) {
@@ -369,7 +370,7 @@ async function stepInstallGlobally(msg) {
       } catch (e) {
         lastInstallErr = e;
         const reason = formatExecErr(e).slice(0, 400);
-        if (reason) p.log.error(`npm registry ${registry} 安装失败: ${reason}`);
+        if (reason) p.log.error(`npm registry ${registry} install failed: ${reason}`);
       }
     }
     if (!installed) throw lastInstallErr || new Error("all npm registries failed");
@@ -392,7 +393,7 @@ async function stepInstallGlobally(msg) {
   } catch (e) {
     s.stop(fmt(msg.step1Fail, PKG));
     const reason = formatExecErr(e).slice(0, 1200);
-    if (reason) p.log.error(`失败原因：\n${reason}`);
+    if (reason) p.log.error(`Failed reason:\n${reason}`);
     process.exit(1);
   }
 }

@@ -80,9 +80,9 @@ function _getCurlTimeout() {
 // GitHub release download mirrors.
 // Format: [hostname, urlPrefix] — urlPrefix is prepended to the GitHub URL.
 var _MIRROR_LIST = [
-  ["gh.ddlc.top",    "https://gh.ddlc.top"],
-  ["ghproxy.net",    "https://ghproxy.net"],
-  ["gh-proxy.com",   "https://gh-proxy.com"],
+  ["gh.ddlc.top", "https://gh.ddlc.top"],
+  ["ghproxy.net", "https://ghproxy.net"],
+  ["gh-proxy.com", "https://gh-proxy.com"],
 ];
 
 // A safe "discard" output path for curl. /dev/null does not exist on Windows
@@ -426,9 +426,9 @@ if (require.main === module) {
       `\nIf you are behind a firewall or in a restricted network, try one of:\n` +
       `  # 1. Use a proxy:\n` +
       `  export https_proxy=http://your-proxy:port\n` +
-      `  npm install -g @delta-infra/cli\n\n` +
+      `  npm install -g ${PKG}\n\n` +
       `  # 2. Point to a corporate npm mirror:\n` +
-      `  npm install -g @delta-infra/cli --registry=https://your-corp-mirror/\n` +
+      `  npm install -g ${PKG} --registry=https://your-corp-mirror/\n` +
       `\nOr manually download from:\n` +
       `  https://github.com/${REPO}/releases/tag/v${VERSION}`
     );
