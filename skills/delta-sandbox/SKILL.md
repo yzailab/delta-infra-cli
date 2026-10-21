@@ -101,14 +101,14 @@ metadata:
 
 13. **`result.json` is required before completion**
     - Before calling `step_finish`, confirm that:
-      1. `delta-cli sandbox run` / `run-bg --wait` has returned with `finished=true`;
+      1. `delta-cli sandbox run` / `run-bg --wait` has returned with `finished=true` **and `exit_code` = 0**. `finished=true` alone is not a success signal — a command that fails still finishes. A non-zero exit is reported as `error.type: command_failed` (process exit code 8), an **unknown** exit status as `error.type: unknown_execution_state` (exit code 1), and a wait timeout as `error.type: timeout` (non-zero exit, with `sandbox_id`/`execution_id` in `error.details`); in all three cases the task has **not** succeeded — report the failure instead of claiming a result;
       2. (By default) the `result_summary` in the SSE `complete` frame from `sandbox run` / `run-bg --wait` has been written to `result.json`; if it is missing (fallback), read `log_file` with `sandbox read` and parse it with Python.
       3. `sandbox kill <id>` has been run to destroy the sandbox;
       4. `final_response` consists of the single line `RESULT: <result_summary>`.
 
 14. **Avoid redundant checks and validation**
     - If `skill_request` or the user's request already specifies the image and resources, **do not** call `sandbox images` or `sandbox recommend` before `sandbox create`.
-    - After writing a file to the sandbox, it is enough to use `sandbox stat` (optionally) to confirm the size. **Do not** use `sandbox ls` plus `sandbox read` to read the file back to the host and verify its contents; that is an unnecessary round trip.
+    - After writing a file to the sandbox, it is enough to use `sandbox stat` (optionally) to confirm the size. **Do not** use `sandbox ls` plus `sandbox read` to read the file back to the host and verify its contents; that is an unnecessary round trip. (The `sandbox write` response already carries `server_sha256` and `size_verified`, so a local digest comparison is enough if the bytes matter.)
     - Do not repeatedly poll with `sandbox status` after a successful `sandbox create`; the sandbox is ready as soon as create returns.
 
 ## Request wording conventions
@@ -165,8 +165,8 @@ The reason is that, after running a command, this skill reads `log_file` from th
 | Finish a sandbox | `sandbox finish <id> [--results '{...}']` |
 | Destroy a sandbox | `sandbox kill <id>` |
 | **Command execution** | |
-| Run a command synchronously (≤60s) | `sandbox run <id> --command "..." [--timeout <seconds>] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` (`--format json` = a single unified result envelope, recommended for automation) |
-| Run a command in the background (>60s) | `sandbox run-bg <id> --command "..." [--timeout <seconds>] [--wait] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` (`--wait --format json` = a single unified result envelope) |
+| Run a command synchronously (≤60s) | `sandbox run <id> --command "..." [--timeout <seconds>] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` (`--format json` = a single unified result envelope, recommended for automation). **A non-zero exit is reported as `error.type: command_failed` with process exit code 8; an unknown exit status is reported as `error.type: unknown_execution_state` with exit code 1 — the CLI never reports an unknown outcome as success** |
+| Run a command in the background (>60s) | `sandbox run-bg <id> --command "..." [--timeout <seconds>] [--wait] [--cancel-on-timeout] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` (`--wait --format json` = a single unified result envelope). **If the wait times out the CLI exits non-zero with `error.type: timeout` and keeps `sandbox_id`/`execution_id`/`remote_state` in `error.details`; `remote_state: not_cancelled` means only the local wait stopped and the remote command may still be running — add `--cancel-on-timeout` to cancel it** |
 | View background logs | `sandbox logs <id> [--execution-id <exec_id>] [--tail N --grep <pattern> --context N] [--stream]` (`--execution-id` is optional; if omitted, query ES by sandbox only; only `--stream` requires it) |
 | Interrupt a background command | `sandbox cancel <id> --execution-id <exec_id>` |
 | **Tunnelling (port exposure)** | |
@@ -174,10 +174,10 @@ The reason is that, after running a command, this skill reads `log_file` from th
 | List active tunnels | `sandbox exposes <id>` — list the public tunnels currently active for this sandbox |
 | Reclaim a tunnel | `sandbox dispose <id> --port N` — explicitly reclaim a single tunnel (stop frpc and release the public port); killing the sandbox also reclaims all its tunnels |
 | **File operations** | |
-| Read a file | `sandbox read <id> --path <path> [--output <local-path> --tail N --grep <pattern> --offset N --limit N --context N --max-bytes N --parse-json]` |
-| Pull a file/directory | `sandbox pull <id> --source <sandbox-path> --target <local-path> [--recursive] [--pattern <glob>]` — pull a single file or recursively pull a directory, with sha1 verification (the reverse of upload: source=remote, target=local) |
+| Read a file | `sandbox read <id> --path <path> [--output <local-path> --tail N --grep <pattern> --offset N --limit N --context N --max-bytes N --parse-json]` — **a full copy is byte-exact** (chunked download, sha256-verified); with `--tail`/`--grep`/`--offset`/`--limit` it uses the text channel and the envelope reports `byte_exact:false` — use `sandbox pull` for binary files |
+| Pull a file/directory | `sandbox pull <id> --source <sandbox-path> --target <local-path> [--pattern <glob>] [--concurrency N] [--no-resume] [--no-verify]` — pull a single file or **recursively** pull a directory (directories are always recursive), over the **chunked** path: binary-safe, sha256-verified, resumable and parallel (the reverse of upload: source=remote, target=local) |
 | View the working directory | `sandbox working-directory <id>` (returns `data.path`, such as `/workspace/{user_id}/{sandbox_id}`) |
-| Write a file | `sandbox write <id> --source <filename>` (without `--path`, writes to the working directory by default); **every sandbox-side path** — `--path`, the remote part of `write-multiple --entry`, `upload --target`, `pull --source`, `run`/`run-bg --log-file` — is prefixed with the working directory when relative, while an absolute path is used as given |
+| Write a file | `sandbox write <id> --source <filename>` (without `--path`, writes to the working directory by default); **every sandbox-side path** — `--path`, the remote part of `write-multiple --entry`, `upload --target`, `pull --source`, `run`/`run-bg --log-file` — is prefixed with the working directory when relative, while an absolute path is used as given. The content is **binary-safe** (base64) and the server verifies the declared `size`/`sha256` before writing, so the response's `server_sha256`/`size_verified` can be compared with the local file |
 | Write multiple files | `sandbox write-multiple <id> --entry <remote-path>=<local-path> [--entry ...]` |
 | Upload a directory | `sandbox upload <id> --source <local-directory> --target <sandbox-path>` |
 | List a directory | `sandbox ls <id> --path <path>` (defaults to `.`) |

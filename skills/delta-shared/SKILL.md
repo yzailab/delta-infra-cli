@@ -76,7 +76,7 @@ This returns the current user's information and remaining credits (through the g
 
 AI agent parsing rules:
 - Always check `ok`; do not rely on the exit code alone.
-- `error.type` is the stable field for branching on: `auth`, `permission`, `not_found`, `validation`, `network`, `api`, `command_failed`, `internal`.
+- `error.type` is the stable field for branching on: `auth`, `permission`, `not_found`, `validation`, `network`, `api`, `command_failed`, `timeout`, `unknown_execution_state`, `internal`.
 - `error.hint` may be shown to the user. **Act on it rather than retrying blindly**: for a failed `sandbox create` the hint names the concrete cause and the next step (for example, the image was not cached on the target node — retry, or pick a GPU type whose node already has the image).
 - `error.request_id` identifies the same failure in the server log; quote it when reporting the failure.
 
@@ -91,6 +91,8 @@ AI agent parsing rules:
 | network | 6 | DNS, timeout or connection failure |
 | api | 7 | Server returned a non-2xx response |
 | command_failed | 8 | Command failed inside the sandbox (non-zero `exit_code` or an error); on the SSE path, an error envelope is appended after the `complete` frame, with the stderr tail in `message` for quick reference |
+| timeout | 1 | A local wait deadline elapsed (`sandbox run-bg --wait`): the remote command may still be running — `error.details` keeps `sandbox_id`, `execution_id` and `remote_state` (`not_cancelled` / `cancelled` / `cancel_failed`) so it can be queried or cancelled |
+| unknown_execution_state | 1 | The command's outcome is **unknown** (the stream ended before the `complete` frame, or only an error frame arrived). Never treat this as success and never guess the exit code |
 | internal | 10 | Internal client error |
 
 ## Upgrade check
@@ -111,5 +113,7 @@ delta-cli upgrade
 | `error.type: network` | Check `base_url` and network connectivity |
 | `error.type: validation` | Check required flags and argument formats |
 | `error.type: command_failed` | Command failed inside the sandbox: the envelope's `message` already includes the stderr tail to help locate the issue quickly; the full `stderr` / `result_summary` are in the `complete` frame. Retry or correct the command |
+| `error.type: timeout` | A local wait deadline elapsed, **not** a command failure. Read `error.details.execution_id` and query it with `sandbox logs <id> --execution-id <exec_id>`; cancel the still-running command with `sandbox cancel <id> --execution-id <exec_id>` (or re-run with `--cancel-on-timeout` so the CLI cancels it for you) |
+| `error.type: unknown_execution_state` | The remote outcome is unknown — the CLI will not guess. Re-check the command with `sandbox logs <id> --execution-id <exec_id>` (the execution id is in the error details) before deciding whether it succeeded |
 | `sandbox create` failed (`error.type: api` with a specific `hint`) | Follow the hint — it names the cause and the next step. "the image may not be cached on the target node" → retry once (the pull continues in the background, so later creates succeed) or pick a GPU type whose node already has the image. "check the target node's free disk space" → a retry will not help until an operator frees the node. A failed create leaves no sandbox behind, so retrying is safe. Quote `error.request_id` when reporting it. |
 | Configuration file parsing failed | Check that `~/.delta-infra/config.json` contains valid JSON |
