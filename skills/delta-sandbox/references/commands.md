@@ -1,5 +1,7 @@
 > **Prerequisite:** Read [`../../delta-shared/SKILL.md`](../../delta-shared/SKILL.md) first for authentication, configuration and general error handling.
 
+> **Paths inside the sandbox:** every path that points *inside* the sandbox — `--path`, the remote part of `write-multiple --entry`, `upload --target`, `pull --source`, and `run`/`run-bg --log-file` — is resolved against the sandbox working directory when it is relative; an absolute path is used as-is. Flags that point at the *local* machine (`write --source`, `upload --source`, `pull --target`, `read --output`) are local and are never rewritten.
+
 # Command reference
 
 ## Discovery
@@ -15,11 +17,12 @@
 
 | Command | Description |
 |------|------|
-| `sandbox create --image-name <image-name> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <model> --shm-size XGi --devices kvm --max-life M --no-auto-cleanup]` | Create a sandbox container (`--image-name` takes an image name, such as `"PyTorch CUDA13 (GPU)"`; the underlying image identifier is hidden from users. `--gpu-type` selects a GPU model, such as `"RTX 4090"` or `H100`; the server maps this to the HAMi use-gputype annotation for model-based scheduling. To see available models, check `sandbox resources` (the `third_party` group's `gpu_types[].gpu_name`); if omitted, scheduling is automatic. `--no-auto-cleanup` prevents automatic cleanup; the sandbox can then be destroyed only with an explicit kill/finish); `--memory`/`--gpu-mem` accept g/m/G/M formats (for example, `1G`/`512M`; lowercase is also accepted), which the CLI converts to the `Gi`/`Mi` units accepted by the server; `--shm-size` increases the container's `/dev/shm` (the **default is only 64Mi**; it must be increased if PyTorch `DataLoader(num_workers>0)`/`multiprocessing`, Chromium-based engines or similar report `No space left on device`/`Bus error` because shared memory is insufficient; **a Gi/Mi unit is required** (`4G`/`512M` are normalised by the CLI; the server rejects a bare number); it **must not exceed `--memory`** (it is a memory filesystem and filling it causes OOMKill; `--memory` defaults to only `1Gi`, so increasing shm usually requires increasing memory too); validation is backend-independent and rejects invalid values before creation, but this setting is applied only on private compute (third-party compute ignores it); `--devices` requests host-device passthrough using comma-separated tokens (for example, `kvm` makes `/dev/kvm` available inside the container for nested virtualisation; this raises privileges, and if the server allowlist is not enabled, creation is **explicitly rejected** rather than silently ignored; this setting is applied only on private compute); **resource limits per sandbox**: `--cpu` ≤ 512, `--memory` ≤ 1024Gi, `--gpu` ≤ 64, `--gpu-mem` ≤ 1024Gi, and `--shm-size` ≤ `--memory`. Exceeding a limit returns a **validation error promptly at request time** (it does not hang); normal tasks are well below these limits. The response echoes the requested image name/resource (request values fill fields not returned by the server; server values take precedence); compute backend is an internal detail and is selected automatically, so `--provider` is no longer supported. |
+| `sandbox create --image-name <image-name> [--cpu N --memory XGi --gpu N --gpu-mem N --gpu-type <model> --shm-size XGi --devices kvm --max-life M --no-auto-cleanup]` | Create a sandbox container (`--image-name` takes an image name, such as `"PyTorch CUDA13 (GPU)"`; the underlying image identifier is hidden from users. `--gpu-type` selects a GPU model, such as `"RTX 4090"` or `H100`; the server maps this to the HAMi use-gputype annotation for model-based scheduling. To see available models, check `sandbox resources` (the `third_party` group's `gpu_types[].gpu_name`); if omitted, scheduling is automatic. `--no-auto-cleanup` prevents automatic cleanup; the sandbox can then be destroyed only with an explicit kill/finish); `--memory`/`--gpu-mem` accept g/m/G/M formats (for example, `1G`/`512M`; lowercase is also accepted), which the CLI converts to the `Gi`/`Mi` units accepted by the server; `--shm-size` increases the container's `/dev/shm` (the **default is only 64Mi**; it must be increased if PyTorch `DataLoader(num_workers>0)`/`multiprocessing`, Chromium-based engines or similar report `No space left on device`/`Bus error` because shared memory is insufficient; **a Gi/Mi unit is required** (`4G`/`512M` are normalised by the CLI; the server rejects a bare number); it **must not exceed `--memory`** (it is a memory filesystem and filling it causes OOMKill; `--memory` defaults to only `1Gi`, so increasing shm usually requires increasing memory too); validation is backend-independent and rejects invalid values before creation, but this setting is applied only on private compute (third-party compute ignores it); `--devices` requests host-device passthrough using comma-separated tokens (for example, `kvm` makes `/dev/kvm` available inside the container for nested virtualisation; this raises privileges, and if the server allowlist is not enabled, creation is **explicitly rejected** rather than silently ignored; this setting is applied only on private compute); **resource limits per sandbox**: `--cpu` ≤ 512, `--memory` ≤ 1024Gi, `--gpu` ≤ 64, `--gpu-mem` ≤ 1024Gi, and `--shm-size` ≤ `--memory`. Exceeding a limit returns a **validation error promptly at request time** (it does not hang); normal tasks are well below these limits. The response echoes the requested image name/resource (request values fill fields not returned by the server; server values take precedence); compute backend is an internal detail and is selected automatically, so `--provider` is no longer supported. If creation fails, `error.hint` states the cause and the next step (for example, the image was not cached on the target node: retry, or pick a GPU type whose node already has the image), and `error.request_id` identifies the failure in the server log. |
 | `sandbox connect <id>` | Connect to an existing sandbox. |
 | `sandbox status <id>` | Check sandbox status (running / done). |
 | `sandbox finish <id> [--results '{...}']` | Save results and destroy the sandbox automatically. |
 | `sandbox kill <id>` | Destroy the sandbox immediately without saving results. |
+| `sandbox extend <id> [--max-life N]` | Query or adjust the max lifetime of a running sandbox (N in minutes; omit `--max-life` to query the current lifecycle). `status` also reports the lifecycle summary under `data.lifecycle`. |
 
 ## Command execution
 
@@ -38,16 +41,26 @@
 | `sandbox working-directory <id>` | Get the sandbox's current working directory (absolute path `/workspace/{user_id}/{sandbox_id}`). |
 | `sandbox write <id> [--path <path>] --source <filename>` | Write a file (recommended). If `--path` is omitted, write to the working directory (`<working-directory>/<filename>`); a relative `--path` is also resolved under the working directory. An absolute `--path` is used as-is (but the `/workspace/<filename>` root path is outside the OSS sync scope and is not recommended). |
 | `sandbox write <id> --path <absolute-path> --data "..."` | Write a small amount of inline content (`--data` has no source filename, so `--path` must be specified explicitly). |
-| `sandbox write-multiple <id> --entry <src=path> [--entry ...]` | Write multiple files in one operation (a relative target `path` is also resolved under the working directory). |
+| `sandbox write-multiple <id> --entry <remote-path>=<local-path> [--entry ...]` | Write multiple files in one operation (a relative target `path` is also resolved under the working directory). |
 | `sandbox pull <id> --source <sandbox-path> --target <local-path> [--recursive] [--pattern <glob>]` | Pull files/directories to the local machine (the reverse of `upload`; flag directions are reversed: `--source`=remote sandbox path, `--target`=local path). Single files are detected automatically; directories are traversed recursively by default; SHA-1 integrity is checked by both the CLI and server. |
+| `sandbox upload <id> --source <local-directory> --target <sandbox-path>` | Upload a local directory (packaged as tar.gz, extracted server-side) and verify the resulting file list against the local manifest. `--source` is local, `--target` is inside the sandbox. |
 | `sandbox ls <id> --path <path>` | List directory contents (defaults to `.`). |
 | `sandbox stat <id> --path <path>` | Get file metadata (size / mode / owner / group). |
 | `sandbox mv <id> --entry <source=dest> [--entry ...]` | Move or rename files. |
 | `sandbox replace <id> --path <path> --old <text> --new <text> [--regex] [--ignore-case]` | Replace file contents. |
 | `sandbox chmod <id> --path <path> --mode <octal>` | Change file permissions. |
 | `sandbox rm <id> --path <path> [--path ...]` | Delete files. |
+| `sandbox rmdir <id> --path <path> [--path ...]` | Delete directories recursively (cannot be undone). |
 | `sandbox mkdir <id> --path <path> [--path ...]` | Create directories (`mkdir -p`). |
 | `sandbox search <id> --path <root-directory> --pattern <glob>` | Search for files. |
+
+## Tunnelling (port exposure)
+
+| Command | Description |
+|------|------|
+| `sandbox expose <id> [--port N]` | Expose a service port inside the sandbox to the public internet and return the `public_url` (the platform default inner port is 8700). |
+| `sandbox exposes <id>` | List the public tunnels currently active for this sandbox. |
+| `sandbox dispose <id> --port N` | Recycle one tunnel (stop frpc and release the public port); killing the sandbox also reclaims its tunnels. |
 
 ## Notes
 

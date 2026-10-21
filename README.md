@@ -244,6 +244,8 @@ delta-cli sandbox kill <sandbox_id>
 ### Sandbox 命令
 
 > **提示**：`sandbox list`（列沙箱实例）与 `sandbox ls <id>`（列目录）不同，注意区分。
+>
+> **沙箱内路径**：指向沙箱内部的路径（`--path`、`write-multiple --entry` 的远端部分、`upload --target`、`pull --source`、`run`/`run-bg --log-file`）若为相对路径，会自动拼到沙箱工作目录（`sandbox working-directory <id>` 可查），绝对路径原样使用；指向本地机器的路径（`write --source`、`upload --source`、`pull --target`、`read --output`）不做任何改写。
 
 | 命令 | 说明 |
 |------|------|
@@ -318,8 +320,10 @@ Skill 文档 `skills/delta-science/references/qe.md` 与
 {"ok":true,"data":{"id":"sb-xxx","status":"running"}}
 
 // 错误
-{"ok":false,"error":{"type":"auth","message":"not authenticated","hint":"run 'delta-cli auth login'"}}
+{"ok":false,"error":{"type":"auth","message":"not authenticated","hint":"run 'delta-cli auth login'","request_id":"create_a1b2c3"}}
 ```
+
+`error.hint` 给出可执行的下一步（创建失败时会说明具体原因，例如「镜像未在目标节点缓存，重试或换一个已缓存该镜像的 GPU 型号」），`error.request_id` 用于在服务端日志中定位同一次失败。
 
 错误类型及退出码：
 

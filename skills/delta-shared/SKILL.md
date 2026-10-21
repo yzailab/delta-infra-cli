@@ -71,13 +71,14 @@ This returns the current user's information and remaining credits (through the g
 
 ```json
 {"ok":true,"data":{...}}
-{"ok":false,"error":{"type":"auth","message":"...","hint":"..."}}
+{"ok":false,"error":{"type":"auth","message":"...","hint":"...","request_id":"..."}}
 ```
 
 AI agent parsing rules:
 - Always check `ok`; do not rely on the exit code alone.
 - `error.type` is the stable field for branching on: `auth`, `permission`, `not_found`, `validation`, `network`, `api`, `command_failed`, `internal`.
-- `error.hint` may be shown to the user.
+- `error.hint` may be shown to the user. **Act on it rather than retrying blindly**: for a failed `sandbox create` the hint names the concrete cause and the next step (for example, the image was not cached on the target node — retry, or pick a GPU type whose node already has the image).
+- `error.request_id` identifies the same failure in the server log; quote it when reporting the failure.
 
 ## Exit code conventions
 
@@ -110,4 +111,5 @@ delta-cli upgrade
 | `error.type: network` | Check `base_url` and network connectivity |
 | `error.type: validation` | Check required flags and argument formats |
 | `error.type: command_failed` | Command failed inside the sandbox: the envelope's `message` already includes the stderr tail to help locate the issue quickly; the full `stderr` / `result_summary` are in the `complete` frame. Retry or correct the command |
+| `sandbox create` failed (`error.type: api` with a specific `hint`) | Follow the hint — it names the cause and the next step. "the image may not be cached on the target node" → retry once (the pull continues in the background, so later creates succeed) or pick a GPU type whose node already has the image. "check the target node's free disk space" → a retry will not help until an operator frees the node. A failed create leaves no sandbox behind, so retrying is safe. Quote `error.request_id` when reporting it. |
 | Configuration file parsing failed | Check that `~/.delta-infra/config.json` contains valid JSON |
