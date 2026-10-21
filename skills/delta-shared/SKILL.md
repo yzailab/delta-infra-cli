@@ -65,7 +65,7 @@ This returns the current user's information and remaining credits (through the g
 - **Do not install the CLI proactively**: if the user says it is not installed, direct them to the README or `install.sh`; do not choose an installation method yourself.
 - **Confirm intent before write or delete operations**: tell the user what commands such as `sandbox kill`, `sandbox finish` and `sandbox write` will affect.
 - `~/.delta-infra/config.json` must have `0600` permissions; do not loosen them manually.
-- **The sandbox must be destroyed**: after calling `sandbox create`, call `sandbox kill` before the current task ends. The server does not clean up automatically; failure to destroy a sandbox leaves GPU resources occupied indefinitely. Do not skip this, even if an error occurs.
+- **The sandbox must be destroyed explicitly**: after calling `sandbox create`, call `sandbox kill` before the current task ends (use `finish` when results must be preserved). Sandboxes do get reclaimed automatically (default `--max-life` is 30 minutes; OpenSandbox starts the clock when create is accepted and the platform reclaims, while AutoDL/RunPod start at readiness and the server reclaims at max-life plus up to 10 minutes of grace), but the platform may reclaim early and automatic reclamation does not write back to OSS — relying on it loses artifacts. Do not skip destruction, even if an error occurs.
 
 ## JSON output conventions
 

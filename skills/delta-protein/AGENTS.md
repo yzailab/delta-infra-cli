@@ -54,11 +54,11 @@ delta-protein/
   `## Output Template` sections in every reference from
   `scripts/output_metadata.json` (single source of truth for field projection /
   presentation form / downstream reuse / provenance marker). Stdlib only, idempotent.
-- Workflow: update `output_metadata.json` → run
+- Workflow: update `scripts/output_metadata.json` → run
   `python scripts/gen_references.py` → run `python scripts/gen_references.py --check`.
   `--check` fails loudly on missing sections, drifting titles, broken SKILL links or
   references not covered by metadata.
-- `output_metadata.json` `provenance` is `tested` (verified by a real `delta-cli`
+- `scripts/output_metadata.json` `provenance` is `tested` (verified by a real `delta-cli`
   invocation) or `derived` (from ToolSpec descriptions / agent templates, marked
   "pending live calibration"). Newly verified endpoints should be flipped to `tested`.
 - After changing references/SKILL, resync the opencode install dir:

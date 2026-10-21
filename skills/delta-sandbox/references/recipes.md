@@ -129,6 +129,7 @@ Notes:
 ## Local `result.json` content contract
 
 - **Preferred SSE path (recommended, one step):** The **complete frame for `sandbox run` / `run-bg --wait` includes `result_summary` directly** (the CLI injects detected trailing JSON from stdout), so the skill can extract it from the complete frame without reading and parsing the log.
+- **Preferred path for automation:** add `--format json` (same as `--json-result`) and the CLI emits a single envelope; read `data.exit_code` / `data.result_summary` / `data.stdout_tail` directly, without parsing multiple frames or reassembling stdout (newlines are preserved). On failure `data` is still present (`{ok:false,error,data}`).
 - **SSE fallback path:** If the complete frame lacks `result_summary` (there is no valid JSON at the end of stdout), `delta-cli sandbox read <id> --path <log_file>` reads the run-envelope log file, then scans backwards through stdout to extract trailing JSON. The `log_file` path comes from the SSE `complete` frame (the CLI fills it in if needed) or the `sandbox logs` snapshot (after `finished=true`).
 - **Legacy-server fallback path:** When `run` / `run-bg --wait` falls back to polling, it returns a `CommandResult` envelope whose `data.result_summary` field can be reused directly.
 - The local `result.json` is a **concise summary** for host deliverable validation, not a complete log archive.

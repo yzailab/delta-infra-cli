@@ -121,12 +121,6 @@ DELTA_CLI_ARCHIVE=/path/to/delta-cli-linux-amd64.tar.gz npm install -g @delta-in
 | `DELTA_CLI_FATAL_ON_ERROR` | 安装失败时退出码非 0（默认警告，用于调试）。 |
 | `DELTA_CLI_DOWNLOAD_TIMEOUT` | 单个下载源最大等待时间（毫秒，默认 120000）。 |
 
-### 方式五：Go Install
-
-```bash
-go install github.com/delta-infra/delta-infra-cli/cmd/delta-cli@latest
-```
-
 ## 快速开始
 
 ### 1. 初始化配置
@@ -179,6 +173,14 @@ delta-cli auth status
 
 ```bash
 # 创建带 GPU 的 sandbox（--max-life 默认 30 分钟，长任务请调高）
+# ⚠️ 生命周期计时（详见 skills/delta-sandbox/references/lifecycle.md）：
+#   - 私有算力（OpenSandbox）：平台从 create 请求被接受时开始计时，镜像拉取/就绪
+#     时间也计入 max-life；到期由平台回收。
+#   - 第三方算力（AutoDL/RunPod）：从沙箱就绪（本地记录 started_at）开始计时，
+#     由服务端 cleanup 在 max-life + 最多 10 分钟宽限后回收。
+#   - 自动回收（含平台提前回收）不会做 OSS 写回；需要保留产物请提前 pull 或
+#     显式 `sandbox finish`。`sandbox status` 会返回 expires_at / reclaim_source /
+#     termination_reason，沙箱结束后仍可查询。
 # ⚠️ 资源语义：`--memory` 是容器 CPU 内存【总量】（每沙箱一份）；`--gpu-mem` 是【每张卡】的显存（MiB）——
 # `--gpu 2 --gpu-mem 8000` = 每卡 8000MiB、总显存 16000MiB（内部 OpenSandbox/HAMi 后端直接写入 HAMi 每卡注解；
 # 注意云端 runpod 后端将 --gpu-mem 视为总显存÷卡数）。单卡显存上限可查 `sandbox resources`（memory_mib）。
@@ -188,19 +190,20 @@ delta-cli auth status
 # `--devices` 申请宿主机设备直通（逗号分隔，如 kvm → 容器内 /dev/kvm，用于嵌套虚拟化）：属权限提升，
 # 服务端白名单未开启时创建会被明确拒绝（不会静默忽略）。两者仅私有算力生效，第三方算力忽略。
 delta-cli sandbox create \
-  --image image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
+  --image-name image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
   --cpu 4 --memory 16Gi --gpu 1 \
   --max-life 120
 
 # DataLoader 多进程/需要嵌套虚拟化时：调大 /dev/shm 并申请 /dev/kvm（shm 不得超过 memory）
 delta-cli sandbox create \
-  --image image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
+  --image-name image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
   --cpu 4 --memory 8Gi --shm-size 4Gi --devices kvm \
   --max-life 120
 
-# 需要长期存活、不被自动清理的 sandbox：加 --no-auto-cleanup（仅显式 kill/finish 可销毁）
+# 需要长期存活、不被自动清理的 sandbox：加 --no-auto-cleanup
+# （同时关闭平台 TTL 与服务端 cleanup，仅显式 kill/finish 可销毁）
 delta-cli sandbox create \
-  --image image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
+  --image-name image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
   --cpu 4 --memory 16Gi --gpu 1 \
   --no-auto-cleanup
 
@@ -209,15 +212,29 @@ delta-cli sandbox run <sandbox_id> \
   --command "<命令>" \
   --timeout 3600
 
-# v1.0.85+ sandbox run 走 SSE 实时流：stdout 为原始 data: 帧（无末尾信封），exit_code/log_file 在 complete 帧中
-# 需要 stdout 末尾 JSON 摘要时：读取 log_file 解析（sandbox read <id> --path <log_file>）
+# v1.0.85+ sandbox run 默认走 SSE 实时流：stdout 为原始 data: 帧（无末尾信封），
+# exit_code / log_file / stdout_tail / duration_seconds 在 complete 帧中
 delta-cli sandbox run <sandbox_id> --command "echo '{\"status\":\"ok\",\"result\":\"done\"}'" --timeout 60
+
+# 自动化/编排推荐：--format json（等价 --json-result）只输出一个 JSON 信封，
+# data 含 execution_id / finished / exit_code / stdout_tail / stderr_tail /
+# stdout_size / stderr_size / log_file / duration_seconds / result_summary。
+# 字段名与 complete 帧一致；失败时仍是单个对象：
+# {"ok":false,"error":{...},"data":{...}}，进程退出码非零。
+delta-cli sandbox run <sandbox_id> --command "python run.py" --timeout 600 --format json
+
+# 后台任务 + 等待 + 统一结果
+delta-cli sandbox run-bg <sandbox_id> --command "python train.py" --timeout 3600 --wait --format json
 
 # 读取结果文件
 delta-cli sandbox read <sandbox_id> --path /workspace/result.json
 
-# 销毁 sandbox
+# 销毁 sandbox（销毁在服务端继续执行，响应带 request_id）
 delta-cli sandbox kill <sandbox_id>
+
+# 创建重试幂等 + 事后对账
+delta-cli sandbox create --image-name <镜像名> --idempotency-key retry-001
+delta-cli sandbox operation <request_id>
 ```
 
 ## 命令列表
@@ -254,14 +271,15 @@ delta-cli sandbox kill <sandbox_id>
 | `delta-cli sandbox resources [--provider opensandbox\|autodl]` | 查看各后端当前剩余可申请资源（GPU/显存/核心） |
 | `delta-cli sandbox images` | 查看可用镜像列表（每条含 `image_name`/`tags`/`description`/`supports_shared_workspace`；`supports_shared_workspace=true` 表示该算力可开共享工作区（opensandbox/autodl），可与 `--shared-workspace` 搭配；实际播种/写回由平台创建时探测镜像内 rclone 决定） |
 | `delta-cli sandbox recommend --cpu N --memory XGi` | 获取资源配置推荐 |
-| `delta-cli sandbox create --image <img> [--shm-size XGi] [--devices kvm] [--no-auto-cleanup] [--shared-workspace=true\|false]` | 创建 sandbox 容器（`--no-auto-cleanup` 不被自动清理；`--shared-workspace` 默认 true：启用共享工作区（播种/写回由平台创建时探测镜像内 rclone 决定，镜像无 rclone 时跳过、数据不跨沙箱持久）；false 跳过播种/写回，适合快速任务；`--shm-size` 调大 /dev/shm（默认 64Mi，**必须带 Gi/Mi 单位**且 ≤ `--memory`，PyTorch DataLoader/multiprocessing 场景常用）；`--devices` 逗号分隔的宿主机设备令牌（`kvm` → /dev/kvm，嵌套虚拟化），**属权限提升**，服务端白名单未开启时**明确拒绝**；`--shm-size`/`--devices` 仅私有算力生效、第三方算力忽略） |
-| `delta-cli sandbox extend <id> --max-life N` | **动态延长运行中** sandbox 的 max-life（可增可减，N 需大于已存活分钟且 ≤10080；提前回收用 `kill`/`finish`）；不带 `--max-life` 时查询当前生命周期（已存活/剩余/到期时间）；`status` 输出含 `data.lifecycle` 生命周期摘要（已存活/剩余/到期；生命周期接口不可用时省略） |
+| `delta-cli sandbox create --image-name <镜像名> [--idempotency-key <key>] [--shm-size XGi] [--devices kvm] [--no-auto-cleanup] [--shared-workspace=true\|false]` | 创建 sandbox 容器（`--image` 为旧别名；**`--idempotency-key`**：网络重试时用同一个键会回放原 sandbox 而不会重复创建，同键换参数会被拒绝；响应含 `request_id`/`operation_status`/`replayed`；`--no-auto-cleanup` 同时关闭平台 TTL 与服务端 cleanup，仅显式 kill/finish 可销毁；`--shared-workspace` 默认 true：启用共享工作区（播种/写回由平台创建时探测镜像内 rclone 决定，镜像无 rclone 时跳过、数据不跨沙箱持久）；false 跳过播种/写回，适合快速任务；`--shm-size` 调大 /dev/shm（默认 64Mi，**必须带 Gi/Mi 单位**且 ≤ `--memory`，PyTorch DataLoader/multiprocessing 场景常用）；`--devices` 逗号分隔的宿主机设备令牌（`kvm` → /dev/kvm，嵌套虚拟化），**属权限提升**，服务端白名单未开启时**明确拒绝**；`--shm-size`/`--devices` 仅私有算力生效、第三方算力忽略） |
+| `delta-cli sandbox extend <id> --max-life N` | **动态延长运行中** sandbox 的 max-life（N 必须大于当前到期时间且 ≤10080；不接受缩短，提前回收用 `kill`/`finish`）；不带 `--max-life` 时查询当前生命周期（已存活/剩余/到期时间）；`status` 输出含 `data.lifecycle` 生命周期摘要（已存活/剩余/到期；生命周期接口不可用时省略） |
 | `delta-cli sandbox connect <id>` | 连接 sandbox |
-| `delta-cli sandbox status <id>` | 查看 sandbox 状态 |
-| `delta-cli sandbox finish <id>` | 保存结果并销毁 |
-| `delta-cli sandbox kill <id>` | 销毁 sandbox |
-| `delta-cli sandbox run <id> --command "..." [--timeout <秒>] [--summary/--no-summary] [--artifacts]` | 同步运行命令（SSE 原始 `data:` 帧透传到 stdout，无末尾信封，`exit_code`/`log_file` 在 `complete` 帧）；`--summary`/`--artifacts` 仅旧服务器回退路径生效 |
-| `delta-cli sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`；加 `--wait` 通过 SSE 实时流跟随（原始 `data:` 帧透传到 stdout，无末尾信封） |
+| `delta-cli sandbox status <id>` | 查看 sandbox 状态；返回 `expires_at` / `reclaim_source`，已结束的沙箱仍可查询并带 `termination_reason` / `termination_remark` / `terminated_at`（如 `max_life_exceeded` / `platform_gone` / `user_killed` / `user_finished`） |
+| `delta-cli sandbox finish <id> [--no-wait]` | 保存结果并销毁；销毁是**服务端任务**，响应含 `request_id`/`operation_status`（`--no-wait` 立即返回 `pending`，断线后任务继续，可用 `sandbox operation <request_id>` 对账） |
+| `delta-cli sandbox kill <id> [--no-wait]` | 销毁 sandbox（不保存结果）；响应含 `request_id`/`operation_status`，中断或网络报错后可用 `sandbox operation` 查询真实终态 |
+| `delta-cli sandbox operation [request_id] [--sandbox-id <id>] [--operation create\|destroy] [--limit N]` | 查询服务端操作账本：带 `request_id` 查单条，否则按条件列出最近的创建/销毁记录（终态、时间、原因），用于计费与资源对账 |
+| `delta-cli sandbox run <id> --command "..." [--timeout <秒>] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` | 同步运行命令。默认（`--format sse`）把 SSE 原始 `data:` 帧透传到 stdout，无末尾信封，`exit_code`/`log_file`/`stdout_tail`/`duration_seconds` 在 `complete` 帧；`--format json`（或 `--json-result`）只输出**一个** JSON 信封，`data` 含 `execution_id`/`finished`/`exit_code`/`stdout_tail`/`stderr_tail`/`stdout_size`/`stderr_size`/`log_file`/`duration_seconds`/`result_summary`，失败时为 `{ok:false,error,data}` 且进程非零退出；`--summary`/`--artifacts` 仅旧服务器回退路径生效 |
+| `delta-cli sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`（`--format json` 时为统一结果对象，`finished=false`）；加 `--wait` 通过 SSE 实时流跟随（默认透传原始 `data:` 帧）；`--format json` 时只输出一个与 `sandbox run --format json` 相同结构的信封 |
 | `delta-cli sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N --max-bytes N]` | 查看后台日志；默认返回 `stderr_size + stderr_tail`（避免上下文爆炸）；可用 `--tail/--grep` 过滤 |
 | `delta-cli sandbox cancel <id> --execution-id <eid>` | 中断后台命令 |
 | `delta-cli sandbox read <id> --path <path> [--output <本地路径>] [--tail N] [--grep <pattern>] [--offset N] [--limit N] [--context N] [--max-bytes N] [--parse-json]` | 读取容器内文件；`--output <path>` 保存到本地；`--tail/--grep` 过滤；非 UTF-8 文件 CLI 自动走 base64 fallback |
@@ -392,8 +410,8 @@ make install
 make PREFIX=$HOME/.local install
 
 # Windows 源码安装（二选一）
-# 方式 A：直接用 go install 安装到 GOPATH/bin
-go install github.com/delta-infra/delta-infra-cli/cmd/delta-cli@latest
+# 方式 A：在仓库根目录用 go install 安装到 GOPATH/bin
+go install ./cmd/delta-cli
 
 # 方式 B：在仓库根目录运行 PowerShell 脚本，构建并添加到用户 PATH
 # .\install-from-source.ps1
