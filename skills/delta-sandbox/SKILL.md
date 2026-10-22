@@ -175,7 +175,7 @@ The reason is that, after running a command, this skill reads `log_file` from th
 | Reclaim a tunnel | `sandbox dispose <id> --port N` — explicitly reclaim a single tunnel (stop frpc and release the public port); killing the sandbox also reclaims all its tunnels |
 | **File operations** | |
 | Read a file | `sandbox read <id> --path <path> [--output <local-path> --tail N --grep <pattern> --offset N --limit N --context N --max-bytes N --parse-json]` — **byte-exact**: a full copy goes through the chunked download (sha256-verified) and a filtered copy is a byte-exact slice of the original. Printed inline, a text file gives `content`; a **non-UTF-8 file gives no `content`** — the exact bytes are in `content_base64` |
-| Pull a file/directory | `sandbox pull <id> --source <sandbox-path> --target <local-path> [--pattern <glob>] [--concurrency N] [--no-resume] [--no-verify]` — pull a single file or **recursively** pull a directory (directories are always recursive), over the **chunked** path: bytes move verbatim (no base64 inflation), binary-safe, sha256-verified, resumable and parallel (the reverse of upload: source=remote, target=local) |
+| Pull a file/directory | `sandbox pull <id> --source <sandbox-path> --target <local-path> [--pattern <glob>] [--concurrency N] [--no-resume] [--no-verify]` — pull a single file or **recursively** pull a directory (directories are always recursive), over the **chunked** path: bytes move verbatim (no base64 inflation), binary-safe, sha256-verified, resumable and parallel (the reverse of upload: source=remote, target=local). A `--target` that names an existing local directory receives the file inside it, under its own name |
 | View the working directory | `sandbox working-directory <id>` (returns `data.path`, such as `/workspace/{user_id}/{sandbox_id}`) |
 | Write a file | `sandbox write <id> --source <filename>` (without `--path`, writes to the working directory by default); **every sandbox-side path** — `--path`, the remote part of `write-multiple --entry`, `upload --target`, `pull --source`, `run`/`run-bg --log-file` — is prefixed with the working directory when relative, while an absolute path is used as given. The content is **binary-safe** (raw bytes, with a base64 fallback for older servers) and the server verifies the declared `size`/`sha256` before writing, so the response's `server_sha256`/`size_verified` can be compared with the local file |
 | Write multiple files | `sandbox write-multiple <id> --entry <remote-path>=<local-path> [--entry ...]` |
@@ -185,10 +185,10 @@ The reason is that, after running a command, this skill reads `log_file` from th
 | Move/rename | `sandbox mv <id> --entry <src=dest> [--entry ...]` |
 | Replace content | `sandbox replace <id> --path <path> --old <text> --new <text>` |
 | Change permissions | `sandbox chmod <id> --path <path> --mode <octal>` |
-| Delete files | `sandbox rm <id> --path <path> [--path ...]` |
-| Delete directories | `sandbox rmdir <id> --path <path> [--path ...]` |
+| Delete files | `sandbox rm <id> --path <path> [--path ...]` — files only; a directory path is rejected, a missing path is an error |
+| Delete directories | `sandbox rmdir <id> --path <path> [--path ...]` — directories only; a file path is rejected and the file is left untouched, a missing path is an error |
 | Create directories | `sandbox mkdir <id> --path <path> [--path ...]` |
-| Search files | `sandbox search <id> --path <root-directory> --pattern <glob>` |
+| Search files | `sandbox search <id> --path <root-directory> --pattern <glob>` — an unterminated glob such as `[` is rejected, not silently empty |
 
 ## Full lifecycle
 
@@ -392,7 +392,7 @@ This skill is designed to make the conclusion self-contained: when execution end
 |-------------|----------|
 | `error.type: not_found` | Check whether `sandbox_id` is correct and whether the sandbox has been killed |
 | `error.type: network` | Check `base_url` and network connectivity |
-| `error.type: validation` | Check parameter formats and required flags |
+| `error.type: validation` | Check parameter formats and required flags. This also covers a file path used where a directory is required (or the reverse) and an invalid glob; `error.hint` names what to change |
 | `error.type: auth / permission` | Follow the permission-denied guidance in delta-shared |
 | `error.type: api` (5xx) | Server error; check the API service status |
 | `sandbox create` failed | Read `error.hint` — it states the cause and the next step (for example, the image was not cached on the target node, so the initial pull exceeded the readiness timeout: retry once, or pick a GPU type whose node already has the image). A failed create leaves no sandbox behind, so retrying is safe. `error.request_id` identifies the failure in the server log. |

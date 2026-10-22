@@ -282,19 +282,19 @@ delta-cli sandbox operation <request_id>
 | `delta-cli sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--cancel-on-timeout] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`（`--format json` 时为统一结果对象，`finished=false`）；加 `--wait` 通过 SSE 实时流跟随（默认透传原始 `data:` 帧）；`--format json` 时只输出一个与 `sandbox run --format json` 相同结构的信封。**等待超时** → `error.type=timeout`、进程**非零退出**，`error.details` 保留 `sandbox_id`/`execution_id`/`remote_state`（`not_cancelled`/`cancelled`/`cancel_failed`）以便事后查询或取消；`remote_state=not_cancelled` 表示**只是本地停止等待，远端命令可能仍在运行**。默认不取消远端命令，加 `--cancel-on-timeout` 才会下发取消（取消失败时报 `cancel_failed`） |
 | `delta-cli sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N --max-bytes N]` | 查看后台日志；默认返回 `stderr_size + stderr_tail`（避免上下文爆炸）；可用 `--tail/--grep` 过滤 |
 | `delta-cli sandbox cancel <id> --execution-id <eid>` | 中断后台命令 |
-| `delta-cli sandbox read <id> --path <path> [--output <本地路径>] [--tail N] [--grep <pattern>] [--offset N] [--limit N] [--context N] [--max-bytes N] [--parse-json]` | 读取容器内文件；`--output <path>` 保存到本地；`--tail/--grep` 过滤。**整份拷贝（不带 `--tail/--grep/--offset/--limit/--max-bytes`）走分块下载通道，字节精确**（二进制安全，响应含 `byte_exact:true`/`integrity:"sha256"`/`digest_verified`）；带上述过滤参数时，过滤作用在**原始字节**上，落盘结果是原文件的字节精确切片（`byte_exact:true`/`integrity:"sha1"`）。**直接输出到 stdout 时**：文本文件给 `content`（严格解码，`byte_exact:true`）；**非 UTF-8 文件不给 `content`**（有损预览会误导），精确原始字节放在 `content_base64`（base64 解码即为原文件），并标记 `byte_exact:true`。仅当服务端不支持该协商时才会退回有损文本（`integrity:"text_decoded"`）|
-| `delta-cli sandbox pull <id> --source <沙箱路径> --target <本地路径> [--pattern <glob>] [--concurrency N] [--no-resume] [--no-verify]` | 从沙箱拉取文件/目录到本地（mirror of `upload`，flag 方向相反：source=远程，target=本地）。**目录始终递归**（`--recursive` 已废弃，无需再加）；走**分块下载**通道：二进制安全、端到端 **sha256** 校验（响应含 `digest_verified`）、**可断点续传**（`.delta.part`）、多文件/多块**并行**传输（`--concurrency`，默认 4），因此不受单条命令 300s 超时限制。服务端公开的上限随每次响应返回（`limits`）：块大小 4 MiB（最大 16 MiB）、单文件最大 100 GiB、每块超时 120s、整文件摘要超时 600s。`--no-resume` 忽略残留的 `.delta.part`，`--no-verify` 跳过沙箱侧 sha256 比对。**载荷按原始字节直传**（服务端支持时走二进制端点，不再被 base64 撑大 4/3），旧服务端自动回退；**分块必须连续覆盖整个文件**，有缺口或被中断的下载直接报错，不会被当成成功结果 |
+| `delta-cli sandbox read <id> --path <path> [--output <本地路径>] [--tail N] [--grep <pattern>] [--offset N] [--limit N] [--context N] [--max-bytes N] [--parse-json]` | 读取容器内文件；`--output <path>` 保存到本地；`--tail/--grep` 过滤。**整份拷贝（不带 `--tail/--grep/--offset/--limit/--max-bytes`）走分块下载通道，字节精确**（二进制安全，响应含 `byte_exact:true`/`integrity:"sha256"`/`digest_verified`）；带上述过滤参数时，过滤作用在**原始字节**上，落盘结果是原文件的字节精确切片（`byte_exact:true`/`integrity:"sha1"`）。**直接输出到 stdout 时**：文本文件给 `content`（严格解码，`byte_exact:true`）；**非 UTF-8 文件不给 `content`**（有损预览会误导），精确原始字节放在 `content_base64`（base64 解码即为原文件），并标记 `byte_exact:true`。仅当服务端不支持该协商时才会退回有损文本（`integrity:"text_decoded"`）。`--output` 指向已存在的本地目录时，文件按自身文件名写进该目录（等同 `cp file dir/`）|
+| `delta-cli sandbox pull <id> --source <沙箱路径> --target <本地路径> [--pattern <glob>] [--concurrency N] [--no-resume] [--no-verify]` | 从沙箱拉取文件/目录到本地（mirror of `upload`，flag 方向相反：source=远程，target=本地）。**目录始终递归**（`--recursive` 已废弃，无需再加）；走**分块下载**通道：二进制安全、端到端 **sha256** 校验（响应含 `digest_verified`）、**可断点续传**（`.delta.part`）、多文件/多块**并行**传输（`--concurrency`，默认 4），因此不受单条命令 300s 超时限制。服务端公开的上限随每次响应返回（`limits`）：块大小 4 MiB（最大 16 MiB）、单文件最大 100 GiB、每块超时 120s、整文件摘要超时 600s。`--no-resume` 忽略残留的 `.delta.part`，`--no-verify` 跳过沙箱侧 sha256 比对。**载荷按原始字节直传**（服务端支持时走二进制端点，不再被 base64 撑大 4/3），旧服务端自动回退；**分块必须连续覆盖整个文件**，有缺口或被中断的下载直接报错，不会被当成成功结果。`--target` 指向已存在的本地目录时，文件按自身文件名写进该目录（等同 `cp file dir/`） |
 | `delta-cli sandbox write <id> --path <path> --source <本地路径>` | 写入文件。**二进制安全**：内容按原始字节直传（服务端支持时走二进制端点，旧服务端自动回退到 base64），CLI 同时声明 `size`/`sha256`，服务端在落盘前核对，不匹配直接拒绝；响应含 `server_sha256`/`sha256`/`size`/`size_verified`。超过 32 MiB 的 `--source` 走流式上传通道，不整份读入内存 |
 | `delta-cli sandbox write-multiple <id> --entry <远程路径>=<本地路径>` | 批量写入 |
-| `delta-cli sandbox ls <id> --path <path>` | 列出目录 |
+| `delta-cli sandbox ls <id> --path <path>` | 列出目录（路径是文件或不存在时给出明确报错，而不是笼统的上游失败） |
 | `delta-cli sandbox stat <id> --path <path>` | 文件元数据 |
 | `delta-cli sandbox mv <id> --entry <src=dest>` | 移动/重命名 |
 | `delta-cli sandbox replace <id> --path <path> --old <文本> --new <文本>` | 替换内容 |
 | `delta-cli sandbox chmod <id> --path <path> --mode <八进制>` | 修改权限 |
-| `delta-cli sandbox rm <id> --path <path>` | 删除文件 |
-| `delta-cli sandbox rmdir <id> --path <路径>` | 递归删除目录 |
+| `delta-cli sandbox rm <id> --path <path>` | 删除文件。**只删文件**：目录路径会被拒绝（请改用 `rmdir`），路径不存在会报错而不是静默成功 |
+| `delta-cli sandbox rmdir <id> --path <路径>` | 递归删除目录（不可撤销）。**只删目录**：文件路径会被拒绝且文件保持不动，路径不存在会报错 |
 | `delta-cli sandbox mkdir <id> --path <路径>` | 创建目录 |
-| `delta-cli sandbox search <id> --path <根目录> --pattern <glob>` | 搜索文件 |
+| `delta-cli sandbox search <id> --path <根目录> --pattern <glob>` | 搜索文件（括号未闭合的 glob 如 `[` 会被拒绝，而不是静默返回空结果） |
 | `delta-cli sandbox working-directory <id>` | 获取沙箱工作目录路径 |
 | `delta-cli sandbox upload <id> --source <本地目录> --target <沙箱路径>` | 上传目录（tar.gz + 自动解压） |
 | `delta-cli sandbox expose <id> [--port N]` | 将沙箱内服务端口暴露到公网（frp 隧道），默认端口 8700 |
@@ -347,7 +347,7 @@ Skill 文档 `skills/delta-science/references/qe.md` 与
 
 | Type | Exit Code | 场景 |
 |------|-----------|------|
-| validation | 2 | 参数错误 |
+| validation | 2 | 参数错误 —— 含"需要目录却给了文件（或反之）"以及非法 glob |
 | auth | 3 | 未认证 |
 | permission | 4 | 权限不足 |
 | not_found | 5 | 资源不存在 |
