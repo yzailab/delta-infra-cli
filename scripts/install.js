@@ -9,23 +9,38 @@ const crypto = require("crypto");
 
 const PKG = "@delta-infra/cli";
 
-// Resolve the version to download:
-//   env var > npm registry > local package.json (fallback)
-function resolveVersion() {
-  if (process.env.DELTA_CLI_VERSION) return process.env.DELTA_CLI_VERSION.replace(/^v/, "");
-  try {
-    const out = require("child_process").execFileSync("npm", ["view", PKG, "version"], {
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 15000,
-      encoding: "utf8",
-    });
-    const ver = out.trim();
-    if (/^\d+\.\d+\.\d+/.test(ver)) return ver;
-  } catch {}
-  return require("../package.json").version.replace(/-.*$/, "");
-}
+  // The version of the package npm is installing. Its bundled checksums.txt is
+  // the only checksum source a mirror cannot tamper with, so the downloaded
+  // asset and the expected checksum always have to describe the same version.
+  const PACKAGED_VERSION = require("../package.json").version.replace(/-.*$/, "");
 
-const VERSION = resolveVersion();
+  // The newest version the registry knows about. Used as a fallback when the
+  // packaged version has no matching release.
+  function registryLatestVersion() {
+    try {
+      const out = require("child_process").execFileSync("npm", ["view", PKG, "version"], {
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 15000,
+        encoding: "utf8",
+      });
+      const ver = out.trim();
+      if (/^\d+\.\d+\.\d+/.test(ver)) return ver;
+    } catch {}
+    return null;
+  }
+
+  // Resolve the version to download:
+  //   env var > the packaged version > npm registry (fallback)
+  function resolveVersion() {
+    if (process.env.DELTA_CLI_VERSION) return process.env.DELTA_CLI_VERSION.replace(/^v/, "");
+    // The packaged version is what the user asked npm to install. Resolving to
+    // the registry's "latest" instead downloads the newest asset and verifies it
+    // against this package's older checksums.txt, which can never match.
+    if (PACKAGED_VERSION) return PACKAGED_VERSION;
+    return registryLatestVersion() || PACKAGED_VERSION;
+  }
+
+  const VERSION = resolveVersion();
 const NAME = "delta-cli";
 const REPO = "yzailab/delta-infra-cli";
 const DEFAULT_ALLOWED_HOSTS = new Set([
@@ -290,14 +305,7 @@ function extractZipWindows(archivePath, destDir) {
 
 // ── Checksum ───────────────────────────────────────────────────────────────
 
-function getExpectedChecksum(archiveName, checksumsDir) {
-  const dir = checksumsDir || path.join(__dirname, "..");
-  const checksumsPath = path.join(dir, "checksums.txt");
-  if (!fs.existsSync(checksumsPath)) {
-    console.error("[WARN] checksums.txt not found, skipping checksum verification");
-    return null;
-  }
-  const content = fs.readFileSync(checksumsPath, "utf8");
+function parseChecksums(content, archiveName) {
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -308,6 +316,45 @@ function getExpectedChecksum(archiveName, checksumsDir) {
     if (name === archiveName) return hash;
   }
   throw new Error(`Checksum entry not found for ${archiveName}`);
+}
+
+function getExpectedChecksum(archiveName, checksumsDir) {
+  const dir = checksumsDir || path.join(__dirname, "..");
+  const checksumsPath = path.join(dir, "checksums.txt");
+  if (!fs.existsSync(checksumsPath)) {
+    console.error("[WARN] checksums.txt not found, skipping checksum verification");
+    return null;
+  }
+  return parseChecksums(fs.readFileSync(checksumsPath, "utf8"), archiveName);
+}
+
+// The canonical URL of one file inside a release, optionally through the
+// configured mirror.
+function releaseFileUrl(version, name) {
+  const url = "https://github.com/" + REPO + "/releases/download/v" + version + "/" + name;
+  const mirror = process.env.DELTA_CLI_MIRROR || "";
+  if (mirror) return mirror.replace(/\/$/, "") + "/" + url;
+  return url;
+}
+
+// The checksum of the release that is actually being downloaded. The bundled
+// checksums.txt only describes the packaged version, so any other version has
+// to bring its own checksums.txt from that same release.
+function expectedChecksumFor(version, archiveName, tmpDir) {
+  if (version === PACKAGED_VERSION) return getExpectedChecksum(archiveName);
+  const dest = path.join(tmpDir, "checksums-" + version + ".txt");
+  try {
+    download(releaseFileUrl(version, "checksums.txt"), dest);
+  } catch (e) {
+    console.error("[WARN] could not fetch checksums for v" + version + ": " + e.message + " — skipping checksum verification");
+    return null;
+  }
+  try {
+    return parseChecksums(fs.readFileSync(dest, "utf8"), archiveName);
+  } catch (e) {
+    console.error("[WARN] " + e.message + " — skipping checksum verification");
+    return null;
+  }
 }
 
 function verifyChecksum(archivePath, expectedHash) {
@@ -333,66 +380,85 @@ function verifyChecksum(archivePath, expectedHash) {
 
 // ── Main install ───────────────────────────────────────────────────────────
 
+function extractAndInstall(tmpDir, archivePath) {
+  try {
+    if (isWindows) {
+      console.error("Extracting archive...");
+      extractZipWindows(archivePath, tmpDir);
+    } else {
+      console.error("Extracting archive...");
+      execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], { stdio: "ignore" });
+    }
+
+    const binaryName = NAME + (isWindows ? ".exe" : "");
+    const extractedBinary = path.join(tmpDir, NAME + "-" + platform + "-" + arch);
+    if (fs.existsSync(extractedBinary)) {
+      fs.copyFileSync(extractedBinary, dest);
+    } else {
+      // Fallback: try the plain name (older release format)
+      const plainBinary = path.join(tmpDir, binaryName);
+      if (fs.existsSync(plainBinary)) {
+        fs.copyFileSync(plainBinary, dest);
+      } else {
+        // Search in tmpDir
+        const files = fs.readdirSync(tmpDir).filter(function(f) { return f.indexOf(NAME) !== -1 || f.indexOf(binaryName) !== -1; });
+        if (files.length > 0) {
+          fs.copyFileSync(path.join(tmpDir, files[0]), dest);
+        } else {
+          throw new Error("Binary not found in extracted archive. Files: " + fs.readdirSync(tmpDir).join(", "));
+        }
+      }
+    }
+    fs.chmodSync(dest, 0o755);
+    ensureExecutable(path.join(__dirname, "run.js"));
+    console.error("Installed to " + dest);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 function install() {
   fs.mkdirSync(binDir, { recursive: true });
   var tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "delta-cli-"));
   var archivePath = path.join(tmpDir, archiveName);
 
-  releaseAssetUrls(VERSION, archiveName, function(downloadUrls) {
-    try {
+  // The packaged version first; the registry's latest is a fallback for a
+  // package whose version has no matching release.
+  var candidates = [VERSION];
+  var latest = registryLatestVersion();
+  if (latest && latest !== VERSION) candidates.push(latest);
+
+  var vi = 0;
+  function tryNextVersion() {
+    if (vi >= candidates.length) {
+      console.error("[FAIL] delta-cli could not be installed from any source");
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+      process.exit(1);
+    }
+    var version = candidates[vi++];
+    releaseAssetUrls(version, archiveName, function(downloadUrls) {
       var lastErr;
-      var downloaded = false;
       for (var i = 0; i < downloadUrls.length; i++) {
         try {
           console.error("Downloading from " + downloadUrls[i]);
           download(downloadUrls[i], archivePath);
           console.error("Download complete, verifying checksum...");
-          const expectedHash = getExpectedChecksum(archiveName);
+          const expectedHash = expectedChecksumFor(version, archiveName, tmpDir);
           verifyChecksum(archivePath, expectedHash);
           console.error("Checksum verified");
-          downloaded = true;
-          break;
+          extractAndInstall(tmpDir, archivePath);
+          return;
         } catch (e) {
           console.error("Failed: " + e.message + " (" + downloadUrls[i] + ")");
           lastErr = e;
         }
       }
-      if (!downloaded) throw lastErr;
+      console.error("Version v" + version + " could not be installed: " + (lastErr ? lastErr.message : "no source responded"));
+      tryNextVersion();
+    });
+  }
 
-      if (isWindows) {
-        console.error("Extracting archive...");
-        extractZipWindows(archivePath, tmpDir);
-      } else {
-        console.error("Extracting archive...");
-        execFileSync("tar", ["-xzf", archivePath, "-C", tmpDir], { stdio: "ignore" });
-      }
-
-      const binaryName = NAME + (isWindows ? ".exe" : "");
-      const extractedBinary = path.join(tmpDir, NAME + "-" + platform + "-" + arch);
-      if (fs.existsSync(extractedBinary)) {
-        fs.copyFileSync(extractedBinary, dest);
-      } else {
-        // Fallback: try the plain name (older release format)
-        const plainBinary = path.join(tmpDir, binaryName);
-        if (fs.existsSync(plainBinary)) {
-          fs.copyFileSync(plainBinary, dest);
-        } else {
-          // Search in tmpDir
-          const files = fs.readdirSync(tmpDir).filter(function(f) { return f.indexOf(NAME) !== -1 || f.indexOf(binaryName) !== -1; });
-          if (files.length > 0) {
-            fs.copyFileSync(path.join(tmpDir, files[0]), dest);
-          } else {
-            throw new Error("Binary not found in extracted archive. Files: " + fs.readdirSync(tmpDir).join(", "));
-          }
-        }
-      }
-      fs.chmodSync(dest, 0o755);
-      ensureExecutable(path.join(__dirname, "run.js"));
-      console.error("Installed to " + dest);
-    } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
+  tryNextVersion();
 }
 
 function ensureExecutable(filePath) {
