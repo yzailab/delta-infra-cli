@@ -121,6 +121,8 @@ and minimal scenarios. Do not read documentation for other tools. Split cross-to
 this Skill's routing rules and read only the references for tools actually involved. Do not rely
 on separate routing, service, workflow or catalogue documents.
 
+Science-service failures carry a service-specific `error.hint` rather than a sandbox one: an unknown tool points at `delta-cli science list`, a missing endpoint at `delta-cli science endpoints list <tool>`, a missing task or artifact at the `science task` commands. Follow `error.hint` instead of re-deriving the next step.
+
 This table lists research tools with maintained references; it is not a static server catalogue.
 If the user names a new tool absent from the table, or a reference is missing, outdated or
 inconsistent with CLI output, run `delta-cli science list`, then run
