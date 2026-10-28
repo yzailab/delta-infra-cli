@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-delta-protein reference generator / checker.
+huada_protein_tools (delta-science) reference generator / checker.
 
-Self-contained (stdlib only). Reads scripts/output_metadata.json and, for every
+Self-contained (stdlib only). Reads scripts/protein/output_metadata.json and, for every
 endpoint, idempotently inserts/updates the `## Output Projection` and
-`## Output Template` sections in references/<endpoint>.md. Run it again after
+`## Output Template` sections in references/protein/<endpoint>.md. Run it again after
 metadata changes to regenerate cleanly.
 
 Usage:
-  python scripts/gen_references.py                  # regenerate Output Projection/Template sections
-  python scripts/gen_references.py --check          # validate all references + SKILL links
-  python scripts/gen_references.py --sync <dir>     # copy references + SKILL.md to an install dir
+  python scripts/protein/gen_references.py                  # regenerate Output Projection/Template sections
+  python scripts/protein/gen_references.py --check          # validate all references + router links
+  python scripts/protein/gen_references.py --sync <dir>     # copy protein references + huada_protein_tools.md to a delta-science install dir
 """
 import json
 import os
 import re
 import sys
 
-BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # skills/delta-protein
-REFS = os.path.join(BASE, "references")
-SKILL = os.path.join(BASE, "SKILL.md")
-META = os.path.join(BASE, "scripts", "output_metadata.json")
+BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # skills/delta-science
+REFS = os.path.join(BASE, "references", "protein")
+ROUTER = os.path.join(BASE, "references", "huada_protein_tools.md")
+META = os.path.join(BASE, "scripts", "protein", "output_metadata.json")
 
 EXPECTED_SECTIONS = ["## Overview", "## Invocation", "## Response", "## Output Projection", "## Output Template", "## Boundaries & Failure Modes"]
 
@@ -126,11 +126,11 @@ def check():
     for e in extras:
         errors.append(f"reference not in metadata: {e}")
 
-    if os.path.exists(SKILL):
-        skill = open(SKILL, encoding="utf-8").read()
-        for mref in re.findall(r"references/([a-z0-9_]+\.md)", skill):
+    if os.path.exists(ROUTER):
+        router = open(ROUTER, encoding="utf-8").read()
+        for mref in re.findall(r"protein/([a-z0-9_]+\.md)", router):
             if not os.path.exists(os.path.join(REFS, os.path.basename(mref))):
-                errors.append(f"SKILL.md broken link: {mref}")
+                errors.append(f"huada_protein_tools.md broken link: {mref}")
 
     if errors:
         print("CHECK FAILED:")
@@ -145,10 +145,10 @@ def sync(target):
     for ep in load_meta():
         src = os.path.join(REFS, ep + ".md")
         if os.path.exists(src):
-            shutil_copy(src, os.path.join(target, "references", ep + ".md"))
-    if os.path.exists(SKILL):
-        shutil_copy(SKILL, os.path.join(target, "SKILL.md"))
-    print(f"synced references + SKILL.md -> {target}")
+            shutil_copy(src, os.path.join(target, "references", "protein", ep + ".md"))
+    if os.path.exists(ROUTER):
+        shutil_copy(ROUTER, os.path.join(target, "references", "huada_protein_tools.md"))
+    print(f"synced protein references -> {target}")
 
 
 def shutil_copy(src, dst):

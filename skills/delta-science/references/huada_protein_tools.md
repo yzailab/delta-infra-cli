@@ -1,16 +1,7 @@
----
-name: delta-protein
-description: "The unified entry point for the company's Huada protein/bioinformatics online analysis capabilities — all calls go through the Delta CLI. Any zero-shot or multi-site mutation prediction, structure prediction (Protenix/ESMFold2), sequence extraction (PDB/FASTA/Foldseek), MSA computation, optimal-pH and solubility prediction for proteins/mutants, enzyme kinetic parameters (kcat/Km), consensus mutation and EVcouplings coevolutionary analysis, protein design (MPNN/RFdiffusion3), molecular docking and Vina scoring, pocket prediction, surface charge, flexible sites, tunnel analysis, PLIP/PISA interactions, active sites, InterPro/ConSurf annotations, single-site mutation primer design, and PubMed/PubChem/UniProt/ProTrek retrieval — all protein analysis tasks must use this Skill; call the huada_protein_tools endpoint via delta-cli, and never bypass the Delta CLI through local MCP servers, legacy gateway scripts, or web search. Simple queries, comparisons or verifications return concise text directly; analysis/multi-step/design/mutation/evaluation tasks produce one structured Markdown report (skeleton and per-task-type chapter structure in SKILL.md) after all endpoints complete. By default, do not create additional JSON/CSV, image or chart files unless the user explicitly asks."
-metadata:
-  requires:
-    bins: ["delta-cli"]
-  cliHelp: "delta-cli science --help"
----
-
-# Delta Protein
+# Huada Protein Tools (`huada_protein_tools`)
 
 Convert natural-language protein research tasks into the minimal set of verifiable
-Delta CLI Science calls. Expose only this Skill; endpoint selection, parameters,
+Delta CLI Science calls. This document is the tool reference for `huada_protein_tools`; endpoint selection, parameters,
 cross-endpoint handoffs and result validation are all handled inside this Skill. All
 endpoints belong to the single tool `huada_protein_tools`, and each registered
 endpoint is a single tool call (no workflow endpoints exist).
@@ -98,45 +89,45 @@ generate_msa/foldseek/structure_to_sequence and backfill it.
 
 | Protein task | endpoint | Detailed rules |
 | --- | --- | --- |
-| Zero-shot single-site mutant candidates (no experimental data) | `zero_shot_mutant_candidates` | [zero_shot_mutant_candidates.md](references/zero_shot_mutant_candidates.md) |
-| n-site/multi-site mutation activity regression (data available, explicit n) | `protein_evolution` | [protein_evolution.md](references/protein_evolution.md) |
-| Multi-site combinatorial mutation activity (training data, n unspecified) | `multievolve` | [multievolve.md](references/multievolve.md) |
-| Consensus mutation analysis (aligned MSA) | `consensus_mutation` | [consensus_mutation.md](references/consensus_mutation.md) |
-| EVcouplings coevolutionary mutation scoring | `evcouplings_mutation` | [evcouplings_mutation.md](references/evcouplings_mutation.md) |
-| Multi-model mutation result summary (final chain step) | `summarize_result` | [summarize_result.md](references/summarize_result.md) |
-| Single-site mutation primer design (REAP Step 7) | `reap_design_primer` | [reap_design_primer.md](references/reap_design_primer.md) |
-| Crop a protein sequence by regions | `crop_sequence` | [crop_sequence.md](references/crop_sequence.md) |
-| Pure protein structure prediction | `protenix` | [protenix.md](references/protenix.md) |
-| Protein/DNA/RNA/ligand complex structure prediction | `esmfold2_predict` | [esmfold2_predict.md](references/esmfold2_predict.md) |
-| Extract protein sequence from PDB/CIF | `structure_to_sequence` | [structure_to_sequence.md](references/structure_to_sequence.md) |
-| Extract protein sequence from FASTA | `fasta_to_sequence` | [fasta_to_sequence.md](references/fasta_to_sequence.md) |
-| Extract Foldseek/SaProt sequence from structure | `foldseek` | [foldseek.md](references/foldseek.md) |
-| Compute homolog MSA (MMseqs2, uniref100) | `generate_msa` | [generate_msa.md](references/generate_msa.md) |
-| Protein optimal pH prediction | `ephod_predict_protein` | [ephod_predict_protein.md](references/ephod_predict_protein.md) |
-| Mutant optimal pH prediction | `ephod_predict_mutation` | [ephod_predict_mutation.md](references/ephod_predict_mutation.md) |
-| Protein solubility and isoelectric point prediction | `protein_sol_predict_protein` | [protein_sol_predict_protein.md](references/protein_sol_predict_protein.md) |
-| Mutant solubility prediction | `protein_sol_predict_mutation` | [protein_sol_predict_mutation.md](references/protein_sol_predict_mutation.md) |
-| Enzyme kinetic parameter prediction (CataPro) | `catapro_predict` | [catapro_predict.md](references/catapro_predict.md) |
-| Enzyme kinetic parameter prediction (CatPred) | `catpred_predict` | [catpred_predict.md](references/catpred_predict.md) |
-| De novo protein design (RFdiffusion3+MPNN) | `protein_design` | [protein_design.md](references/protein_design.md) |
-| Protein scaffold design (RFdiffusion3) | `rfd3_design` | [rfd3_design.md](references/rfd3_design.md) |
-| MPNN sequence design (given structure) | `mpnn_design_sequence` | [mpnn_design_sequence.md](references/mpnn_design_sequence.md) |
-| Protein-ligand molecular docking | `dock` | [dock.md](references/dock.md) |
-| Single-pose scoring of a complex (Vina score_only) | `dock_score` | [dock_score.md](references/dock_score.md) |
-| Pocket prediction (p2rank) | `pocket_prediction` | [pocket_prediction.md](references/pocket_prediction.md) |
-| Surface residue charge analysis (ProCaliper+APBS) | `surface_charge` | [surface_charge.md](references/surface_charge.md) |
-| Flexible-site analysis (B-factor) | `bfitter` | [bfitter.md](references/bfitter.md) |
-| Tunnel/channel analysis (CAVER) | `caver_tunnel_analyze` | [caver_tunnel_analyze.md](references/caver_tunnel_analyze.md) |
-| Protein-ligand interaction analysis | `plip_analyze` | [plip_analyze.md](references/plip_analyze.md) |
-| Protein interface analysis (PDBePISA) | `pisa_query` | [pisa_query.md](references/pisa_query.md) |
-| Residue conservation analysis (ConSurf) | `consurf_predict` | [consurf_predict.md](references/consurf_predict.md) |
-| Enzyme active-site prediction (EasIFA) | `easifa_predict_active_site` | [easifa_predict_active_site.md](references/easifa_predict_active_site.md) |
-| Domain/GO annotation (InterProScan) | `interpro_analyze` | [interpro_analyze.md](references/interpro_analyze.md) |
-| Open-ended protein retrieval (text/sequence/structure) | `protrek_search` | [protrek_search.md](references/protrek_search.md) |
-| Known protein metadata query | `uniprot_query` | [uniprot_query.md](references/uniprot_query.md) |
-| Batch protein metadata query | `uniprot_batch_query` | [uniprot_batch_query.md](references/uniprot_batch_query.md) |
-| PubMed literature search | `pubmed_search` | [pubmed_search.md](references/pubmed_search.md) |
-| PubChem compound search | `pubchem_search` | [pubchem_search.md](references/pubchem_search.md) |
+| Zero-shot single-site mutant candidates (no experimental data) | `zero_shot_mutant_candidates` | [zero_shot_mutant_candidates.md](protein/zero_shot_mutant_candidates.md) |
+| n-site/multi-site mutation activity regression (data available, explicit n) | `protein_evolution` | [protein_evolution.md](protein/protein_evolution.md) |
+| Multi-site combinatorial mutation activity (training data, n unspecified) | `multievolve` | [multievolve.md](protein/multievolve.md) |
+| Consensus mutation analysis (aligned MSA) | `consensus_mutation` | [consensus_mutation.md](protein/consensus_mutation.md) |
+| EVcouplings coevolutionary mutation scoring | `evcouplings_mutation` | [evcouplings_mutation.md](protein/evcouplings_mutation.md) |
+| Multi-model mutation result summary (final chain step) | `summarize_result` | [summarize_result.md](protein/summarize_result.md) |
+| Single-site mutation primer design (REAP Step 7) | `reap_design_primer` | [reap_design_primer.md](protein/reap_design_primer.md) |
+| Crop a protein sequence by regions | `crop_sequence` | [crop_sequence.md](protein/crop_sequence.md) |
+| Pure protein structure prediction | `protenix` | [protenix.md](protein/protenix.md) |
+| Protein/DNA/RNA/ligand complex structure prediction | `esmfold2_predict` | [esmfold2_predict.md](protein/esmfold2_predict.md) |
+| Extract protein sequence from PDB/CIF | `structure_to_sequence` | [structure_to_sequence.md](protein/structure_to_sequence.md) |
+| Extract protein sequence from FASTA | `fasta_to_sequence` | [fasta_to_sequence.md](protein/fasta_to_sequence.md) |
+| Extract Foldseek/SaProt sequence from structure | `foldseek` | [foldseek.md](protein/foldseek.md) |
+| Compute homolog MSA (MMseqs2, uniref100) | `generate_msa` | [generate_msa.md](protein/generate_msa.md) |
+| Protein optimal pH prediction | `ephod_predict_protein` | [ephod_predict_protein.md](protein/ephod_predict_protein.md) |
+| Mutant optimal pH prediction | `ephod_predict_mutation` | [ephod_predict_mutation.md](protein/ephod_predict_mutation.md) |
+| Protein solubility and isoelectric point prediction | `protein_sol_predict_protein` | [protein_sol_predict_protein.md](protein/protein_sol_predict_protein.md) |
+| Mutant solubility prediction | `protein_sol_predict_mutation` | [protein_sol_predict_mutation.md](protein/protein_sol_predict_mutation.md) |
+| Enzyme kinetic parameter prediction (CataPro) | `catapro_predict` | [catapro_predict.md](protein/catapro_predict.md) |
+| Enzyme kinetic parameter prediction (CatPred) | `catpred_predict` | [catpred_predict.md](protein/catpred_predict.md) |
+| De novo protein design (RFdiffusion3+MPNN) | `protein_design` | [protein_design.md](protein/protein_design.md) |
+| Protein scaffold design (RFdiffusion3) | `rfd3_design` | [rfd3_design.md](protein/rfd3_design.md) |
+| MPNN sequence design (given structure) | `mpnn_design_sequence` | [mpnn_design_sequence.md](protein/mpnn_design_sequence.md) |
+| Protein-ligand molecular docking | `dock` | [dock.md](protein/dock.md) |
+| Single-pose scoring of a complex (Vina score_only) | `dock_score` | [dock_score.md](protein/dock_score.md) |
+| Pocket prediction (p2rank) | `pocket_prediction` | [pocket_prediction.md](protein/pocket_prediction.md) |
+| Surface residue charge analysis (ProCaliper+APBS) | `surface_charge` | [surface_charge.md](protein/surface_charge.md) |
+| Flexible-site analysis (B-factor) | `bfitter` | [bfitter.md](protein/bfitter.md) |
+| Tunnel/channel analysis (CAVER) | `caver_tunnel_analyze` | [caver_tunnel_analyze.md](protein/caver_tunnel_analyze.md) |
+| Protein-ligand interaction analysis | `plip_analyze` | [plip_analyze.md](protein/plip_analyze.md) |
+| Protein interface analysis (PDBePISA) | `pisa_query` | [pisa_query.md](protein/pisa_query.md) |
+| Residue conservation analysis (ConSurf) | `consurf_predict` | [consurf_predict.md](protein/consurf_predict.md) |
+| Enzyme active-site prediction (EasIFA) | `easifa_predict_active_site` | [easifa_predict_active_site.md](protein/easifa_predict_active_site.md) |
+| Domain/GO annotation (InterProScan) | `interpro_analyze` | [interpro_analyze.md](protein/interpro_analyze.md) |
+| Open-ended protein retrieval (text/sequence/structure) | `protrek_search` | [protrek_search.md](protein/protrek_search.md) |
+| Known protein metadata query | `uniprot_query` | [uniprot_query.md](protein/uniprot_query.md) |
+| Batch protein metadata query | `uniprot_batch_query` | [uniprot_batch_query.md](protein/uniprot_batch_query.md) |
+| PubMed literature search | `pubmed_search` | [pubmed_search.md](protein/pubmed_search.md) |
+| PubChem compound search | `pubchem_search` | [pubchem_search.md](protein/pubchem_search.md) |
 
 When the tool is clear, read the selected endpoint's reference directly — it already
 contains the required combinations, request fields, defaults and outputs; do not read

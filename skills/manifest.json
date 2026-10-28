@@ -2,8 +2,7 @@
   "skills": [
     "delta-sandbox",
     "delta-shared",
-    "delta-science",
-    "delta-protein"
+    "delta-science"
   ],
   "retired_skills": [
     "pubchem",
@@ -15,6 +14,7 @@
     "ldm-bo",
     "synbo-service",
     "antbo-service",
-    "antbo-ldm-guard"
+    "antbo-ldm-guard",
+    "delta-protein"
   ]
 }

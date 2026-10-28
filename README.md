@@ -374,8 +374,9 @@ Skill 文件位于 `skills/` 目录：
 - `delta-shared/` — 全局通用规则（认证、配置、错误处理）
 - `delta-sandbox/` — Sandbox 操作指南（生命周期、命令路由）
 - `delta-science/` — 唯一 Science 入口，包含统一 Delta CLI wrapper、跨工具工作流和
-  PubChem、RDKit、pymatgen、XRD、GSAS-II、LAMMPS、Delta-BO、LDM-BO、SynBO、AntBO
-  的按需 reference
+  PubChem、RDKit、pymatgen、XRD、GSAS-II、QE、LAMMPS、Delta-BO、LDM-BO、SynBO、
+  AntBO、materials-design、strbo 以及蛋白质/生物信息（`huada_protein_tools`）的按需
+  reference；蛋白质类 endpoint 契约位于 `skills/delta-science/references/protein/`
 
 Memento 等宿主只需要选择 `delta-science`。Skill 根据自然语言科研目标选择 tool 和
 operation，并且只加载当前工具对应的 reference，避免大量独立 Skill 给规划器增加
