@@ -356,7 +356,11 @@ Skill 文档 `skills/delta-science/references/qe.md` 与
 | not_found | 5 | 资源不存在 |
 | network | 6 | 网络错误 |
 | api | 7 | 服务端错误 |
+| command_failed | 8 | 沙箱内命令非零退出 |
 | internal | 10 | 客户端内部错误 |
+| timeout | 11 | `run-bg --wait` 本地等待超时（远端命令可能仍在运行，见 `error.details`） |
+| content_integrity_mismatch / content_size_mismatch | 12 | 文件传输校验失败（sha256 或字节数不符） |
+| unknown_execution_state | 1 | 命令已结束但退出状态不可知（**绝不合成成功**） |
 
 ## AI Agent Skills
 
