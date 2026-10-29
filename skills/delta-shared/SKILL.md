@@ -92,7 +92,7 @@ AI agent parsing rules:
 | api | 7 | Server returned a non-2xx response |
 | command_failed | 8 | Command failed inside the sandbox (non-zero `exit_code` or an error); on the SSE path, an error envelope is appended after the `complete` frame, with the stderr tail in `message` for quick reference |
 | timeout | 11 | A local wait deadline elapsed (`sandbox run-bg --wait`): the remote command may still be running — `error.details` keeps `sandbox_id`, `execution_id` and `remote_state` (`not_cancelled` / `cancelled` / `cancel_failed`) so it can be queried or cancelled |
-| unknown_execution_state | 1 | The command's outcome is **unknown** (the stream ended before the `complete` frame, or only an error frame arrived). Never treat this as success and never guess the exit code |
+| unknown_execution_state | 13 | The command's outcome is **unknown** (the stream ended before the `complete` frame, or only an error frame arrived). Never treat this as success and never guess the exit code |
 | internal | 10 | Internal client error |
 
 ## Upgrade check

@@ -281,7 +281,7 @@ delta-cli sandbox operation <request_id>
 | `delta-cli sandbox finish <id> [--no-wait]` | 保存结果并销毁；销毁是**服务端任务**，响应含 `request_id`/`operation_status`（`--no-wait` 立即返回 `pending`，断线后任务继续，可用 `sandbox operation <request_id>` 对账） |
 | `delta-cli sandbox kill <id> [--no-wait]` | 销毁 sandbox（不保存结果）；响应含 `request_id`/`operation_status`，中断或网络报错后可用 `sandbox operation` 查询真实终态 |
 | `delta-cli sandbox operation [request_id] [--sandbox-id <id>] [--operation create\|destroy] [--limit N]` | 查询服务端操作账本：带 `request_id` 查单条，否则按条件列出最近的创建/销毁记录（终态、时间、原因），用于计费与资源对账 |
-| `delta-cli sandbox run <id> --command "..." [--timeout <秒>] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` | 同步运行命令。默认（`--format sse`）把 SSE 原始 `data:` 帧透传到 stdout，无末尾信封，`exit_code`/`log_file`/`stdout_tail`/`duration_seconds` 在 `complete` 帧；`--format json`（或 `--json-result`）只输出**一个** JSON 信封，`data` 含 `execution_id`/`finished`/`exit_code`/`stdout_tail`/`stderr_tail`/`stdout_size`/`stderr_size`/`log_file`/`duration_seconds`/`result_summary`，失败时为 `{ok:false,error,data}` 且进程非零退出；`--summary`/`--artifacts` 仅旧服务器回退路径生效。**退出码语义**：命令非零退出 → `error.type=command_failed`，进程退出码 **8**；命令已结束但**退出状态不可知**（流在 `complete` 帧前中断、或只有 error 帧）→ `error.type=unknown_execution_state`，进程退出码 1，**绝不会合成成功** |
+| `delta-cli sandbox run <id> --command "..." [--timeout <秒>] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` | 同步运行命令。默认（`--format sse`）把 SSE 原始 `data:` 帧透传到 stdout，无末尾信封，`exit_code`/`log_file`/`stdout_tail`/`duration_seconds` 在 `complete` 帧；`--format json`（或 `--json-result`）只输出**一个** JSON 信封，`data` 含 `execution_id`/`finished`/`exit_code`/`stdout_tail`/`stderr_tail`/`stdout_size`/`stderr_size`/`log_file`/`duration_seconds`/`result_summary`，失败时为 `{ok:false,error,data}` 且进程非零退出；`--summary`/`--artifacts` 仅旧服务器回退路径生效。**退出码语义**：命令非零退出 → `error.type=command_failed`，进程退出码 **8**；命令已结束但**退出状态不可知**（流在 `complete` 帧前中断、或只有 error 帧）→ `error.type=unknown_execution_state`，进程退出码 13，**绝不会合成成功** |
 | `delta-cli sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--cancel-on-timeout] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`（`--format json` 时为统一结果对象，`finished=false`）；加 `--wait` 通过 SSE 实时流跟随（默认透传原始 `data:` 帧）；`--format json` 时只输出一个与 `sandbox run --format json` 相同结构的信封。**等待超时** → `error.type=timeout`、进程**非零退出**，`error.details` 保留 `sandbox_id`/`execution_id`/`remote_state`（`not_cancelled`/`cancelled`/`cancel_failed`）以便事后查询或取消；`remote_state=not_cancelled` 表示**只是本地停止等待，远端命令可能仍在运行**。默认不取消远端命令，加 `--cancel-on-timeout` 才会下发取消（取消失败时报 `cancel_failed`） |
 | `delta-cli sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N --max-bytes N]` | 查看后台日志；默认返回 `stderr_size + stderr_tail`（避免上下文爆炸）；可用 `--tail/--grep` 过滤 |
 | `delta-cli sandbox cancel <id> --execution-id <eid>` | 中断后台命令 |
@@ -360,7 +360,7 @@ Skill 文档 `skills/delta-science/references/qe.md` 与
 | internal | 10 | 客户端内部错误 |
 | timeout | 11 | `run-bg --wait` 本地等待超时（远端命令可能仍在运行，见 `error.details`） |
 | content_integrity_mismatch / content_size_mismatch | 12 | 文件传输校验失败（sha256 或字节数不符） |
-| unknown_execution_state | 1 | 命令已结束但退出状态不可知（**绝不合成成功**） |
+| unknown_execution_state | 13 | 命令已结束但退出状态不可知（**绝不合成成功**） |
 
 ## AI Agent Skills
 
