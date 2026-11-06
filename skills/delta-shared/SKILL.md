@@ -56,7 +56,27 @@ This returns the current user's information and remaining credits (through the g
 - `data.user_id`: user ID
 - `data.resources.credit`: remaining balance in credits
 
+`usage` reports **credits only** — it does not include hardware quota. Use `quota` below for that.
+
 `username`/`id`/`email`/`role`/`quota`/`group`/`tier`/`status`/`created_at`/`is_admin`, `stats` and its `total_consumed_credits` (in the database's original quota units) are internal fields and must not be exposed externally.
+
+## Querying hardware quota and GPU access
+
+```bash
+delta-cli quota          # the current account
+delta-cli quota --pool   # parent account only: sub-account hardware allocation pool
+```
+
+Through the gateway `/infra/api/tasks/resource-quota` (read-only: it does not deduct credits or record a task). The response is the account's **effective** quota, using the same admission rules as sandbox creation:
+
+- `data.gpu_access`: `allow_gpu`, and the `allowed_gpu_providers` / `allowed_gpu_types` / `allowed_gpu_images` allowlists, plus `denied_gpu_types` (a parent-set model denylist for sub-accounts). An **empty list means unrestricted**, not "nothing allowed". The denylist takes precedence over the allowlists: a matching model is rejected at create time.
+- `data.per_sandbox`: the ceiling for one create request (`cpu_cores`, `memory_mib`, `gpu_cards`) — **not** the remaining amount.
+- `data.account`: per dimension (`gpu_cards`, `gpu_mem_mib`, `cpu_cores`, `memory_mib`, `concurrency`, `gpu_duration_seconds`), each with `limit` / `used` / `remaining`.
+- `data.active_sandboxes` / `data.gpu_running_seconds`: current occupancy included in `used`.
+
+**`null` means unlimited; `0` means zero quota** (for example, GPU cards `0` = no GPU). Never collapse the two. `--pool` returns the parent's `pool` / `allocated` / `remaining` / `effective` plus `unallocated_children` and `warnings`; sub-accounts that inherit their tier do not consume the pool.
+
+On a server without the endpoint the command fails with `error.type: not_found` and an upgrade hint; fall back to `usage` (credits only) and the create rejection codes in `delta-sandbox`.
 
 ## Security rules
 
@@ -107,13 +127,14 @@ delta-cli upgrade
 
 | Error / symptom | Recovery action |
 |-------------|----------|
-| `error.type: auth` / `method: none` | Check the server address and local credential configuration. If no credential is configured or the server rejects it, ask the user once for a credential; use `--apikey` for an API key or `--token` for a bearer token, or set the matching `DELTA_INFRA_API_KEY` / `DELTA_INFRA_TOKEN` environment variable. |
+| `error.type: auth` / `method: none` | Check the server address and local credential configuration. If no credential is configured or the server rejects it, ask the user once for a credential; use `--apikey` for an API key or `--token` for a bearer token, or set the matching `DELTA_INFRA_API_KEY` / `DELTA_INFRA_TOKEN` environment variable. An invalid, expired or unauthorised API key is reported as `error.type: auth` (with a hint to run `delta-cli auth login`) — do not treat it as a server failure or retry the same command unchanged. |
 | `error.type: permission` | Check whether the current credential has sufficient permissions; if needed, ask for a credential with the required permissions. |
-| `error.type: not_found` | Check `sandbox_id` / path |
+| `error.type: not_found` | Check `sandbox_id` / path. If the command was `delta-cli quota` / `quota --pool`, the server predates the hardware-quota endpoint — upgrade it, or fall back to `usage` (credits only) and the create rejection codes |
 | `error.type: network` | Check `base_url` and network connectivity |
 | `error.type: validation` | Check required flags and argument formats |
 | `error.type: command_failed` | Command failed inside the sandbox: the envelope's `message` already includes the stderr tail to help locate the issue quickly; the full `stderr` / `result_summary` are in the `complete` frame. Retry or correct the command |
 | `error.type: timeout` | A local wait deadline elapsed, **not** a command failure. Read `error.details.execution_id` and query it with `sandbox logs <id> --execution-id <exec_id>`; cancel the still-running command with `sandbox cancel <id> --execution-id <exec_id>` (or re-run with `--cancel-on-timeout` so the CLI cancels it for you) |
 | `error.type: unknown_execution_state` | The remote outcome is unknown — the CLI will not guess. Re-check the command with `sandbox logs <id> --execution-id <exec_id>` (the execution id is in the error details) before deciding whether it succeeded |
 | `sandbox create` failed (`error.type: api` with a specific `hint`) | Follow the hint — it names the cause and the next step. "the image may not be cached on the target node" → retry once (the pull continues in the background, so later creates succeed) or pick a GPU type whose node already has the image. "check the target node's free disk space" → a retry will not help until an operator frees the node. A failed create leaves no sandbox behind, so retrying is safe. Quote `error.request_id` when reporting it. |
+| `sandbox create` rejected with `TIER_*` / `SUBACCOUNT_*` | Account/plan quota rejection, not a transient failure — do not retry the same request unchanged. See the quota row in `delta-sandbox`'s recovery table for which dimension to reduce or which model/provider/image to choose. |
 | Configuration file parsing failed | Check that `~/.delta-infra/config.json` contains valid JSON |
