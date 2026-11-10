@@ -98,7 +98,7 @@ npm install -g @delta-infra/cli
 `postinstall` 会按以下顺序尝试下载当前平台的二进制：
 
 1. `DELTA_CLI_MIRROR` 环境变量指定的镜像（如果设置，需为 HTTPS 且允许全前缀格式，如 `https://gh.ddlc.top`）
-2. 依次探测国内加速镜像 `gh.ddlc.top`、`ghproxy.net`、`gh-proxy.com`，可用的优先
+2. 探测国内加速镜像 `gh.ddlc.top`、`ghproxy.net`、`gh-proxy.com`（并行探测），可用的优先
 3. GitHub 源站 `https://github.com/yzailab/delta-infra-cli/releases/download/...`（兜底）
 
 如果安装时下载失败，可以：
@@ -117,9 +117,6 @@ DELTA_CLI_ARCHIVE=/path/to/delta-cli-linux-amd64.tar.gz npm install -g @delta-in
 | `DELTA_CLI_MIRROR` | 下载镜像根地址，例如 `https://gh.ddlc.top`。脚本会自动补全为全前缀格式（`<mirror>/https://github.com/...`）。只接受 HTTPS 且需在白名单内。 |
 | `DELTA_CLI_MIRROR_ALLOWLIST` | 额外允许的主机列表，逗号分隔。 |
 | `DELTA_CLI_ARCHIVE` | 指向预先下载好的 `.tar.gz` / `.zip` 本地路径，跳过网络下载。 |
-| `DELTA_CLI_SKIP_POSTINSTALL` | 设置为 `1` 跳过安装时的二进制下载，之后由 `delta-cli` 运行时兜底。 |
-| `DELTA_CLI_FATAL_ON_ERROR` | 安装失败时退出码非 0（默认警告，用于调试）。 |
-| `DELTA_CLI_DOWNLOAD_TIMEOUT` | 单个下载源最大等待时间（毫秒，默认 120000）。 |
 
 ## 快速开始
 
@@ -174,22 +171,22 @@ delta-cli auth status
 ```bash
 # 创建带 GPU 的 sandbox（--max-life 默认 30 分钟，长任务请调高）
 # ⚠️ 生命周期计时（详见 skills/delta-sandbox/references/lifecycle.md）：
-#   - 私有算力（OpenSandbox）：平台从 create 请求被接受时开始计时，镜像拉取/就绪
+#   - 私有算力：平台从 create 请求被接受时开始计时，镜像拉取/就绪
 #     时间也计入 max-life；到期由平台回收。
-#   - 第三方算力（AutoDL/RunPod）：从沙箱就绪（本地记录 started_at）开始计时，
+#   - 第三方算力：从沙箱就绪（本地记录 started_at）开始计时，
 #     由服务端 cleanup 在 max-life + 最多 10 分钟宽限后回收。
 #   - 自动回收（含平台提前回收）不会做 OSS 写回；需要保留产物请提前 pull 或
 #     显式 `sandbox finish`。`sandbox status` 会返回 expires_at / reclaim_source /
 #     termination_reason，沙箱结束后仍可查询。
 # ⚠️ 资源语义：`--memory` 是容器 CPU 内存【总量】（每沙箱一份）；`--gpu-mem` 是【每张卡】的显存（MiB）——
-# `--gpu 2 --gpu-mem 8000` = 每卡 8000MiB、总显存 16000MiB（内部 OpenSandbox/HAMi 后端直接写入 HAMi 每卡注解；
-# 注意云端 runpod 后端将 --gpu-mem 视为总显存÷卡数）。单卡显存上限可查 `sandbox resources`（memory_mib）。
+# `--gpu 2 --gpu-mem 8000` = 每卡 8000MiB、总显存 16000MiB（私有算力直接按每卡注解调度；
+# 注意第三方算力后端将 --gpu-mem 视为总显存÷卡数）。单卡显存上限可查 `sandbox resources`（私有算力分组的 `memory_mib`）。
 # 注意：服务端已移除 shmSize / devices 资源字段，CLI 的 --shm-size / --devices 已被移除。
 # `--ready-timeout` 是**创建阶段**等待沙箱就绪的上限（秒，默认 600，范围 10-1800）：冷节点首次拉取大镜像
 # （如 2.9GB 层）常超过 60s，提高它可避免 error_code=SandboxReadyTimeout。对全部算力生效（私有算力 /
-# AutoDL / RunPod）。注意它与 `--max-life`（创建成功后的存活时长）是两回事。
+# 第三方算力）。注意它与 `--max-life`（创建成功后的存活时长）是两回事。
 delta-cli sandbox create \
-  --image-name image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
+  --image-name "PyTorch CUDA13 (GPU)" \
   --cpu 4 --memory 16Gi --gpu 1 \
   --max-life 120
 
@@ -197,7 +194,7 @@ delta-cli sandbox create \
 # 需要长期存活、不被自动清理的 sandbox：加 --no-auto-cleanup
 # （同时关闭平台 TTL 与服务端 cleanup，仅显式 kill/finish 可销毁）
 delta-cli sandbox create \
-  --image-name image.yangtzeailab.com/opensandbox/pytorch-cuda13:latest \
+  --image-name "PyTorch CUDA13 (GPU)" \
   --cpu 4 --memory 16Gi --gpu 1 \
   --no-auto-cleanup
 
@@ -262,24 +259,23 @@ delta-cli sandbox operation <request_id>
 
 | 命令 | 说明 |
 |------|------|
-| `delta-cli sandbox list` | 列出当前用户的 sandbox 实例 |
-| `delta-cli sandbox providers` | 查看可用计算后端 |
-| `delta-cli sandbox resources [--provider opensandbox\|autodl]` | 查看各后端当前剩余可申请资源（GPU/显存/核心） |
-| `delta-cli sandbox images` | 查看可用镜像列表（每条含 `image_name`/`tags`/`description`/`supports_shared_workspace`；`supports_shared_workspace=true` 表示该算力可开共享工作区（opensandbox/autodl），可与 `--shared-workspace` 搭配；实际播种/写回由平台创建时探测镜像内 rclone 决定） |
-| `delta-cli sandbox recommend --cpu N --memory XGi` | 获取资源配置推荐 |
+| `delta-cli sandbox list` | 列出当前用户的 sandbox 实例（新服务端默认返回摘要字段 `sandbox_id`/`status`/`image`；需要完整字段请用 `sandbox status <id>`） |
+| `delta-cli sandbox resources` | 按算力来源（`compute_sources[].source`：私有/第三方）查看平台当前库存（GPU/显存/核心）；这是平台库存而非账号剩余配额——账号额度请用 `delta-cli quota` |
+| `delta-cli sandbox images` | 查看可用镜像列表（每条含 `image_name`/`tags`/`description`/`supports_shared_workspace`；新服务端还可选含 `source`（恒有，private/third_party）/`provider_label`/`compatible_gpu_types`——后者可用于选择计划内允许的 `--gpu-type`。`supports_shared_workspace=true` 表示该算力来源可开共享工作区，可与 `--shared-workspace` 搭配；实际播种/写回由平台创建时探测镜像内 rclone 决定） |
+| `delta-cli sandbox recommend --cpu N --memory XGi` | 获取资源配置推荐（新服务端还可选返回 `source`/`gpu_type`/`provider_label`；`gpu_type` 可直接回填 create 的 `--gpu-type`） |
 | `delta-cli sandbox create --image-name <镜像名> [--idempotency-key <key>] [--ready-timeout S] [--no-auto-cleanup] [--shared-workspace=true\|false]` | 创建 sandbox 容器（`--image` 为旧别名；**`--idempotency-key`**：网络重试时用同一个键会回放原 sandbox 而不会重复创建，同键换参数会被拒绝；响应含 `request_id`/`operation_status`/`replayed`；`--no-auto-cleanup` 同时关闭平台 TTL 与服务端 cleanup，仅显式 kill/finish 可销毁；`--shared-workspace` 默认 true：启用共享工作区（播种/写回由平台创建时探测镜像内 rclone 决定，镜像无 rclone 时跳过、数据不跨沙箱持久）；false 跳过播种/写回，适合快速任务；`--ready-timeout` 对全部算力生效（默认 600，范围 10-1800），冷节点首次拉大镜像时调高可避免 `error_code=SandboxReadyTimeout`，与 `--max-life`（存活时长）无关。`--shm-size` / `--devices` 已随服务端 shmSize/devices 下线移除） |
-| `delta-cli sandbox extend <id> --max-life N` | **动态延长运行中** sandbox 的 max-life（N 必须大于当前到期时间且 ≤10080；不接受缩短，提前回收用 `kill`/`finish`）；不带 `--max-life` 时查询当前生命周期（已存活/剩余/到期时间）；`status` 输出含 `data.lifecycle` 生命周期摘要（已存活/剩余/到期；生命周期接口不可用时省略） |
+| `delta-cli sandbox extend <id> --max-life N` | **动态延长运行中** sandbox 的 max-life（N 必须大于已存活时长且 ≤10080；新的到期时间必须晚于当前到期时间——**只能延长，不能缩短**；提前回收用 `kill`/`finish`；`--no-auto-cleanup` 沙箱无需续期）；不带 `--max-life` 时查询当前生命周期（已存活/剩余/到期时间）；`status` 输出含 `data.lifecycle` 生命周期摘要（已存活/剩余/到期；生命周期接口不可用时省略） |
 | `delta-cli sandbox connect <id>` | 连接 sandbox |
 | `delta-cli sandbox status <id>` | 查看 sandbox 状态；返回 `expires_at` / `reclaim_source`，已结束的沙箱仍可查询并带 `termination_reason` / `termination_remark` / `terminated_at`（如 `max_life_exceeded` / `platform_gone` / `user_killed` / `user_finished`） |
 | `delta-cli sandbox finish <id> [--no-wait]` | 保存结果并销毁；销毁是**服务端任务**，响应含 `request_id`/`operation_status`（`--no-wait` 立即返回 `pending`，断线后任务继续，可用 `sandbox operation <request_id>` 对账） |
 | `delta-cli sandbox kill <id> [--no-wait]` | 销毁 sandbox（不保存结果）；响应含 `request_id`/`operation_status`，中断或网络报错后可用 `sandbox operation` 查询真实终态 |
-| `delta-cli sandbox operation [request_id] [--sandbox-id <id>] [--operation create\|destroy] [--limit N]` | 查询服务端操作账本：带 `request_id` 查单条，否则按条件列出最近的创建/销毁记录（终态、时间、原因），用于计费与资源对账 |
+| `delta-cli sandbox operation [request_id] [--sandbox-id <id>] [--operation create\|destroy] [--limit N]` | 查询服务端操作账本：带 `request_id` 查单条，否则按条件列出最近的创建/销毁记录（终态、时间、原因），用于计费与资源对账；失败记录附带 `diagnostics` 摘要（`error_code`/`stage`/`hint`/`provider_label`），无需解析嵌套的 `result` |
 | `delta-cli sandbox run <id> --command "..." [--timeout <秒>] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` | 同步运行命令。默认（`--format sse`）把 SSE 原始 `data:` 帧透传到 stdout，无末尾信封，`exit_code`/`log_file`/`stdout_tail`/`duration_seconds` 在 `complete` 帧；`--format json`（或 `--json-result`）只输出**一个** JSON 信封，`data` 含 `execution_id`/`finished`/`exit_code`/`stdout_tail`/`stderr_tail`/`stdout_size`/`stderr_size`/`log_file`/`duration_seconds`/`result_summary`，失败时为 `{ok:false,error,data}` 且进程非零退出；`--summary`/`--artifacts` 仅旧服务器回退路径生效。**退出码语义**：命令非零退出 → `error.type=command_failed`，进程退出码 **8**；命令已结束但**退出状态不可知**（流在 `complete` 帧前中断、或只有 error 帧）→ `error.type=unknown_execution_state`，进程退出码 13，**绝不会合成成功** |
 | `delta-cli sandbox run-bg <id> --command "..." [--timeout <秒>] [--wait] [--cancel-on-timeout] [--format sse\|json] [--json-result] [--summary/--no-summary] [--artifacts]` | 后台运行命令；不加 `--wait` 立即返回 `{execution_id, sandbox_id}`（`--format json` 时为统一结果对象，`finished=false`）；加 `--wait` 通过 SSE 实时流跟随（默认透传原始 `data:` 帧）；`--format json` 时只输出一个与 `sandbox run --format json` 相同结构的信封。**等待超时** → `error.type=timeout`、进程**非零退出**，`error.details` 保留 `sandbox_id`/`execution_id`/`remote_state`（`not_cancelled`/`cancelled`/`cancel_failed`）以便事后查询或取消；`remote_state=not_cancelled` 表示**只是本地停止等待，远端命令可能仍在运行**。默认不取消远端命令，加 `--cancel-on-timeout` 才会下发取消（取消失败时报 `cancel_failed`） |
-| `delta-cli sandbox logs <id> --execution-id <eid> [--tail N --grep <pattern> --context N --max-bytes N]` | 查看后台日志；默认返回 `stderr_size + stderr_tail`（避免上下文爆炸）；可用 `--tail/--grep` 过滤 |
+| `delta-cli sandbox logs <id> [--execution-id <eid>] [--tail N --grep <pattern> --context N] [--stream]` | 查看后台日志（`--execution-id` 可省略：省略时按 sandbox 维度查询、服务端走 ES，返回按 execution_id 分组的数组）；默认返回 `stdout_tail`（约 800 字节）+ `stderr_tail`（约 200 字节）+ `stdout_size`/`stderr_size`；`--tail/--grep/--context` 过滤两路输出；`--stream` 实时跟随（SSE） |
 | `delta-cli sandbox cancel <id> --execution-id <eid>` | 中断后台命令 |
 | `delta-cli sandbox read <id> --path <path> [--output <本地路径>] [--tail N] [--grep <pattern>] [--offset N] [--limit N] [--context N] [--max-bytes N] [--parse-json]` | 读取容器内文件；`--output <path>` 保存到本地；`--tail/--grep` 过滤。**整份拷贝（不带 `--tail/--grep/--offset/--limit/--max-bytes`）走分块下载通道，字节精确**（二进制安全，响应含 `byte_exact:true`/`integrity:"sha256"`/`digest_verified`）；带上述过滤参数时，过滤作用在**原始字节**上，落盘结果是原文件的字节精确切片（`byte_exact:true`/`integrity:"sha1"`）。**直接输出到 stdout 时**：文本文件给 `content`（严格解码，`byte_exact:true`）；**非 UTF-8 文件不给 `content`**（有损预览会误导），精确原始字节放在 `content_base64`（base64 解码即为原文件），并标记 `byte_exact:true`。仅当服务端不支持该协商时才会退回有损文本（`integrity:"text_decoded"`）。`--output` 指向已存在的本地目录时，文件按自身文件名写进该目录（等同 `cp file dir/`）|
-| `delta-cli sandbox pull <id> --source <沙箱路径> --target <本地路径> [--pattern <glob>] [--concurrency N] [--no-resume] [--no-verify]` | 从沙箱拉取文件/目录到本地（mirror of `upload`，flag 方向相反：source=远程，target=本地）。**目录始终递归**（`--recursive` 已废弃，无需再加）；走**分块下载**通道：二进制安全、端到端 **sha256** 校验（响应含 `digest_verified`）、**可断点续传**（`.delta.part`）、多文件/多块**并行**传输（`--concurrency`，默认 4），因此不受单条命令 300s 超时限制。服务端公开的上限随每次响应返回（`limits`）：块大小 4 MiB（最大 16 MiB）、单文件最大 100 GiB、每块超时 120s、整文件摘要超时 600s。`--no-resume` 忽略残留的 `.delta.part`，`--no-verify` 跳过沙箱侧 sha256 比对。**载荷按原始字节直传**（服务端支持时走二进制端点，不再被 base64 撑大 4/3），旧服务端自动回退；**分块必须连续覆盖整个文件**，有缺口或被中断的下载直接报错，不会被当成成功结果。`--target` 指向已存在的本地目录时，文件按自身文件名写进该目录（等同 `cp file dir/`） |
+| `delta-cli sandbox pull <id> --source <沙箱路径> --target <本地路径> [--pattern <glob>] [--concurrency N] [--no-resume] [--no-verify]` | 从沙箱拉取文件/目录到本地（mirror of `upload`，flag 方向相反：source=远程，target=本地）。**目录始终递归**（`--recursive` 仅为兼容保留，无需再加）；走**分块下载**通道：二进制安全、端到端 **sha256** 校验（响应含 `digest_verified`）、**可断点续传**（`.delta.part`）、多文件/多块**并行**传输（`--concurrency`，默认 4），因此不受单条命令 300s 超时限制。服务端公开的上限随每次响应返回（`limits`）：块大小 4 MiB（最大 16 MiB）、单文件最大 100 GiB、每块超时 120s、整文件摘要超时 600s。`--no-resume` 忽略残留的 `.delta.part`，`--no-verify` 跳过沙箱侧 sha256 比对。**载荷按原始字节直传**（服务端支持时走二进制端点，不再被 base64 撑大 4/3），旧服务端自动回退；**分块必须连续覆盖整个文件**，有缺口或被中断的下载直接报错，不会被当成成功结果。`--target` 指向已存在的本地目录时，文件按自身文件名写进该目录（等同 `cp file dir/`） |
 | `delta-cli sandbox write <id> --path <path> --source <本地路径>` | 写入文件。**二进制安全**：内容按原始字节直传（服务端支持时走二进制端点，旧服务端自动回退到 base64），CLI 同时声明 `size`/`sha256`，服务端在落盘前核对，不匹配直接拒绝；响应含 `server_sha256`/`sha256`/`size`/`size_verified`。超过 32 MiB 的 `--source` 走流式上传通道，不整份读入内存 |
 | `delta-cli sandbox write-multiple <id> --entry <远程路径>=<本地路径>` | 批量写入 |
 | `delta-cli sandbox ls <id> --path <path>` | 列出目录（路径是文件或不存在时给出明确报错，而不是笼统的上游失败） |
@@ -337,7 +333,7 @@ Skill 文档 `skills/delta-science/references/qe.md` 与
 {"ok":false,"error":{"type":"auth","message":"not authenticated","hint":"run 'delta-cli auth login'","request_id":"create_a1b2c3"}}
 ```
 
-`error.hint` 给出可执行的下一步（创建失败时会说明具体原因，例如「镜像未在目标节点缓存，重试或换一个已缓存该镜像的 GPU 型号」），`error.request_id` 用于在服务端日志中定位同一次失败。
+`error.hint` 给出可执行的下一步（创建失败时会说明具体原因，例如「镜像未在目标节点缓存，重试或换一个已缓存该镜像的 GPU 型号」），`error.request_id` 用于在服务端日志中定位同一次失败。对于新服务端，创建失败时 `error.details` 还会携带结构化诊断（`diagnostics_version`/`stage`/`retryable`/`suggested_actions`，以及嵌套的 `details`，如 `suggested_gpu_types`、`provider_label`）；当客户端没有对应错误码的提示表时，会优先采用服务端下发的 `hint`。
 
 错误类型及退出码：
 
@@ -473,17 +469,17 @@ make release
 ```bash
 export GH_TOKEN=<your-github-pat>
 export NPM_TOKEN=<your-npm-token>
-./release.sh v1.1.19
+./release.sh <version>
 ```
 
 脚本执行步骤：
-1. 更新 `package.json` 版本号。
-2. 交叉编译 5 个平台二进制文件（优先 Docker + `make release`，Docker 不可用时回退本地 Go 工具链）。
-3. 在 `bin/` 目录生成 `.tar.gz` / `.zip` 归档及 SHA-256 checksums，并更新仓库根目录的 `checksums.txt`。
-4. 通过 `.ci/publish-github-release.js` 创建 GitHub Release 并上传二进制归档及 checksums。
-5. 同步 npm 脚本、README 与全部 Skills 到公开仓库 `yzailab/delta-infra-cli`。
-6. 执行 `npm publish --access public` 发布 `@delta-infra/cli`。
-7. 创建本地 source commit 和 Git tag；只有显式设置 `PUSH_SOURCE=1` 时才会推送 source GitLab remote。
+1. 更新 `package.json` 版本号并交叉编译 5 个平台二进制文件（优先 Docker + `make release`，Docker 不可用时回退本地 Go 工具链）。
+2. 在 `bin/` 目录生成 `.tar.gz` / `.zip` 归档及 SHA-256 checksums，并更新仓库根目录的 `checksums.txt`。
+3. 运行公开同步计划器测试（`.ci/sync-public-github.test.js`）。
+4. 提交 source commit 并打 tag（`chore: release vX.Y.Z`），推送 GitLab `main` 与 tag（`PUSH_SOURCE` 默认为 1，非 1 会直接中止；公开同步依赖这一步）。
+5. 同步 allowlist 公开文件树与 tag 到公开仓库 `yzailab/delta-infra-cli`。
+6. 通过 `.ci/publish-github-release.js` 创建 GitHub Release 并上传二进制归档及 checksums。
+7. 执行 `npm publish --access public` 发布 `@delta-infra/cli`。
 
 需要提前安装 `gh` CLI、Node.js/npm，并配置 `GH_TOKEN` 与 `NPM_TOKEN`。CI 流程可参考 `.gitlab-ci.yml`。
 
@@ -492,7 +488,7 @@ export NPM_TOKEN=<your-npm-token>
 如果 GitHub 下载较慢，安装 npm 包时可设置镜像：
 
 ```bash
-DELTA_CLI_MIRROR="https://gh-proxy.com/https://github.com" npm install -g @delta-infra/cli
+DELTA_CLI_MIRROR="https://gh-proxy.com" npm install -g @delta-infra/cli
 ```
 
 ## 沙箱内镜像源自动配置
@@ -512,7 +508,7 @@ DELTA_CLI_MIRROR="https://gh-proxy.com/https://github.com" npm install -g @delta
 | HF_ENDPOINT | HuggingFace 下载域名 | `https://hf-mirror.com` |
 | git insteadOf | GitHub 克隆代理 | `https://gh-proxy.com/https://github.com` |
 
-AutoDL 计算后端默认关闭镜像注入（海外平台），仅当运维明确配置开启后才生效。
+第三方算力（海外平台）默认关闭镜像注入，仅当运维明确配置开启后才生效。
 
 > **注意区分两套镜像机制**：本沙箱镜像配置针对的是**沙箱里的包管理器**（pip / npm / git / HF）。它与 CLI 自身的下载镜像 `DELTA_CLI_MIRROR` 是两回事——`DELTA_CLI_MIRROR` 只用于**安装 delta-cli 二进制**，不作用于沙箱内。
 

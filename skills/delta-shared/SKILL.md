@@ -85,7 +85,7 @@ On a server without the endpoint the command fails with `error.type: not_found` 
 - **Do not install the CLI proactively**: if the user says it is not installed, direct them to the README or `install.sh`; do not choose an installation method yourself.
 - **Confirm intent before write or delete operations**: tell the user what commands such as `sandbox kill`, `sandbox finish` and `sandbox write` will affect.
 - `~/.delta-infra/config.json` must have `0600` permissions; do not loosen them manually.
-- **The sandbox must be destroyed explicitly**: after calling `sandbox create`, call `sandbox kill` before the current task ends (use `finish` when results must be preserved). Sandboxes do get reclaimed automatically (default `--max-life` is 30 minutes; OpenSandbox starts the clock when create is accepted and the platform reclaims, while AutoDL/RunPod start at readiness and the server reclaims at max-life plus up to 10 minutes of grace), but the platform may reclaim early and automatic reclamation does not write back to OSS — relying on it loses artifacts. Do not skip destruction, even if an error occurs.
+- **The sandbox must be destroyed explicitly**: after calling `sandbox create`, call `sandbox kill` before the current task ends (use `finish` when results must be preserved). Sandboxes do get reclaimed automatically (default `--max-life` is 30 minutes; private compute starts the clock when create is accepted and the platform reclaims, while third-party compute starts at readiness and the server reclaims at max-life plus up to 10 minutes of grace), but the platform may reclaim early and automatic reclamation does not write back to OSS — relying on it loses artifacts. Do not skip destruction, even if an error occurs.
 
 ## JSON output conventions
 
@@ -96,9 +96,10 @@ On a server without the endpoint the command fails with `error.type: not_found` 
 
 AI agent parsing rules:
 - Always check `ok`; do not rely on the exit code alone.
-- `error.type` is the stable field for branching on: `auth`, `permission`, `not_found`, `validation`, `network`, `api`, `command_failed`, `timeout`, `unknown_execution_state`, `internal`.
+- `error.type` is the stable field for branching on: `auth`, `permission`, `not_found`, `validation`, `network`, `api`, `command_failed`, `timeout`, `unknown_execution_state`, `content_integrity_mismatch`, `content_size_mismatch`, `internal`.
 - `error.hint` may be shown to the user. **Act on it rather than retrying blindly**: for a failed `sandbox create` the hint names the concrete cause and the next step (for example, the image was not cached on the target node — retry, or pick a GPU type whose node already has the image).
 - `error.request_id` identifies the same failure in the server log; quote it when reporting the failure.
+- On a failed `sandbox create` from a new server, `error.details` carries structured diagnostics: `diagnostics_version`, `stage`, `retryable` (whether a retry can help), `suggested_actions`, and a nested `details` map (for example `suggested_gpu_types`, `provider_label`). When the CLI has no built-in hint for the error code, the server-provided `hint` is used.
 
 ## Exit code conventions
 
@@ -111,6 +112,7 @@ AI agent parsing rules:
 | network | 6 | DNS, timeout or connection failure |
 | api | 7 | Server returned a non-2xx response |
 | command_failed | 8 | Command failed inside the sandbox (non-zero `exit_code` or an error); on the SSE path, an error envelope is appended after the `complete` frame, with the stderr tail in `message` for quick reference |
+| content_integrity_mismatch / content_size_mismatch | 12 | File-transfer verification failed (sha256 or byte-count mismatch): the file is not byte-exact — retry the transfer instead of using the file |
 | timeout | 11 | A local wait deadline elapsed (`sandbox run-bg --wait`): the remote command may still be running — `error.details` keeps `sandbox_id`, `execution_id` and `remote_state` (`not_cancelled` / `cancelled` / `cancel_failed`) so it can be queried or cancelled |
 | unknown_execution_state | 13 | The command's outcome is **unknown** (the stream ended before the `complete` frame, or only an error frame arrived). Never treat this as success and never guess the exit code |
 | internal | 10 | Internal client error |
@@ -135,6 +137,6 @@ delta-cli upgrade
 | `error.type: command_failed` | Command failed inside the sandbox: the envelope's `message` already includes the stderr tail to help locate the issue quickly; the full `stderr` / `result_summary` are in the `complete` frame. Retry or correct the command |
 | `error.type: timeout` | A local wait deadline elapsed, **not** a command failure. Read `error.details.execution_id` and query it with `sandbox logs <id> --execution-id <exec_id>`; cancel the still-running command with `sandbox cancel <id> --execution-id <exec_id>` (or re-run with `--cancel-on-timeout` so the CLI cancels it for you) |
 | `error.type: unknown_execution_state` | The remote outcome is unknown — the CLI will not guess. Re-check the command with `sandbox logs <id> --execution-id <exec_id>` (the execution id is in the error details) before deciding whether it succeeded |
-| `sandbox create` failed (`error.type: api` with a specific `hint`) | Follow the hint — it names the cause and the next step. "the image may not be cached on the target node" → retry once (the pull continues in the background, so later creates succeed) or pick a GPU type whose node already has the image. "check the target node's free disk space" → a retry will not help until an operator frees the node. A failed create leaves no sandbox behind, so retrying is safe. Quote `error.request_id` when reporting it. |
+| `sandbox create` failed (`error.type: api` with a specific `hint`) | Follow the hint — it names the cause and the next step. "the image may not be cached on the target node" → retry once (the pull continues in the background, so later creates succeed) or pick a GPU type whose node already has the image. "check the target node's free disk space" → a retry will not help until an operator frees the node. A failed create leaves no sandbox behind, so retrying is safe. Quote `error.request_id` when reporting it. On new servers `error.details` adds `stage`/`retryable`/`suggested_actions` for a machine-readable retry decision. |
 | `sandbox create` rejected with `TIER_*` / `SUBACCOUNT_*` | Account/plan quota rejection, not a transient failure — do not retry the same request unchanged. See the quota row in `delta-sandbox`'s recovery table for which dimension to reduce or which model/provider/image to choose. |
 | Configuration file parsing failed | Check that `~/.delta-infra/config.json` contains valid JSON |

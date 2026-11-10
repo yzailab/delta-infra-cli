@@ -54,7 +54,7 @@ Notes:
    "memory_before_mb":{"allocated":0,"reserved":0,"max_allocated":0},
    "memory_after_mb":{"allocated":0.0005,"reserved":2.0,"max_allocated":0.001}}
   ```
-- The skill extracts this JSON from `log_file` as the `summary` in the local `result.json`, then outputs only one `RESULT: ...` line.
+- The skill takes this JSON from the `complete` frame's `result_summary` as the `summary` in the local `result.json` (falling back to reading `log_file` only when the complete frame lacks it), then outputs only one `RESULT: ...` line.
 - The full raw `nvidia-smi` output remains in the sandbox `log_file`.
 
 ## 2. Run a script the user already has
