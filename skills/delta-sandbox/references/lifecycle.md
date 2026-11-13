@@ -18,7 +18,7 @@
 > **Note:** sandboxes **do** get reclaimed automatically, but when and from which starting point depends on the backend:
 > - Private compute: `--max-life` (default 30 minutes) starts when the create request is accepted and the platform reclaims the sandbox at expiry; image pull / readiness time counts towards it too.
 > - Third-party compute: the clock starts when the sandbox is ready, and the server-side cleanup reclaims it at max-life plus up to 10 minutes of grace.
-> - The platform may still reclaim a sandbox early (cluster eviction, node failure; `termination_reason=platform_gone`), and automatic reclamation **does not** write back to OSS, so artifacts that were not pulled are lost.
+> - The platform may still reclaim a sandbox early (cluster eviction, node failure; `termination_reason` = `platform_expired` / `platform_failed` / `platform_terminated` / `platform_gone`, with the underlying k8s reason in `termination_remark`), and automatic reclamation **does not** write back to OSS, so artifacts that were not pulled are lost.
 > - Therefore you must still run `kill`/`finish` explicitly when the task ends; to preserve artifacts use `finish` or `pull` beforehand. `sandbox status` returns `expires_at` / `reclaim_source` / `termination_reason`, and remains queryable after the sandbox has ended.
 > - `--no-auto-cleanup` disables both the platform TTL and the server-side cleanup, so `expires_at`/`remaining` are null.
 

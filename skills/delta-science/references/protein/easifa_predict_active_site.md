@@ -1,11 +1,11 @@
-# Enzyme Active-site Prediction (`huada_protein_tools` / `easifa_predict_active_site`)
+# Enzyme Active-site Prediction (`protein_tools` / `easifa_predict_active_site`)
 
-This endpoint is a real endpoint of the `huada_protein_tools` tool. It can only be
+This endpoint is a real endpoint of the `protein_tools` tool. It can only be
 called via `delta-cli science invoke`; the business response described below lives
 under the CLI top-level `data` — read fields as documented in this file, do not
 recursively search. This file only documents the endpoint schema; it does not
 authorize direct HTTP. Endpoint names are authoritative as returned by
-`delta-cli science endpoints list huada_protein_tools`; use them verbatim — never
+`delta-cli science endpoints list protein_tools`; use them verbatim — never
 guess, truncate, or alias.
 
 ## Overview
@@ -19,7 +19,7 @@ Predict enzyme active sites with EasIFA.
 ## Invocation
 
 ```text
-delta-cli science invoke --tool huada_protein_tools --endpoint easifa_predict_active_site --data JSON
+delta-cli science invoke --tool protein_tools --endpoint easifa_predict_active_site --data JSON
 ```
 
 Required input groups (at least one per group; all groups must be satisfied):
@@ -46,7 +46,7 @@ Request fields:
 - CLI top-level envelope: a call succeeds only when the exit code is 0 AND `ok` is `true`; the service response lives under `data`.
 - Server-side contract: `status` (success/error/partial), `message`, `tool_type`, `resultjson`, `download_url`; some endpoints also return `total_count`. `resultjson` may be a single object or an array — read only the keys documented in this file, do not recursively search.
 - Binary/file artifacts (such as the PDB/XLSX/FASTA/ZIP files that `download_url` points to) are downloaded and verified with
-  `delta-cli science file download --tool huada_protein_tools --endpoint ... --output <path>`;
+  `delta-cli science file download --tool protein_tools --endpoint ... --output <path>`;
   do not treat file contents as ordinary JSON results.
 
 ## Output Projection

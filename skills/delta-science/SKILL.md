@@ -108,7 +108,7 @@ diagnosis requires them, or the reference disagrees with the live catalogue.
 | KRAS G12D small-molecule generation and iterative multi-objective Vina/activity optimisation | `strbo` | [strbo.md](references/strbo.md) |
 | Reaction-condition initialisation and next-batch recommendations based on measured yields | `synbo` | [synbo.md](references/synbo.md) |
 | Antibody CDRH3 generation/evaluation and AntBO job management | `antbo` | [antbo.md](references/antbo.md) |
-| Protein/bioinformatics analysis: mutation prediction, structure prediction, sequence extraction, MSA, docking, pH/solubility/kinetics, design, and UniProt/ProTrek/PubMed/PubChem retrieval | `huada_protein_tools` | [huada_protein_tools.md](references/huada_protein_tools.md) |
+| Protein/bioinformatics analysis: mutation prediction, structure prediction, sequence extraction, MSA, docking, pH/solubility/kinetics, design, and UniProt/ProTrek/PubMed/PubChem retrieval | `protein_tools` | [protein_tools.md](references/protein_tools.md) |
 
 When the user describes a complete research workflow using terms such as “LDM”, “discovery
 model”, “small-molecule drug LDM” or “antibody LDM”, first select the actual backend tool based on
@@ -164,9 +164,9 @@ natural-language routing or parameter construction.
   requires explicit input/data/force-field files. Never fabricate experimental data, CIFs, force
   fields, historical observations or optimisation results.
 - Route protein and bioinformatics work (mutation, structure, docking, MSA, design, retrieval) to
-  `huada_protein_tools`. Compound and name lookups, CID/SMILES resolution and chemistry descriptors
+  `protein_tools`. Compound and name lookups, CID/SMILES resolution and chemistry descriptors
   belong to the `pubchem`/`rdkit` tools, not to protein retrieval; UniProt/ProTrek/PubMed/PubChem
-  retrieval for proteins uses the `huada_protein_tools` retrieval endpoints.
+  retrieval for proteins uses the `protein_tools` retrieval endpoints.
 
 ## Safety, retries and artifacts
 

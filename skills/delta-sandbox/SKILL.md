@@ -37,7 +37,7 @@ metadata:
 3. **Destroy it even after an error**: if a command inside the sandbox fails, times out or reports an error, you **must still** run `sandbox kill <id>`. An error is no reason to skip cleanup.
 4. **Do not rely on external cleanup**: sandboxes **do** have automatic reclamation, but it does not replace destroying them yourself.
    - The default `--max-life` is 30 minutes. On private compute the timer starts when the create request is accepted and the platform reclaims the sandbox; on third-party compute it starts when the sandbox is ready, and the server-side cleanup reclaims it at max-life plus up to 10 minutes of grace.
-   - The platform may still reclaim a sandbox early (cluster eviction, node failure, etc.; `termination_reason=platform_gone`).
+   - The platform may still reclaim a sandbox early (cluster eviction, node failure, etc.; `termination_reason` is `platform_expired` for platform-side expiry, `platform_failed` for a failed Pod, `platform_terminated` for other remote termination, or `platform_gone` when the remote object no longer exists — read `termination_remark` for the underlying reason).
    - **Automatic reclamation does not write back to OSS**, so artifacts that were not pulled are lost.
    - Without `kill`, the sandbox keeps occupying GPU resources until it expires, and the reclamation time cannot be used to preserve results. When the task ends you must still run `kill` / `finish` explicitly (only `finish` writes back to OSS).
 5. **Complete synchronous tasks in one command; background tasks may span turns**:

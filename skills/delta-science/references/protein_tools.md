@@ -1,16 +1,16 @@
-# Huada Protein Tools (`huada_protein_tools`)
+# Huada Protein Tools (`protein_tools`)
 
 Convert natural-language protein research tasks into the minimal set of verifiable
-Delta CLI Science calls. This document is the tool reference for `huada_protein_tools`; endpoint selection, parameters,
+Delta CLI Science calls. This document is the tool reference for `protein_tools`; endpoint selection, parameters,
 cross-endpoint handoffs and result validation are all handled inside this Skill. All
-endpoints belong to the single tool `huada_protein_tools`, and each registered
+endpoints belong to the single tool `protein_tools`, and each registered
 endpoint is a single tool call (no workflow endpoints exist).
 
 ## Service Call Boundary
 
 - All online protein/bioinformatics operations ultimately go through the Delta CLI:
   JSON-compatible endpoints use
-  `delta-cli science invoke --tool huada_protein_tools --endpoint <name> --data JSON`;
+  `delta-cli science invoke --tool protein_tools --endpoint <name> --data JSON`;
   file/binary artifacts use `delta-cli science file download`.
 - Use the CLI's standard authentication and the Science service address derived from
   `base_url` (`{base_url}/science_tool`). Never override the service route via
@@ -24,7 +24,7 @@ endpoint is a single tool call (no workflow endpoints exist).
 - Before executing, read the corresponding reference and combine required fields and
   request parameters per that reference; when a reference is missing, stale, or
   inconsistent with the live catalog, query the real-time catalog with
-  `delta-cli science list` and `delta-cli science endpoints list huada_protein_tools`.
+  `delta-cli science list` and `delta-cli science endpoints list protein_tools`.
   Never create fields, enum values or branches beyond the required combinations from memory.
 - Endpoint names are the single authoritative invocation names. The endpoint passed to
   the CLI must match the catalog exactly; do not alias-map (the `protein_dock` tool's
@@ -68,14 +68,14 @@ Rules:
 Call template:
 
 ```text
-delta-cli science invoke --tool huada_protein_tools --endpoint ENDPOINT --data JSON
+delta-cli science invoke --tool protein_tools --endpoint ENDPOINT --data JSON
 ```
 
 File artifact download template (when `download_url` points to raw files such as
 PDB/XLSX/FASTA/ZIP):
 
 ```text
-delta-cli science file download --tool huada_protein_tools --endpoint ENDPOINT \
+delta-cli science file download --tool protein_tools --endpoint ENDPOINT \
   --params '{"...":"..."}' --output <path>
 ```
 
