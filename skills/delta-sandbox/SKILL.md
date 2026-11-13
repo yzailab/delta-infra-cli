@@ -171,8 +171,8 @@ The reason is that, after running a command, this skill reads `log_file` from th
 | Interrupt a background command | `sandbox cancel <id> --execution-id <exec_id>` |
 | **Tunnelling (port exposure)** | |
 | Expose a port publicly | `sandbox expose <id> [--port N]` — expose a service port inside the sandbox to the public internet and return `public_url` (`http://<host>:<remote_port>`, where the server randomly assigns `remote_port` from 20000–29999); **start the service before exposing it** (the server reports “service not ready” if its health check fails); `--port` defaults to 8700 (platform convention) |
-| List active tunnels | `sandbox exposes <id>` — list the public tunnels currently active for this sandbox |
-| Reclaim a tunnel | `sandbox dispose <id> --port N` — explicitly reclaim a single tunnel (stop frpc and release the public port); killing the sandbox also reclaims all its tunnels |
+| List active tunnels | `sandbox exposes <id>` — list the public tunnels currently active for this sandbox; `data.sandbox_exists=false` means the sandbox is no longer running (the list is empty) — stop polling and create a new sandbox |
+| Reclaim a tunnel | `sandbox dispose <id> --port N` — explicitly reclaim a single tunnel (stop frpc and release the public port); killing the sandbox also reclaims all its tunnels. Disposing on an already-destroyed sandbox is an idempotent success (`data.already_gone:true`, `data.error_code:sandbox_already_gone`) |
 | **File operations** | |
 | Read a file | `sandbox read <id> --path <path> [--output <local-path> --tail N --grep <pattern> --offset N --limit N --context N --max-bytes N --parse-json]` — **byte-exact**: a full copy goes through the chunked download (sha256-verified) and a filtered copy is a byte-exact slice of the original. Printed inline, a text file gives `content`; a **non-UTF-8 file gives no `content`** — the exact bytes are in `content_base64` |
 | Pull a file/directory | `sandbox pull <id> --source <sandbox-path> --target <local-path> [--pattern <glob>] [--concurrency N] [--no-resume] [--no-verify]` — pull a single file or **recursively** pull a directory (directories are always recursive), over the **chunked** path: bytes move verbatim (no base64 inflation), binary-safe, sha256-verified, resumable and parallel (the reverse of upload: source=remote, target=local). A `--target` that names an existing local directory receives the file inside it, under its own name |
@@ -340,8 +340,8 @@ Available commands:
 | Command | Purpose |
 |------|------|
 | `sandbox expose <id> [--port N]` | Expose a port and return `public_url`; `--port` defaults to **8700** (platform convention), so you can omit it |
-| `sandbox exposes <id>` | List the tunnels currently active for this sandbox (service_port / remote_port / public_url) |
-| `sandbox dispose <id> --port N` | Explicitly reclaim one tunnel (stop frpc and release the public port) |
+| `sandbox exposes <id>` | List the tunnels currently active for this sandbox (service_port / remote_port / public_url). `data.sandbox_exists=false` means the sandbox is no longer running — do not keep polling, create a new one |
+| `sandbox dispose <id> --port N` | Explicitly reclaim one tunnel (stop frpc and release the public port). Idempotent when the sandbox is already destroyed (`data.already_gone:true`, `data.error_code:sandbox_already_gone`) |
 
 Follow this order and these conventions:
 

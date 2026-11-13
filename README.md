@@ -266,7 +266,7 @@ delta-cli sandbox operation <request_id>
 | `delta-cli sandbox create --image-name <镜像名> [--idempotency-key <key>] [--ready-timeout S] [--no-auto-cleanup] [--shared-workspace=true\|false]` | 创建 sandbox 容器（`--image` 为旧别名；**`--idempotency-key`**：网络重试时用同一个键会回放原 sandbox 而不会重复创建，同键换参数会被拒绝；响应含 `request_id`/`operation_status`/`replayed`；`--no-auto-cleanup` 同时关闭平台 TTL 与服务端 cleanup，仅显式 kill/finish 可销毁；`--shared-workspace` 默认 true：启用共享工作区（播种/写回由平台创建时探测镜像内 rclone 决定，镜像无 rclone 时跳过、数据不跨沙箱持久）；false 跳过播种/写回，适合快速任务；`--ready-timeout` 对全部算力生效（默认 600，范围 10-1800），冷节点首次拉大镜像时调高可避免 `error_code=SandboxReadyTimeout`，与 `--max-life`（存活时长）无关。`--shm-size` / `--devices` 已随服务端 shmSize/devices 下线移除） |
 | `delta-cli sandbox extend <id> --max-life N` | **动态延长运行中** sandbox 的 max-life（N 必须大于已存活时长且 ≤10080；新的到期时间必须晚于当前到期时间——**只能延长，不能缩短**；提前回收用 `kill`/`finish`；`--no-auto-cleanup` 沙箱无需续期）；不带 `--max-life` 时查询当前生命周期（已存活/剩余/到期时间）；`status` 输出含 `data.lifecycle` 生命周期摘要（已存活/剩余/到期；生命周期接口不可用时省略） |
 | `delta-cli sandbox connect <id>` | 连接 sandbox |
-| `delta-cli sandbox status <id>` | 查看 sandbox 状态；返回 `expires_at` / `reclaim_source`，已结束的沙箱仍可查询并带 `termination_reason` / `termination_remark` / `terminated_at`（如 `max_life_exceeded` / `platform_gone` / `user_killed` / `user_finished`） |
+| `delta-cli sandbox status <id>` | 查看 sandbox 状态；返回 `expires_at` / `reclaim_source`，已结束的沙箱仍可查询并带 `termination_reason` / `termination_remark` / `terminated_at`（如 `max_life_exceeded` / `platform_expired`（平台按 expires 回收）/ `platform_failed`（Pod 失败）/ `platform_terminated`（其它远端终止）/ `platform_gone`（远端对象已不存在）/ `user_killed` / `user_finished`；底层 k8s reason 见 `termination_remark`） |
 | `delta-cli sandbox finish <id> [--no-wait]` | 保存结果并销毁；销毁是**服务端任务**，响应含 `request_id`/`operation_status`（`--no-wait` 立即返回 `pending`，断线后任务继续，可用 `sandbox operation <request_id>` 对账） |
 | `delta-cli sandbox kill <id> [--no-wait]` | 销毁 sandbox（不保存结果）；响应含 `request_id`/`operation_status`，中断或网络报错后可用 `sandbox operation` 查询真实终态 |
 | `delta-cli sandbox operation [request_id] [--sandbox-id <id>] [--operation create\|destroy] [--limit N]` | 查询服务端操作账本：带 `request_id` 查单条，否则按条件列出最近的创建/销毁记录（终态、时间、原因），用于计费与资源对账；失败记录附带 `diagnostics` 摘要（`error_code`/`stage`/`hint`/`provider_label`），无需解析嵌套的 `result` |
@@ -290,8 +290,8 @@ delta-cli sandbox operation <request_id>
 | `delta-cli sandbox working-directory <id>` | 获取沙箱工作目录路径 |
 | `delta-cli sandbox upload <id> --source <本地目录> --target <沙箱路径>` | 上传目录（tar.gz + 自动解压） |
 | `delta-cli sandbox expose <id> [--port N]` | 将沙箱内服务端口暴露到公网（frp 隧道），默认端口 8700 |
-| `delta-cli sandbox exposes <id>` | 列出沙箱当前活跃的公网端口隧道 |
-| `delta-cli sandbox dispose <id> --port N` | 回收公网端口隧道（需指定端口号） |
+| `delta-cli sandbox exposes <id>` | 列出沙箱当前活跃的公网端口隧道；`data.sandbox_exists=false` 表示沙箱已不在运行（列表为空）——不要再轮询，重建沙箱即可 |
+| `delta-cli sandbox dispose <id> --port N` | 回收公网端口隧道（需指定端口号）。对已销毁沙箱是**幂等成功**（`data.already_gone:true` + `data.error_code:"sandbox_already_gone"`，不是失败）；该端口没有活跃隧道时返回 `data.error_code:"expose_not_found"` |
 
 ### Science 工具
 
@@ -334,6 +334,8 @@ Skill 文档 `skills/delta-science/references/qe.md` 与
 ```
 
 `error.hint` 给出可执行的下一步（创建失败时会说明具体原因，例如「镜像未在目标节点缓存，重试或换一个已缓存该镜像的 GPU 型号」），`error.request_id` 用于在服务端日志中定位同一次失败。对于新服务端，创建失败时 `error.details` 还会携带结构化诊断（`diagnostics_version`/`stage`/`retryable`/`suggested_actions`，以及嵌套的 `details`，如 `suggested_gpu_types`、`provider_label`）；当客户端没有对应错误码的提示表时，会优先采用服务端下发的 `hint`。
+
+业务错误与幂等成功还会带 `data.error_code`（如 `sandbox_not_found` / `sandbox_already_gone` / `expose_not_found` / `port_pool_exhausted` / `upstream_unavailable`）。CLI 优先按该码选择 `error.type` 与 `hint`，不依赖服务端文案；分支判断请用 `error.type` / `data.error_code`，不要匹配 message 文本。
 
 错误类型及退出码：
 

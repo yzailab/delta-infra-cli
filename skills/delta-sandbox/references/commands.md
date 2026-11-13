@@ -60,7 +60,7 @@
 | Command | Description |
 |------|------|
 | `sandbox expose <id> [--port N]` | Expose a service port inside the sandbox to the public internet and return the `public_url` (the platform default inner port is 8700). |
-| `sandbox exposes <id>` | List the public tunnels currently active for this sandbox. `data.sandbox_exists` is `false` when the sandbox itself is gone (the list is then empty): do not keep polling it — create a new sandbox instead. |
+| `sandbox exposes <id>` | List the public tunnels currently active for this sandbox. `data.sandbox_exists` is `false` when the sandbox is no longer running (killed/finished/terminated; the list is then empty): do not keep polling it — create a new sandbox instead. |
 | `sandbox dispose <id> --port N` | Recycle one tunnel (stop frpc and release the public port); killing the sandbox also reclaims its tunnels. Disposing a tunnel on an already-destroyed sandbox is a no-op success (`data.already_gone: true`, `data.error_code: sandbox_already_gone`). |
 
 ## Notes
