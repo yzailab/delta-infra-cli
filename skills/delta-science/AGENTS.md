@@ -5,7 +5,7 @@
 
 ## OVERVIEW
 
-Single public `delta-science` skill: the company online-Science unified entrypoint. It is host-neutral and routed exclusively through Delta CLI (`science invoke`, durable `science task`, or controlled `science file`) to the Science Server. Per-tool operation contracts live in `references/` and are loaded on demand; there are no separate planner-visible per-tool skills. The retired `delta-protein` skill is folded in here: the `protein_tools` tool's 39 endpoint contracts live under `references/protein/` and are routed via `references/protein_tools.md`.
+Single public `delta-science` skill: the company online-Science unified entrypoint. It is host-neutral and routed exclusively through Delta CLI (`science invoke`, durable `science task`, or controlled `science file`) to the Science Server. Per-tool operation contracts live in `references/` and are loaded on demand; there are no separate planner-visible per-tool skills. The retired `delta-protein` skill is folded in here: the `protein_tools` tool's 58 endpoint contracts live under `references/protein/` and are routed via `references/protein_tools.md`.
 
 ## STRUCTURE
 
@@ -18,7 +18,7 @@ delta-science/
 │   ├── <tool>.md            # one real tool's operation contract (pubchem, rdkit, pymatgen,
 │   │                        #  gsasii, lammps, delta-bo, ldm-bo, materials-design, qe,
 │   │                        #  strbo, synbo, antbo, xrd, protein_tools)
-│   └── protein/             # 39 protein_tools endpoint contracts, linked from
+│   └── protein/             # 58 protein_tools endpoint contracts, linked from
 │                            #  references/protein_tools.md
 └── scripts/
     ├── catalog.py           # catalog generation helpers
@@ -33,7 +33,7 @@ delta-science/
 |------|---------|
 | `SKILL.md` | Service boundary, security guardrails (no curl/requests/httpx/browser direct gateway), invoke/task/file templates, cross-tool handoff |
 | `references/<tool>.md` | One real tool's authoritative operation, request-field, response and failure schema |
-| `references/protein_tools.md` | Router for the 39 `protein_tools` endpoint contracts |
+| `references/protein_tools.md` | Router for the 58 `protein_tools` endpoint contracts |
 | `references/protein/` | One `protein_tools` endpoint contract per file |
 | `scripts/protein/gen_references.py` | Regenerates / checks the protein endpoint Output Projection + Template sections |
 

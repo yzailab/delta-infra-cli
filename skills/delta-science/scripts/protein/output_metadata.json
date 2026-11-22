@@ -271,5 +271,138 @@
     "form": "Markdown table + Excel/ZIP download links",
     "downstream": "-",
     "output_template": "- Title: **Single-site mutation primer design result (REAP Step 7)**\n- Markdown table: `| Mutation ID | Forward primer | Reverse primer | Tm |`\n- Add the Excel and ZIP to the \"Result files & downloads\" section"
+  },
+  "read_text": {
+    "project": "Requested line-range text content [start, end) from a file or URL",
+    "form": "Verbatim inline text of the returned lines",
+    "downstream": "pair with read_text_length to size the file before reading",
+    "output_template": "- Title: **File read result**\n- Lead with the requested line range; show the returned lines verbatim as inline text\n- Do not summarize or invent content not present in the returned lines",
+    "provenance": "derived"
+  },
+  "read_text_length": {
+    "project": "Character count, line count and readability of a file or URL",
+    "form": "Short text (counts + readability)",
+    "downstream": "use before read_text to size a file and choose the read range",
+    "output_template": "- Title: **File size probe result**\n- Lead with the conclusion: character count, line count, readability\n- Present as short natural-language text; do not invent content",
+    "provenance": "derived"
+  },
+  "zero_shot_esm2": {
+    "project": "ESM2 zero-shot single-point mutation candidates (original mutation notation + prediction score, sorted by algorithm); download_url is the full Excel",
+    "form": "Markdown table of mutation candidates + Excel download link",
+    "downstream": "candidate list can feed summarize_result or guide downstream reading",
+    "output_template": "- Title: **Zero-shot mutant candidate prediction (ESM2)**\n- Markdown table: `| Mutation | Score |`, keeping the tool's original mutation notation; column names adjusted per resultjson\n- Add the full result Excel to the \"Result files & downloads\" section\n- Never invent scores/ranks not present in resultjson",
+    "provenance": "derived"
+  },
+  "zero_shot_esmc": {
+    "project": "ESM-C zero-shot single-point mutation candidates (original mutation notation + prediction score, sorted by algorithm); download_url is the full Excel",
+    "form": "Markdown table of mutation candidates + Excel download link",
+    "downstream": "candidate list can feed summarize_result or guide downstream reading",
+    "output_template": "- Title: **Zero-shot mutant candidate prediction (ESM-C)**\n- Markdown table: `| Mutation | Score |`, keeping the tool's original mutation notation; column names adjusted per resultjson\n- Add the full result Excel to the \"Result files & downloads\" section\n- Never invent scores/ranks not present in resultjson",
+    "provenance": "derived"
+  },
+  "zero_shot_saprot": {
+    "project": "SaProt zero-shot single-point mutation candidates (structure-based; original mutation notation + score); download_url is the full Excel",
+    "form": "Markdown table of mutation candidates + Excel download link",
+    "downstream": "candidate list can feed summarize_result or guide downstream reading",
+    "output_template": "- Title: **Zero-shot mutant candidate prediction (SaProt)**\n- Markdown table: `| Mutation | Score |`, keeping the tool's original mutation notation; column names adjusted per resultjson\n- Add the full result Excel to the \"Result files & downloads\" section\n- Never invent scores/ranks not present in resultjson",
+    "provenance": "derived"
+  },
+  "zero_shot_thermompnn": {
+    "project": "ThermoMPNN zero-shot single-point mutation candidates (structure-based; original mutation notation + score); download_url is the full Excel",
+    "form": "Markdown table of mutation candidates + Excel download link",
+    "downstream": "candidate list can feed summarize_result or guide downstream reading",
+    "output_template": "- Title: **Zero-shot mutant candidate prediction (ThermoMPNN)**\n- Markdown table: `| Mutation | Score |`, keeping the tool's original mutation notation; column names adjusted per resultjson\n- Add the full result Excel to the \"Result files & downloads\" section\n- Never invent scores/ranks not present in resultjson",
+    "provenance": "derived"
+  },
+  "zero_shot_protein_mpnn": {
+    "project": "ProteinMPNN zero-shot single-point mutation candidates (structure-based; original mutation notation + score); download_url is the full Excel",
+    "form": "Markdown table of mutation candidates + Excel download link",
+    "downstream": "candidate list can feed summarize_result or guide downstream reading",
+    "output_template": "- Title: **Zero-shot mutant candidate prediction (ProteinMPNN)**\n- Markdown table: `| Mutation | Score |`, keeping the tool's original mutation notation; column names adjusted per resultjson\n- Add the full result Excel to the \"Result files & downloads\" section\n- Never invent scores/ranks not present in resultjson",
+    "provenance": "derived"
+  },
+  "zero_shot_soluble_mpnn": {
+    "project": "SolubleMPNN zero-shot single-point mutation candidates (structure-based; original mutation notation + score); download_url is the full Excel",
+    "form": "Markdown table of mutation candidates + Excel download link",
+    "downstream": "candidate list can feed summarize_result or guide downstream reading",
+    "output_template": "- Title: **Zero-shot mutant candidate prediction (SolubleMPNN)**\n- Markdown table: `| Mutation | Score |`, keeping the tool's original mutation notation; column names adjusted per resultjson\n- Add the full result Excel to the \"Result files & downloads\" section\n- Never invent scores/ranks not present in resultjson",
+    "provenance": "derived"
+  },
+  "ncbi_query": {
+    "project": "Unified E-utilities shell (action/db/count/ids/ids_text/records/fasta/truncated) plus per-action extras (esearch query_translation, epost web_env/query_key, einfo dblist, egquery dbcounts, etc.)",
+    "form": "Record/ID list text; FASTA inline when efetch returns sequences; truncation flagged",
+    "downstream": "retrieved sequences/IDs can feed downstream protein/sequence endpoints",
+    "output_template": "- Title: **NCBI E-utilities query result**\n- Lead with the conclusion: action/db and hit count; list IDs/records per the action\n- Show efetch FASTA verbatim in a code block; note truncation when flagged\n- Do not restate raw JSON key names as body text",
+    "provenance": "derived"
+  },
+  "protparam_predict": {
+    "project": "Physicochemical parameters: length/molecular_weight/theoretical_pi/amino_acid_composition/instability_index/gravy/extinction_coefficients/charged-residue counts",
+    "form": "Parameter summary text/table, restated in natural language",
+    "downstream": "-",
+    "output_template": "- Title: **Protein physicochemical parameter prediction (ProtParam)**\n- Lead with the conclusion: molecular weight and theoretical pI\n- List key parameters as natural-language text or a small table; do not use raw JSON key names",
+    "provenance": "derived"
+  },
+  "opendde_predict": {
+    "project": "Predicted structures: run_id/model/sample + samples[] (rank, cif_url, metrics: plddt/ptm/iptm/gpde/has_clash/disorder/ranking_score and per-chain metrics)",
+    "form": "Structure CIF link list + confidence text",
+    "downstream": "predicted cif_url can serve as downstream structure_file",
+    "output_template": "- Title: **OpenDDE co-folding structure prediction result**\n- Lead with the conclusion: number of samples and top-model confidence (plddt/ptm/iptm)\n- Add each sample CIF link to the \"Result files & downloads\" section",
+    "provenance": "derived"
+  },
+  "rfantibody_predict": {
+    "project": "Antibody design results (tag/metrics/pdb_url) and run metadata; download_url is the results.qv package",
+    "form": "Design summary text + downloadable results",
+    "downstream": "designed pdb_url can feed downstream structure endpoints",
+    "output_template": "- Title: **Antibody design result (RFantibody)**\n- Lead with the conclusion: number of designs and key metrics\n- Add the results.qv download to the \"Result files & downloads\" section",
+    "provenance": "derived"
+  },
+  "binder_design": {
+    "project": "Submitted binder-design task: task_id and current step (BoltzGen task submission)",
+    "form": "Task submission summary (task_id/step)",
+    "downstream": "track the submitted task by task_id",
+    "output_template": "- Title: **Binder design task submission (BoltzGen)**\n- Lead with the conclusion: task submitted, task_id and current step\n- Report only task_id/step/status as returned; do not fabricate design results",
+    "provenance": "derived"
+  },
+  "pyhmmer": {
+    "project": "Protein family classification + HMM extraction + hmmalign MSA; resultjson holds classification/alignment summary; download_urls[] are output files",
+    "form": "Classification summary text + download link list",
+    "downstream": "aligned MSA can serve as downstream msa_file",
+    "output_template": "- Title: **PyHMMER family classification & alignment (pyhmmer)**\n- Lead with the conclusion: classified family and alignment summary\n- Add each output file from download_urls[] to the \"Result files & downloads\" section",
+    "provenance": "derived"
+  },
+  "blast_search": {
+    "project": "BLAST hits (accession/title/evalue/identity/alignment), total_count; download_url is the Excel",
+    "form": "Hit table + Excel download link",
+    "downstream": "-",
+    "output_template": "- Title: **BLAST search result**\n- Lead with the conclusion: hit count and top hits (accession/title/evalue/identity)\n- Add the Excel to the \"Result files & downloads\" section",
+    "provenance": "derived"
+  },
+  "pdb_fix": {
+    "project": "Repair summary: missing atoms, nonstandard residues replaced, waters removed; download_url is the repaired PDB",
+    "form": "Summary text + repaired PDB download link",
+    "downstream": "repaired PDB can serve as downstream structure_file",
+    "output_template": "- Title: **PDB repair result (PDBFixer)**\n- Lead with the conclusion: what was fixed (missing atoms / nonstandard residues / waters)\n- Add the repaired PDB to the \"Result files & downloads\" section",
+    "provenance": "derived"
+  },
+  "obabel_convert": {
+    "project": "Converted file + metadata (input_format/output_format/preview/warnings); download_url is the converted file",
+    "form": "Conversion summary + download link",
+    "downstream": "converted file can feed downstream file inputs",
+    "output_template": "- Title: **OpenBabel format conversion result**\n- Lead with the conclusion: source -> output_format conversion done\n- Add the converted file to the \"Result files & downloads\" section; note warnings when present",
+    "provenance": "derived"
+  },
+  "reap": {
+    "project": "REAP training summary and selected mutant preview (mutant/rank/UCB score); download_url is selected_candidates.xlsx",
+    "form": "Ranking preview text + Excel download link",
+    "downstream": "-",
+    "output_template": "- Title: **REAP mutant ranking result**\n- Lead with the conclusion: number of measured mutants ranked and top candidates\n- Add selected_candidates.xlsx to the \"Result files & downloads\" section",
+    "provenance": "derived"
+  },
+  "dssp_assign": {
+    "project": "Per-chain secondary structure: sequence, ss (H/E/-), summary, segments; warnings for skipped residues",
+    "form": "Secondary-structure summary text/table + ribbon image link",
+    "downstream": "-",
+    "output_template": "- Title: **DSSP secondary structure annotation result**\n- Lead with the conclusion: per-chain secondary structure summary (helices/sheets/coil)\n- Add the ribbon diagram to the \"Result files & downloads\" section when present",
+    "provenance": "derived"
   }
 }

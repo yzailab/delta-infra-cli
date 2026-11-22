@@ -128,6 +128,25 @@ generate_msa/foldseek/structure_to_sequence and backfill it.
 | Batch protein metadata query | `uniprot_batch_query` | [uniprot_batch_query.md](protein/uniprot_batch_query.md) |
 | PubMed literature search | `pubmed_search` | [pubmed_search.md](protein/pubmed_search.md) |
 | PubChem compound search | `pubchem_search` | [pubchem_search.md](protein/pubchem_search.md) |
+| Zero-shot mutation candidates — ESM2 (sequence) | `zero_shot_esm2` | [zero_shot_esm2.md](protein/zero_shot_esm2.md) |
+| Zero-shot mutation candidates — ESM-C (sequence) | `zero_shot_esmc` | [zero_shot_esmc.md](protein/zero_shot_esmc.md) |
+| Zero-shot mutation candidates — SaProt (structure) | `zero_shot_saprot` | [zero_shot_saprot.md](protein/zero_shot_saprot.md) |
+| Zero-shot mutation candidates — ThermoMPNN (structure) | `zero_shot_thermompnn` | [zero_shot_thermompnn.md](protein/zero_shot_thermompnn.md) |
+| Zero-shot mutation candidates — ProteinMPNN (structure) | `zero_shot_protein_mpnn` | [zero_shot_protein_mpnn.md](protein/zero_shot_protein_mpnn.md) |
+| Zero-shot mutation candidates — SolubleMPNN (structure) | `zero_shot_soluble_mpnn` | [zero_shot_soluble_mpnn.md](protein/zero_shot_soluble_mpnn.md) |
+| Rank mutants with REAP (wet-lab activity table) | `reap` | [reap.md](protein/reap.md) |
+| BLAST sequence search | `blast_search` | [blast_search.md](protein/blast_search.md) |
+| NCBI E-utilities query (einfo/esearch/efetch/...) | `ncbi_query` | [ncbi_query.md](protein/ncbi_query.md) |
+| Read a text file / URL by line range | `read_text` | [read_text.md](protein/read_text.md) |
+| Probe a file / URL size (chars/lines/readability) | `read_text_length` | [read_text_length.md](protein/read_text_length.md) |
+| OpenDDE co-folding / structure prediction | `opendde_predict` | [opendde_predict.md](protein/opendde_predict.md) |
+| PDB repair (PDBFixer) | `pdb_fix` | [pdb_fix.md](protein/pdb_fix.md) |
+| Secondary structure annotation (DSSP) | `dssp_assign` | [dssp_assign.md](protein/dssp_assign.md) |
+| Family classification + HMM alignment (PyHMMER) | `pyhmmer` | [pyhmmer.md](protein/pyhmmer.md) |
+| Protein physicochemical parameters (ProtParam) | `protparam_predict` | [protparam_predict.md](protein/protparam_predict.md) |
+| Antibody design (RFantibody) | `rfantibody_predict` | [rfantibody_predict.md](protein/rfantibody_predict.md) |
+| Binder design (BoltzGen) | `binder_design` | [binder_design.md](protein/binder_design.md) |
+| Molecule format conversion (OpenBabel) | `obabel_convert` | [obabel_convert.md](protein/obabel_convert.md) |
 
 When the tool is clear, read the selected endpoint's reference directly — it already
 contains the required combinations, request fields, defaults and outputs; do not read
