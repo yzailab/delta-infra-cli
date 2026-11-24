@@ -11,7 +11,7 @@ The primary sandbox skill. It teaches an AI agent (Planner → executor) how to 
 
 | Path | Content |
 |------|---------|
-| `SKILL.md` | The whole contract (401 lines): when to use, scope, sandbox environment, mandatory rules, request wording, required_outputs, quick routing, full lifecycle, tunnelling, structured-output convention, reading output, Planner guidance, recovery |
+| `SKILL.md` | The whole contract (460 lines): when to use, scope, sandbox environment, mandatory rules, request wording, required_outputs, quick routing, full lifecycle, CPU-only image constraints, tunnelling, structured-output convention, reading output, Planner guidance, recovery |
 | `references/commands.md` | Command cheat sheet (72 lines): discovery, lifecycle, command execution, file operations, tunnelling |
 | `references/lifecycle.md` | Full create-to-kill workflow (111 lines) incl. background tasks and polling patterns |
 | `references/recipes.md` | Standard task request patterns (139 lines): required_outputs templates, script output template, GPU/CUDA check, run-a-script, install-and-run, train-and-save-metrics, general data processing |
